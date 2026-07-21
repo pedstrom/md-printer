@@ -12,6 +12,7 @@ public struct RendererConfiguration: Equatable {
     public var codeBackgroundColor: NSColor
     public var tableBorderColor: NSColor
     public var maximumImageWidth: CGFloat
+    public var codeBlockPadding: CGFloat
 
     public init(
         fontFamily: String = "Avenir Next",
@@ -24,7 +25,8 @@ public struct RendererConfiguration: Equatable {
         accentColor: NSColor = .systemBlue,
         codeBackgroundColor: NSColor = NSColor(calibratedWhite: 0.94, alpha: 1),
         tableBorderColor: NSColor = NSColor(calibratedWhite: 0.72, alpha: 1),
-        maximumImageWidth: CGFloat = 504
+        maximumImageWidth: CGFloat = 504,
+        codeBlockPadding: CGFloat = 8
     ) {
         self.fontFamily = fontFamily
         self.bodyFontSize = bodyFontSize
@@ -37,6 +39,7 @@ public struct RendererConfiguration: Equatable {
         self.codeBackgroundColor = codeBackgroundColor
         self.tableBorderColor = tableBorderColor
         self.maximumImageWidth = maximumImageWidth
+        self.codeBlockPadding = codeBlockPadding
     }
 
     public var contentWidth: CGFloat {
@@ -63,5 +66,6 @@ public struct RendererConfiguration: Equatable {
             && lhs.codeBackgroundColor == rhs.codeBackgroundColor
             && lhs.tableBorderColor == rhs.tableBorderColor
             && lhs.maximumImageWidth == rhs.maximumImageWidth
+            && lhs.codeBlockPadding == rhs.codeBlockPadding
     }
 }

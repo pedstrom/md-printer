@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-07-21 — Code typography and spacing
+
+- Switched inline and fenced code from Avenir Next to the native monospaced system font so code alignment and character widths are correct.
+- Rebuilt fenced code backgrounds with native text-block padding, giving code consistent breathing room on all four sides instead of letting the background begin at the first glyph.
+
 ## 2026-07-21 — Native Markdown-to-PDF foundation
 
 - Created a native macOS app that accepts Markdown through an Open panel, app file-open events, and drag-and-drop.

@@ -1,6 +1,6 @@
 # Markdown Printer Showcase
 
-This page demonstrates **strong text**, *emphasis*, ***both together***, <u>underlining</u>, ~~strikethrough~~, and `inline code` in Avenir Next.
+This page demonstrates **strong text**, *emphasis*, ***both together***, <u>underlining</u>, ~~strikethrough~~, with `inline code` in a true monospaced font.
 
 ## Lists and quotations
 

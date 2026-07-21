@@ -13,7 +13,7 @@ final class MarkdownRendererTests: XCTestCase {
         )
     }
 
-    func testHeadingsBodyAndInlineAttributes() {
+    func testHeadingsBodyAndInlineAttributes() throws {
         let output = renderer.render(markdown: "# Heading\n\nText **bold** *italic* <u>under</u> ~~gone~~ `code` [link](https://example.com)")
         XCTAssertTrue(output.string.contains("Heading"))
         XCTAssertTrue(output.string.contains("Text bold italic under gone code link"))
@@ -29,10 +29,10 @@ final class MarkdownRendererTests: XCTestCase {
         assertAttribute(.link, text: "link", in: output)
         let codeRange = (output.string as NSString).range(of: "code")
         let codeFont = output.attribute(.font, at: codeRange.location, effectiveRange: nil) as? NSFont
-        XCTAssertEqual(codeFont?.familyName, "Avenir Next")
+        XCTAssertTrue(try XCTUnwrap(codeFont).isFixedPitch)
     }
 
-    func testAllBlockTypesRenderReadableText() {
+    func testAllBlockTypesRenderReadableText() throws {
         let markdown = """
         > quoted
 
@@ -56,6 +56,16 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(output.string.contains("4.  four"))
         XCTAssertTrue(output.string.contains("let x = 1"))
         XCTAssertTrue(output.string.contains("────"))
+
+        let codeRange = (output.string as NSString).range(of: "let x = 1")
+        let codeFont = output.attribute(.font, at: codeRange.location, effectiveRange: nil) as? NSFont
+        XCTAssertTrue(try XCTUnwrap(codeFont).isFixedPitch)
+        let codeParagraph = output.attribute(.paragraphStyle, at: codeRange.location, effectiveRange: nil) as? NSParagraphStyle
+        let codeBlock = try XCTUnwrap(codeParagraph?.textBlocks.first)
+        XCTAssertEqual(codeBlock.contentWidth, 100)
+        XCTAssertEqual(codeBlock.width(for: .padding, edge: .minX), 8)
+        XCTAssertEqual(codeBlock.width(for: .padding, edge: .maxX), 8)
+        XCTAssertEqual(codeBlock.backgroundColor, renderer.configuration.codeBackgroundColor)
     }
 
     func testTableUsesNativeTextBlocksAndAlignment() {

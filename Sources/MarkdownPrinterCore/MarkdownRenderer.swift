@@ -87,20 +87,25 @@ public final class MarkdownRenderer {
             }
 
         case let .codeBlock(_, code):
-            let paragraph = paragraphStyle(spacingAfter: 10)
-            paragraph.headIndent = 9
-            paragraph.firstLineHeadIndent = 9
-            paragraph.tailIndent = -9
+            let block = NSTextBlock()
+            block.setContentWidth(100, type: .percentageValueType)
+            block.setWidth(configuration.codeBlockPadding, type: .absoluteValueType, for: .padding)
+            block.backgroundColor = configuration.codeBackgroundColor
+            let paragraph = paragraphStyle(spacingAfter: 0)
+            paragraph.textBlocks = [block]
             let rendered = NSMutableAttributedString(
-                string: code + "\n",
+                string: code.isEmpty ? " " : code,
                 attributes: [
-                    .font: fonts.regular(size: configuration.bodyFontSize - 1),
+                    .font: fonts.monospaced(size: configuration.bodyFontSize - 1),
                     .foregroundColor: configuration.textColor,
-                    .backgroundColor: configuration.codeBackgroundColor,
                     .paragraphStyle: paragraph
                 ]
             )
             result.append(rendered)
+            result.append(NSAttributedString(
+                string: "\n",
+                attributes: [.paragraphStyle: paragraphStyle(spacingAfter: 10)]
+            ))
 
         case .thematicBreak:
             let line = NSMutableAttributedString(
@@ -189,7 +194,7 @@ public final class MarkdownRenderer {
                 result.append(NSAttributedString(
                     string: code,
                     attributes: [
-                        .font: fonts.regular(size: font.pointSize - 0.5),
+                        .font: fonts.monospaced(size: font.pointSize - 0.5),
                         .foregroundColor: configuration.textColor,
                         .backgroundColor: configuration.codeBackgroundColor
                     ]

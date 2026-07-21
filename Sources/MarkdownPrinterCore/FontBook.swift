@@ -25,6 +25,10 @@ public struct FontBook {
             ?? NSFontManager.shared.convert(bold(size: size), toHaveTrait: .italicFontMask)
     }
 
+    public func monospaced(size: CGFloat) -> NSFont {
+        NSFont.monospacedSystemFont(ofSize: size, weight: .regular)
+    }
+
     private func font(named name: String, size: CGFloat, fallbackWeight: NSFont.Weight) -> NSFont {
         NSFont(name: name, size: size)
             ?? NSFont.systemFont(ofSize: size, weight: fallbackWeight)

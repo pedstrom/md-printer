@@ -12,7 +12,7 @@ Use this skill for product or implementation work in this repository.
 - Accept Markdown through the Open command, Finder Open With/app file events, and window drag-and-drop.
 - Show the actual generated PDF in a native PDFKit preview.
 - Save and print the same PDF bytes shown in the preview.
-- Format body text in Avenir Next and use deliberate Avenir Next heading, bold, italic, and bold-italic variants.
+- Format prose in Avenir Next with deliberate heading, bold, italic, and bold-italic variants. Use a true monospaced system font for inline and fenced code, with visible internal padding inside fenced code blocks.
 - Support headings 1–6, paragraphs, bold, emphasis, `<u>` underline, strikethrough, inline/fenced code, links, quotes, ordered/unordered/task lists, horizontal rules, tables, and local embedded images.
 - Keep remote images offline and visible as placeholders. Resolve local relative images against the Markdown file's folder and preserve aspect ratio within the printable area.
 - Use US Letter pages with print-safe margins unless a later product decision adds configurable paper sizes.

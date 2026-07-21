@@ -11,6 +11,7 @@ final class RendererConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.headingSize(for: 1), 28)
         XCTAssertEqual(configuration.headingSize(for: 6), 12)
         XCTAssertEqual(configuration.headingSize(for: 99), 12)
+        XCTAssertEqual(configuration.codeBlockPadding, 8)
         XCTAssertEqual(configuration, RendererConfiguration())
     }
 
@@ -27,6 +28,7 @@ final class RendererConfigurationTests: XCTestCase {
         XCTAssertEqual(fonts.bold(size: 12).familyName, "Avenir Next")
         XCTAssertEqual(fonts.italic(size: 12).familyName, "Avenir Next")
         XCTAssertEqual(fonts.boldItalic(size: 12).familyName, "Avenir Next")
+        XCTAssertTrue(fonts.monospaced(size: 11).isFixedPitch)
     }
 
     func testFontFallbackForUnknownFamily() {

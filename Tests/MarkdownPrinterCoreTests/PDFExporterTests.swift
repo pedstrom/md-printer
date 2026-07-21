@@ -45,6 +45,14 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertTrue(annotations.contains(where: { $0.url?.absoluteString == "https://openai.com" }))
     }
 
+    func testFencedCodeBlockRendersWithoutStallingPagination() throws {
+        let text = MarkdownRenderer().render(markdown: "```swift\nlet answer = 42\nprint(answer)\n```")
+        let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))
+        XCTAssertEqual(document.pageCount, 1)
+        XCTAssertTrue(document.page(at: 0)?.string?.contains("let answer = 42") == true)
+        XCTAssertTrue(document.page(at: 0)?.string?.contains("print(answer)") == true)
+    }
+
     func testWriteAndPrintExistingPDF() throws {
         let exporter = PDFExporter()
         let text = MarkdownRenderer().render(markdown: "Printable")

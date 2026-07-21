@@ -4,7 +4,7 @@ Markdown Printer is a native macOS app that turns local Markdown files into poli
 
 ## What it formats
 
-- Avenir Next body text, code, and appropriately sized Avenir Next headings
+- Avenir Next body text and headings, with true monospaced inline and fenced code
 - Bold, italic, bold-italic, `<u>underlined</u>`, and strikethrough text
 - Ordered, unordered, and task lists
 - Block quotes, inline code, fenced code blocks, links, and horizontal rules

@@ -6,7 +6,7 @@ These instructions apply to the whole repository.
 
 - Treat this as a native, local-first macOS app for turning Markdown files into polished PDFs.
 - Keep all document content on the Mac. Do not add uploads, analytics, cloud services, remote image fetching, or a WebView rendering dependency unless Pete explicitly asks.
-- Use Avenir Next throughout rendered documents, with an explicit system-font fallback only when the font is unavailable.
+- Use Avenir Next for rendered prose and headings, with an explicit system-font fallback only when the font is unavailable. Use a true monospaced system font for inline and fenced code.
 - Favor small, coherent changes with clear commits. Do not leave meaningful completed work uncommitted.
 - Update `docs/product-development-log.md` for meaningful product, architecture, rendering, testing, or workflow changes.
 
