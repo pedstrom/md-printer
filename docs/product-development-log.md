@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-07-21 — Print margin fidelity
+
+- Removed the print path's second 54-point margin layer and disabled page-to-fit scaling, so printing and Print-dialog PDF saves preserve the generated Letter page's original size and placement.
+- Added a print-to-PDF regression that compares the printed page size and heading position with the in-app preview PDF.
+
 ## 2026-07-21 — Continuous quotation borders
 
 - Replaced the quotation's first-line `│` glyph with a native TextKit left border, so the rule spans the full height of wrapped and explicit multi-line quoted text.

@@ -11,7 +11,7 @@ Use this skill for product or implementation work in this repository.
 
 - Accept Markdown through the Open command, Finder Open With/app file events, and window drag-and-drop.
 - Show the actual generated PDF in a native PDFKit preview.
-- Save and print the same PDF bytes shown in the preview.
+- Save the same PDF bytes shown in the preview. Print that complete PDF page at its original scale without adding a second set of margins; the generated page already contains its print-safe margins.
 - Format prose in Avenir Next with deliberate heading, bold, italic, and bold-italic variants. Use a true monospaced system font for inline and fenced code, with visible internal padding inside fenced code blocks.
 - Support headings 1–6, paragraphs, bold, emphasis, `<u>` underline, strikethrough, inline/fenced code, links, quotes, ordered/unordered/task lists, horizontal rules, tables, and local embedded images. Render quotations with a native continuous left border that spans every wrapped line in the quoted block.
 - Keep remote images offline and visible as placeholders. Resolve local relative images against the Markdown file's folder and preserve aspect ratio within the printable area.
@@ -29,6 +29,6 @@ Use this skill for product or implementation work in this repository.
 
 - Every changed production behavior gets a deterministic XCTest.
 - Maintain 95% or better line coverage across testable production Swift.
-- Lock down page size, multi-page flow, searchable text, table flow, image scaling/placeholders, and link annotations with PDFKit integration tests.
+- Lock down page size, multi-page flow, searchable text, table flow, image scaling/placeholders, link annotations, and print-to-PDF placement fidelity with PDFKit integration tests.
 - After a rendering change, generate `Examples/showcase.md` through `scripts/render_markdown.sh` and inspect rendered pages outside the repo.
 - Use `md-printer-change-gate` after focused tests pass.

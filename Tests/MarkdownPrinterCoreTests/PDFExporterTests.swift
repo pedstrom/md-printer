@@ -74,8 +74,54 @@ final class PDFExporterTests: XCTestCase {
         try exporter.write(text, to: url)
         let data = try Data(contentsOf: url)
         XCTAssertNotNil(PDFDocument(data: data))
-        XCTAssertNotNil(try exporter.printOperation(forPDFData: data).view)
+        let operation = try exporter.printOperation(forPDFData: data)
+        XCTAssertNotNil(operation.view)
+        XCTAssertEqual(operation.printInfo.paperSize.width, 612, accuracy: 0.5)
+        XCTAssertEqual(operation.printInfo.paperSize.height, 792, accuracy: 0.5)
+        XCTAssertEqual(operation.printInfo.topMargin, 0)
+        XCTAssertEqual(operation.printInfo.leftMargin, 0)
+        XCTAssertEqual(operation.printInfo.bottomMargin, 0)
+        XCTAssertEqual(operation.printInfo.rightMargin, 0)
         XCTAssertThrowsError(try exporter.printOperation(forPDFData: Data([0x00])))
+    }
+
+    func testPrintToPDFPreservesPreviewPageAndContentPosition() throws {
+        let exporter = PDFExporter()
+        let paragraphs = (1...90)
+            .map { "Paragraph \($0): Printing must preserve every generated page without adding another layout pass." }
+            .joined(separator: "\n\n")
+        let previewData = try exporter.pdfData(
+            from: MarkdownRenderer().render(markdown: "# Print fidelity\n\n\(paragraphs)")
+        )
+        let previewDocument = try XCTUnwrap(PDFDocument(data: previewData))
+        XCTAssertGreaterThan(previewDocument.pageCount, 1)
+        let previewPage = try XCTUnwrap(previewDocument.page(at: 0))
+        let previewHeading = try XCTUnwrap(previewDocument.findString("Print fidelity", withOptions: []).first)
+            .bounds(for: previewPage)
+
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let printedURL = directory.appendingPathComponent("printed.pdf")
+
+        let operation = try exporter.printOperation(forPDFData: previewData)
+        operation.showsPrintPanel = false
+        operation.showsProgressPanel = false
+        operation.printInfo.jobDisposition = .save
+        operation.printInfo.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = printedURL
+        XCTAssertTrue(operation.run())
+
+        let printedDocument = try XCTUnwrap(PDFDocument(url: printedURL))
+        XCTAssertEqual(printedDocument.pageCount, previewDocument.pageCount)
+        let printedPage = try XCTUnwrap(printedDocument.page(at: 0))
+        let printedHeading = try XCTUnwrap(printedDocument.findString("Print fidelity", withOptions: []).first)
+            .bounds(for: printedPage)
+
+        XCTAssertEqual(printedPage.bounds(for: .mediaBox).width, previewPage.bounds(for: .mediaBox).width, accuracy: 0.5)
+        XCTAssertEqual(printedPage.bounds(for: .mediaBox).height, previewPage.bounds(for: .mediaBox).height, accuracy: 0.5)
+        XCTAssertEqual(printedHeading.minX, previewHeading.minX, accuracy: 0.5)
+        XCTAssertEqual(printedHeading.maxY, previewHeading.maxY, accuracy: 0.5)
+        XCTAssertTrue(printedDocument.page(at: printedDocument.pageCount - 1)?.string?.contains("Paragraph 90") == true)
     }
 
     func testEmptyAttributedStringStillCreatesOnePage() throws {

@@ -51,14 +51,13 @@ public final class PDFExporter {
     }
 
     public func printOperation(forPDFData data: Data) throws -> NSPrintOperation {
-        guard let document = PDFDocument(data: data),
-              let operation = document.printOperation(
-                for: printInfo(),
-                scalingMode: .pageScaleToFit,
-                autoRotate: true
-              ) else {
+        guard let document = PDFDocument(data: data) else {
             throw PDFExporterError.renderingFailed
         }
+        let operation = NSPrintOperation(
+            view: PDFPrintView(document: document, pageSize: configuration.pageSize),
+            printInfo: printInfo()
+        )
         operation.showsPrintPanel = true
         operation.showsProgressPanel = true
         return operation
@@ -105,15 +104,57 @@ public final class PDFExporter {
     private func printInfo() -> NSPrintInfo {
         let info = NSPrintInfo()
         info.paperSize = configuration.pageSize
-        info.topMargin = configuration.pageMargins.top
-        info.leftMargin = configuration.pageMargins.left
-        info.bottomMargin = configuration.pageMargins.bottom
-        info.rightMargin = configuration.pageMargins.right
-        info.horizontalPagination = .fit
-        info.verticalPagination = .automatic
+        // The generated PDF already contains the configured print-safe margins.
+        // A second margin layer would shrink and offset the complete PDF page.
+        info.topMargin = 0
+        info.leftMargin = 0
+        info.bottomMargin = 0
+        info.rightMargin = 0
+        info.horizontalPagination = .clip
+        info.verticalPagination = .clip
         info.isHorizontallyCentered = false
         info.isVerticallyCentered = false
         return info
+    }
+}
+
+private final class PDFPrintView: NSView {
+    private let document: PDFDocument
+
+    init(document: PDFDocument, pageSize: CGSize) {
+        self.document = document
+        super.init(frame: NSRect(origin: .zero, size: pageSize))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func knowsPageRange(_ range: NSRangePointer) -> Bool {
+        range.pointee = NSRange(location: 1, length: document.pageCount)
+        return true
+    }
+
+    override func rectForPage(_ page: Int) -> NSRect {
+        bounds
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let operation = NSPrintOperation.current,
+              let page = document.page(at: operation.currentPage - 1),
+              let context = NSGraphicsContext.current?.cgContext else {
+            return
+        }
+        let printInfo = operation.printInfo
+        let imageableBounds = printInfo.imageablePageBounds
+        context.saveGState()
+        context.translateBy(
+            x: -imageableBounds.minX,
+            y: printInfo.paperSize.height - imageableBounds.maxY
+        )
+        page.draw(with: .mediaBox, to: context)
+        context.restoreGState()
     }
 }
 
