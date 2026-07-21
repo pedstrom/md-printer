@@ -48,17 +48,16 @@ public final class MarkdownRenderer {
             result.append(NSAttributedString(string: "\n"))
 
         case let .blockquote(content):
+            let block = NSTextBlock()
+            block.setContentWidth(100, type: .percentageValueType)
+            block.setWidth(1.5, type: .absoluteValueType, for: .border, edge: .minX)
+            block.setBorderColor(configuration.secondaryTextColor, for: .minX)
+            block.setWidth(12, type: .absoluteValueType, for: .padding, edge: .minX)
+            block.setWidth(3, type: .absoluteValueType, for: .padding, edge: .minY)
+            block.setWidth(3, type: .absoluteValueType, for: .padding, edge: .maxY)
             let paragraph = paragraphStyle()
-            paragraph.headIndent = 20
-            paragraph.firstLineHeadIndent = 0
-            let quote = NSMutableAttributedString(
-                string: "│ ",
-                attributes: [
-                    .font: fonts.bold(size: configuration.bodyFontSize),
-                    .foregroundColor: configuration.secondaryTextColor
-                ]
-            )
-            quote.append(renderInline(content, font: fonts.italic(size: configuration.bodyFontSize), baseURL: baseURL))
+            paragraph.textBlocks = [block]
+            let quote = renderInline(content, font: fonts.italic(size: configuration.bodyFontSize), baseURL: baseURL)
             quote.addAttribute(.paragraphStyle, value: paragraph, range: quote.fullRange)
             result.append(quote)
             result.append(NSAttributedString(string: "\n"))

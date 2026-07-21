@@ -49,7 +49,8 @@ final class MarkdownRendererTests: XCTestCase {
         ---
         """
         let output = renderer.render(markdown: markdown)
-        XCTAssertTrue(output.string.contains("│ quoted"))
+        XCTAssertTrue(output.string.contains("quoted"))
+        XCTAssertFalse(output.string.contains("│"))
         XCTAssertTrue(output.string.contains("•  one"))
         XCTAssertTrue(output.string.contains("☑︎  done"))
         XCTAssertTrue(output.string.contains("☐  todo"))
@@ -66,6 +67,14 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(codeBlock.width(for: .padding, edge: .minX), 8)
         XCTAssertEqual(codeBlock.width(for: .padding, edge: .maxX), 8)
         XCTAssertEqual(codeBlock.backgroundColor, renderer.configuration.codeBackgroundColor)
+
+        let quoteRange = (output.string as NSString).range(of: "quoted")
+        let quoteParagraph = output.attribute(.paragraphStyle, at: quoteRange.location, effectiveRange: nil) as? NSParagraphStyle
+        let quoteBlock = try XCTUnwrap(quoteParagraph?.textBlocks.first)
+        XCTAssertEqual(quoteBlock.width(for: .border, edge: .minX), 1.5)
+        XCTAssertEqual(quoteBlock.width(for: .border, edge: .maxX), 0)
+        XCTAssertEqual(quoteBlock.width(for: .padding, edge: .minX), 12)
+        XCTAssertEqual(quoteBlock.borderColor(for: .minX), renderer.configuration.secondaryTextColor)
     }
 
     func testTableUsesNativeTextBlocksAndAlignment() {

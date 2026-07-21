@@ -53,6 +53,17 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertTrue(document.page(at: 0)?.string?.contains("print(answer)") == true)
     }
 
+    func testWrappedQuotationRendersAndRemainsSearchable() throws {
+        let markdown = "> A quoted passage long enough to wrap onto another visible line while retaining one continuous left border."
+        let text = MarkdownRenderer().render(markdown: markdown)
+        let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))
+        XCTAssertEqual(document.pageCount, 1)
+        let extractedText = try XCTUnwrap(document.page(at: 0)?.string)
+        XCTAssertTrue(extractedText.contains("A quoted passage"))
+        XCTAssertTrue(extractedText.contains("continuous"))
+        XCTAssertTrue(extractedText.contains("left border"))
+    }
+
     func testWriteAndPrintExistingPDF() throws {
         let exporter = PDFExporter()
         let text = MarkdownRenderer().render(markdown: "Printable")

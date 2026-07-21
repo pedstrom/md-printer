@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-07-21 — Continuous quotation borders
+
+- Replaced the quotation's first-line `│` glyph with a native TextKit left border, so the rule spans the full height of wrapped and explicit multi-line quoted text.
+- Added left and vertical insets that keep italic quotation text comfortably separated from the rule.
+
 ## 2026-07-21 — Code typography and spacing
 
 - Switched inline and fenced code from Avenir Next to the native monospaced system font so code alignment and character widths are correct.
