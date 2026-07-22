@@ -32,11 +32,11 @@ final class DocumentSessionTests: XCTestCase {
 
     func testLoadDataHandlesValidAndInvalidInput() {
         let session = DocumentSession()
-        session.load(data: Data("Body".utf8), suggestedTitle: "Data")
-        XCTAssertEqual(session.title, "Data")
+        session.load(data: Data("# Markdown Title\n\nBody".utf8), suggestedTitle: "Filename")
+        XCTAssertEqual(session.title, "Markdown Title")
         session.load(data: Data([0xFF]))
         XCTAssertEqual(session.errorMessage, "The file is not valid UTF-8 or UTF-16 text.")
-        XCTAssertEqual(session.title, "Data")
+        XCTAssertEqual(session.title, "Markdown Title")
     }
 
     func testLoadURLSaveAndPrint() throws {
@@ -49,7 +49,7 @@ final class DocumentSessionTests: XCTestCase {
 
         let session = DocumentSession()
         session.load(url: input)
-        XCTAssertEqual(session.title, "Input")
+        XCTAssertEqual(session.title, "From File")
         try session.savePDF(to: output)
         XCTAssertNotNil(PDFDocument(url: output))
         XCTAssertNotNil(try session.printOperation().view)

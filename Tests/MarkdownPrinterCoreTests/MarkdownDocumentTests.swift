@@ -3,13 +3,28 @@ import XCTest
 @testable import MarkdownPrinterCore
 
 final class MarkdownDocumentTests: XCTestCase {
-    func testDecodeUTF8AndSuggestedTitle() throws {
+    func testDecodeUsesH1BeforeSuggestedTitle() throws {
         let document = try MarkdownDocument.decode(
-            data: Data("# Hello".utf8),
+            data: Data("# **Hello** `Report`".utf8),
             suggestedTitle: "Greeting"
         )
-        XCTAssertEqual(document, MarkdownDocument(title: "Greeting", markdown: "# Hello"))
+        XCTAssertEqual(document.title, "Hello Report")
+        XCTAssertEqual(document.markdown, "# **Hello** `Report`")
         XCTAssertNil(document.baseURL)
+    }
+
+    func testDecodeUsesSuggestedTitleWithoutAnH1() throws {
+        let document = try MarkdownDocument.decode(
+            data: Data("## Secondary heading\n\nBody".utf8),
+            suggestedTitle: "Filename"
+        )
+        XCTAssertEqual(document.title, "Filename")
+    }
+
+    func testH1TitleFlattensOtherInlineFormatting() throws {
+        let markdown = "# *Quarterly* <u>Status</u> ~~Draft~~ [Plan](https://example.com) ![Icon](icon.png)"
+        let document = try MarkdownDocument.decode(data: Data(markdown.utf8))
+        XCTAssertEqual(document.title, "Quarterly Status Draft Plan Icon")
     }
 
     func testLoadUsesFilenameAndBaseURL() throws {

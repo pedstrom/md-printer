@@ -21,6 +21,7 @@ public struct PDFPreviewView: NSViewRepresentable {
 
 final class PageAdvancingPDFView: PDFView {
     private var needsInitialPageFit = false
+    private var displayRevision = 0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -34,10 +35,12 @@ final class PageAdvancingPDFView: PDFView {
 
     func display(_ document: PDFDocument) {
         self.document = document
+        displayRevision += 1
         needsInitialPageFit = true
         goToFirstPage(nil)
         needsLayout = true
         focusForPageNavigation()
+        scheduleSettledInitialPageFit(for: displayRevision)
     }
 
     override func layout() {
@@ -92,6 +95,16 @@ final class PageAdvancingPDFView: PDFView {
         DispatchQueue.main.async { [weak self, weak window] in
             guard let self, let window, self.window === window else { return }
             window.makeFirstResponder(self)
+        }
+    }
+
+    private func scheduleSettledInitialPageFit(for revision: Int) {
+        DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.displayRevision == revision else { return }
+                self.needsInitialPageFit = false
+                self.fitFirstPage()
+            }
         }
     }
 }

@@ -7,7 +7,7 @@ public struct MarkdownDocument: Equatable, Sendable {
 
     public init(sourceURL: URL? = nil, title: String, markdown: String) {
         self.sourceURL = sourceURL
-        self.title = title
+        self.title = Self.markdownTitle(in: markdown) ?? title
         self.markdown = markdown
     }
 
@@ -40,6 +40,35 @@ public struct MarkdownDocument: Equatable, Sendable {
 
     public var baseURL: URL? {
         sourceURL?.deletingLastPathComponent()
+    }
+
+    private static func markdownTitle(in markdown: String) -> String? {
+        for block in MarkdownParser().parse(markdown) {
+            guard case let .heading(level, content) = block, level == 1 else { continue }
+            let title = plainText(from: content).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !title.isEmpty { return title }
+        }
+        return nil
+    }
+
+    private static func plainText(from nodes: [InlineNode]) -> String {
+        nodes.map { node in
+            switch node {
+            case let .text(text), let .code(text):
+                return text
+            case let .emphasis(children),
+                 let .strong(children),
+                 let .underline(children),
+                 let .strikethrough(children):
+                return plainText(from: children)
+            case let .link(children, _):
+                return plainText(from: children)
+            case let .image(alt, _):
+                return alt
+            case .lineBreak:
+                return " "
+            }
+        }.joined()
     }
 }
 

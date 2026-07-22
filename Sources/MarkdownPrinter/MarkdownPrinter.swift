@@ -6,7 +6,7 @@ struct MarkdownPrinterApp: App {
     @StateObject private var session = DocumentSession()
 
     var body: some Scene {
-        WindowGroup(session.title) {
+        WindowGroup("Markdown Printer") {
             MarkdownPrinterView(session: session)
                 .onOpenURL { session.load(url: $0) }
         }

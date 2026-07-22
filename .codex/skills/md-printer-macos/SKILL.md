@@ -10,6 +10,7 @@ Use this skill for product or implementation work in this repository.
 ## Product Contract
 
 - Accept Markdown through the Open command, Finder Open With/app file events, and window drag-and-drop.
+- Use the first level-one Markdown heading as the macOS document-window title, falling back to the filename when no H1 exists. Keep document-window chrome minimal: Save PDF and Print only, with no duplicate metadata strip inside the window.
 - Show the actual generated PDF in a native PDFKit preview.
 - Open at a portrait-oriented size with the complete first PDF page visible. In the preview, an unmodified Space key advances exactly one page while retaining continuous vertical scrolling.
 - Save the same PDF bytes shown in the preview. Print that complete PDF page at its original scale without adding a second set of margins; the generated page already contains its print-safe margins.

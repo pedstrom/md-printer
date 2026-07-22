@@ -20,6 +20,7 @@ public struct MarkdownPrinterView: View {
             }
         }
         .frame(minWidth: 680, minHeight: 560)
+        .navigationTitle(session.title)
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay {
             if isDropTargeted {
@@ -32,9 +33,6 @@ public struct MarkdownPrinterView: View {
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: acceptDrop)
         .toolbar {
             ToolbarItemGroup {
-                Button(action: openDocument) {
-                    Label("Open Markdown", systemImage: "doc.badge.plus")
-                }
                 Button(action: savePDF) {
                     Label("Save PDF", systemImage: "square.and.arrow.down")
                 }
@@ -53,20 +51,7 @@ public struct MarkdownPrinterView: View {
     }
 
     private var preview: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Image(systemName: "doc.richtext")
-                    .foregroundStyle(.secondary)
-                Text(session.title)
-                    .font(.headline)
-                Spacer()
-                Text("Avenir Next · PDF-ready")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-            Divider()
+        Group {
             if let pdfData = session.renderedPDFData {
                 PDFPreviewView(data: pdfData)
             }
