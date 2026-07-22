@@ -15,6 +15,8 @@ required_files=(
   AGENTS.md
   Package.swift
   Resources/Info.plist
+  Resources/MarkdownPrinterIcon.png
+  Resources/Assets.xcassets/AppIcon.appiconset/Contents.json
   docs/product-development-log.md
   .codex/skills/md-printer-macos/SKILL.md
   .codex/skills/md-printer-change-gate/SKILL.md
@@ -71,7 +73,11 @@ awk -v coverage="$LINE_COVERAGE" 'BEGIN { exit(coverage + 0 >= 95 ? 0 : 1) }' ||
 swift build -c release --product MarkdownPrinter
 scripts/build_app.sh --skip-build >/dev/null
 test -x "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter"
+test -s "build/Markdown Printer.app/Contents/Resources/Assets.car"
+test -s "build/Markdown Printer.app/Contents/Resources/AppIcon.icns"
 plutil -lint "build/Markdown Printer.app/Contents/Info.plist" >/dev/null
+[[ "$(plutil -extract CFBundleIconFile raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
+[[ "$(plutil -extract CFBundleIconName raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
 
 if git ls-files --error-unmatch .DS_Store >/dev/null 2>&1; then
   echo ".DS_Store is tracked; remove it from the repository." >&2

@@ -22,6 +22,13 @@ rm -rf "$APP_PATH"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN_PATH/MarkdownPrinter" "$CONTENTS/MacOS/MarkdownPrinter"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
+xcrun actool "$ROOT/Resources/Assets.xcassets" \
+  --compile "$CONTENTS/Resources" \
+  --platform macosx \
+  --minimum-deployment-target 14.0 \
+  --app-icon AppIcon \
+  --output-partial-info-plist "$ROOT/build/asset-catalog-info.plist" \
+  >/dev/null
 chmod +x "$CONTENTS/MacOS/MarkdownPrinter"
 plutil -lint "$CONTENTS/Info.plist" >/dev/null
 

@@ -30,6 +30,10 @@
     </array>
     <key>CFBundleExecutable</key>
     <string>MarkdownPrinter</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.peteedstrom.markdown-printer</string>
     <key>CFBundleInfoDictionaryVersion</key>

@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-07-21 — Retro printer app icon
+
+- Added a simple, original macOS app icon that combines a printer and Markdown page with a restrained mid-century travel-poster palette and screen-print texture.
+- Added a reproducible icon builder and package verification so every release bundle includes the full macOS icon set.
+
 ## 2026-07-21 — Simplified document window
 
 - Removed the Open Markdown toolbar button from document windows, leaving only Save PDF and Print; the empty welcome screen still provides its initial file chooser.
