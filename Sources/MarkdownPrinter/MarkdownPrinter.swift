@@ -3,6 +3,7 @@ import SwiftUI
 
 @main
 struct MarkdownPrinterApp: App {
+    @NSApplicationDelegateAdaptor(ApplicationLifecycleDelegate.self) private var applicationDelegate
     @StateObject private var session = DocumentSession()
 
     var body: some Scene {

@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-07-21 — Quit after the final window closes
+
+- Added native macOS lifecycle handling so closing the last Markdown Printer window terminates the app instead of leaving it running without a window.
+- Preserved normal multi-window behavior: the app remains active while any document window is still open.
+
 ## 2026-07-21 — Centered page-number footers
 
 - Added a small Avenir Next page number centered in the existing bottom margin of every generated PDF page.

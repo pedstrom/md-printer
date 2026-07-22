@@ -16,9 +16,13 @@ BIN_PATH="$(CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache" \
   SWIFTPM_CUSTOM_CACHE_PATH="$ROOT/.build/swiftpm-cache" \
   swift build -c "$CONFIGURATION" --show-bin-path)"
 APP_PATH="$ROOT/build/Markdown Printer.app"
-CONTENTS="$APP_PATH/Contents"
+STAGING_ROOT="$(mktemp -d /private/tmp/markdown-printer-app.XXXXXX)"
+STAGED_APP_PATH="$STAGING_ROOT/Markdown Printer.app"
+CONTENTS="$STAGED_APP_PATH/Contents"
+trap 'rm -rf "$STAGING_ROOT"' EXIT
 
 rm -rf "$APP_PATH"
+mkdir -p "$ROOT/build"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN_PATH/MarkdownPrinter" "$CONTENTS/MacOS/MarkdownPrinter"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
@@ -33,8 +37,9 @@ chmod +x "$CONTENTS/MacOS/MarkdownPrinter"
 plutil -lint "$CONTENTS/Info.plist" >/dev/null
 
 if command -v codesign >/dev/null 2>&1; then
-  xattr -cr "$APP_PATH"
-  codesign --force --sign - "$APP_PATH" >/dev/null
+  xattr -cr "$STAGED_APP_PATH"
+  codesign --force --sign - "$STAGED_APP_PATH" >/dev/null
 fi
 
+mv "$STAGED_APP_PATH" "$APP_PATH"
 echo "$APP_PATH"
