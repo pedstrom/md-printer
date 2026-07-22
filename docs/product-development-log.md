@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-07-21 — Content-aware table columns
+
+- Replaced equal-width table columns with a constrained content-aware layout: each column retains a readable minimum, while prose-heavy columns receive more of the remaining page width.
+- Kept balanced tables balanced and added regressions for both equal two-column layouts and narrow/wide/narrow three-column layouts.
+- Made PDF foreground, secondary, and link colors appearance-independent so rendering while macOS is in Dark Mode cannot produce white text on white paper.
+
 ## 2026-07-21 — More compact document typography
 
 - Reduced body copy from 12 to 10 points and tightened the complete heading scale, with a larger reduction at the oversized top levels.

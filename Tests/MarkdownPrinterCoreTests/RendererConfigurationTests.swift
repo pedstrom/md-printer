@@ -14,6 +14,12 @@ final class RendererConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.headingSize(for: 6), 10)
         XCTAssertEqual(configuration.headingSize(for: 99), 10)
         XCTAssertEqual(configuration.codeBlockPadding, 8)
+        XCTAssertEqual(configuration.textColor, .black)
+        XCTAssertEqual(configuration.secondaryTextColor, NSColor(calibratedWhite: 0.5, alpha: 1))
+        XCTAssertEqual(
+            configuration.accentColor,
+            NSColor(calibratedRed: 0, green: 0.48, blue: 1, alpha: 1)
+        )
         XCTAssertEqual(configuration, RendererConfiguration())
     }
 

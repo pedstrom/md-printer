@@ -83,7 +83,7 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(quoteBlock.borderColor(for: .minX), renderer.configuration.secondaryTextColor)
     }
 
-    func testTableUsesNativeTextBlocksAndAlignment() {
+    func testTableUsesNativeTextBlocksAndAlignment() throws {
         let output = renderer.render(markdown: "| Left | Right |\n| :--- | ---: |\n| A | 2 |")
         XCTAssertEqual(output.string, "Left\nRight\nA\n2\n")
         let left = (output.string as NSString).range(of: "Left")
@@ -93,6 +93,41 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(leftStyle?.alignment, .left)
         XCTAssertEqual(rightStyle?.alignment, .right)
         XCTAssertEqual(leftStyle?.textBlocks.count, 1)
+        let leftBlock = try XCTUnwrap(leftStyle?.textBlocks.first as? NSTextTableBlock)
+        let rightBlock = try XCTUnwrap(rightStyle?.textBlocks.first as? NSTextTableBlock)
+        XCTAssertEqual(leftBlock.table.layoutAlgorithm, .fixedLayoutAlgorithm)
+        XCTAssertEqual(leftBlock.contentWidthValueType, .percentageValueType)
+        XCTAssertEqual(leftBlock.contentWidth, 50, accuracy: 5)
+        XCTAssertEqual(rightBlock.contentWidth, 50, accuracy: 5)
+        XCTAssertEqual(leftBlock.contentWidth + rightBlock.contentWidth, 100, accuracy: 0.01)
+    }
+
+    func testTableGivesContentHeavyColumnsMoreWidth() throws {
+        let output = renderer.render(markdown: """
+        | Case | Required total | Current status |
+        | --- | --- | --- |
+        | Base | Cancellable furnished unit plus flights, local transport, primary and backup internet, power contingency, insurance, food, professional costs, and continued fixed costs. | source_pending |
+        | Exit | Return costs and cancellation penalty. | source_pending |
+        """)
+
+        let caseRange = (output.string as NSString).range(of: "Case")
+        let totalRange = (output.string as NSString).range(of: "Required total")
+        let statusRange = (output.string as NSString).range(of: "Current status")
+        let caseStyle = output.attribute(.paragraphStyle, at: caseRange.location, effectiveRange: nil) as? NSParagraphStyle
+        let totalStyle = output.attribute(.paragraphStyle, at: totalRange.location, effectiveRange: nil) as? NSParagraphStyle
+        let statusStyle = output.attribute(.paragraphStyle, at: statusRange.location, effectiveRange: nil) as? NSParagraphStyle
+        let caseBlock = try XCTUnwrap(caseStyle?.textBlocks.first as? NSTextTableBlock)
+        let totalBlock = try XCTUnwrap(totalStyle?.textBlocks.first as? NSTextTableBlock)
+        let statusBlock = try XCTUnwrap(statusStyle?.textBlocks.first as? NSTextTableBlock)
+
+        XCTAssertLessThan(caseBlock.contentWidth, 25)
+        XCTAssertGreaterThan(totalBlock.contentWidth, 55)
+        XCTAssertLessThan(statusBlock.contentWidth, 25)
+        XCTAssertEqual(
+            caseBlock.contentWidth + totalBlock.contentWidth + statusBlock.contentWidth,
+            100,
+            accuracy: 0.01
+        )
     }
 
     func testExistingImageBecomesScaledAttachment() throws {

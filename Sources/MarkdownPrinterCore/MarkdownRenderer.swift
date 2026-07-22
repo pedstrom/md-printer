@@ -133,10 +133,13 @@ public final class MarkdownRenderer {
         guard columnCount > 0 else { return }
         let table = NSTextTable()
         table.numberOfColumns = columnCount
+        table.layoutAlgorithm = .fixedLayoutAlgorithm
+        table.setContentWidth(100, type: .percentageValueType)
         table.collapsesBorders = true
         table.hidesEmptyCells = false
 
         let allRows = [headers] + rows
+        let columnWidths = tableColumnWidths(for: allRows, columnCount: columnCount)
         for (rowIndex, row) in allRows.enumerated() {
             for columnIndex in 0..<columnCount {
                 let nodes = columnIndex < row.count ? row[columnIndex] : []
@@ -151,6 +154,7 @@ public final class MarkdownRenderer {
                     startingColumn: columnIndex,
                     columnSpan: 1
                 )
+                block.setContentWidth(columnWidths[columnIndex], type: .percentageValueType)
                 block.setWidth(0.75, type: .absoluteValueType, for: .border)
                 block.setBorderColor(configuration.tableBorderColor)
                 block.setWidth(6, type: .absoluteValueType, for: .padding)
@@ -167,6 +171,51 @@ public final class MarkdownRenderer {
                 result.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: paragraph]))
             }
         }
+    }
+
+    private func tableColumnWidths(for rows: [[[InlineNode]]], columnCount: Int) -> [CGFloat] {
+        let minimumFraction = min(0.22, 0.54 / CGFloat(columnCount))
+        let flexibleFraction = max(0, 1 - minimumFraction * CGFloat(columnCount))
+        var demands = Array(repeating: CGFloat(1), count: columnCount)
+
+        for (rowIndex, row) in rows.enumerated() {
+            for columnIndex in 0..<min(row.count, columnCount) {
+                let font = rowIndex == 0
+                    ? fonts.bold(size: configuration.bodyFontSize - 0.5)
+                    : fonts.regular(size: configuration.bodyFontSize - 0.5)
+                let text = plainText(from: row[columnIndex]) as NSString
+                let measuredWidth = text.size(withAttributes: [.font: font]).width + 12
+                demands[columnIndex] = max(
+                    demands[columnIndex],
+                    min(measuredWidth, configuration.contentWidth * 2)
+                )
+            }
+        }
+
+        let totalDemand = demands.reduce(0, +)
+        return demands.map { demand in
+            (minimumFraction + flexibleFraction * demand / totalDemand) * 100
+        }
+    }
+
+    private func plainText(from nodes: [InlineNode]) -> String {
+        nodes.map { node in
+            switch node {
+            case let .text(text), let .code(text):
+                return text
+            case let .emphasis(children),
+                 let .strong(children),
+                 let .underline(children),
+                 let .strikethrough(children):
+                return plainText(from: children)
+            case let .link(children, _):
+                return plainText(from: children)
+            case let .image(alt, _):
+                return alt
+            case .lineBreak:
+                return " "
+            }
+        }.joined()
     }
 
     private func renderInline(_ nodes: [InlineNode], font: NSFont, baseURL: URL?) -> NSMutableAttributedString {
