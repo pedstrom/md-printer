@@ -5,6 +5,7 @@
 - Removed the Open Markdown toolbar button from document windows, leaving only Save PDF and Print; the empty welcome screen still provides its initial file chooser.
 - Removed the duplicate filename/font-status strip above the PDF preview.
 - Made the first level-one Markdown heading the live macOS window title, with the filename retained as the fallback when a document has no H1.
+- Added standard Command-S and Command-P shortcuts for the Save PDF and Print dialogs.
 
 ## 2026-07-21 — Full-page launch and Space navigation
 

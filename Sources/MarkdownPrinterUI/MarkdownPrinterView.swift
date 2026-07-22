@@ -36,10 +36,12 @@ public struct MarkdownPrinterView: View {
                 Button(action: savePDF) {
                     Label("Save PDF", systemImage: "square.and.arrow.down")
                 }
+                .keyboardShortcut("s", modifiers: .command)
                 .disabled(!session.hasDocument)
                 Button(action: printDocument) {
                     Label("Print", systemImage: "printer")
                 }
+                .keyboardShortcut("p", modifiers: .command)
                 .disabled(!session.hasDocument)
             }
         }
