@@ -72,9 +72,11 @@ awk -v coverage="$LINE_COVERAGE" 'BEGIN { exit(coverage + 0 >= 95 ? 0 : 1) }' ||
   exit 1
 }
 
-swift build -c release --product MarkdownPrinter
-scripts/build-and-run/build_app.sh --skip-build >/dev/null
+scripts/build-and-run/build_app.sh >/dev/null
 test -x "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter"
+APP_ARCHITECTURES="$(lipo -archs "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter")"
+[[ "$APP_ARCHITECTURES" == *"arm64"* ]]
+[[ "$APP_ARCHITECTURES" == *"x86_64"* ]]
 test -s "build/Markdown Printer.app/Contents/Resources/Assets.car"
 test -s "build/Markdown Printer.app/Contents/Resources/AppIcon.icns"
 plutil -lint "build/Markdown Printer.app/Contents/Info.plist" >/dev/null

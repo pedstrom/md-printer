@@ -15,7 +15,7 @@ All build and run utilities live in `scripts/build-and-run/`.
 scripts/build-and-run/run_app.sh
 ```
 
-This builds `build/Markdown Printer.app` and opens it. To build without launching:
+This builds a universal Apple Silicon and Intel app at `build/Markdown Printer.app` and opens it. To build without launching:
 
 ```sh
 scripts/build-and-run/build_app.sh

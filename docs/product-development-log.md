@@ -5,6 +5,7 @@
 - Promoted the app to version 1.0 and added Peter Edstrom's name to the standard macOS About panel metadata.
 - Rewrote the public README around direct app download, local-first product benefits, multi-document use, and the afternoon vibe-coding origin story.
 - Moved build and run utilities into a dedicated folder, added a developer guide, and added a reproducible ZIP packager for GitHub releases.
+- Made the downloadable app universal so the same 1.0 ZIP runs natively on both Apple Silicon and Intel Macs that support macOS 14.
 
 ## 2026-07-21 — Multi-document windows
 
