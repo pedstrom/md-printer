@@ -27,6 +27,28 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertTrue(document.page(at: document.pageCount - 1)?.string?.contains("Paragraph 180") == true)
     }
 
+    func testEveryPageHasASequentialCenteredFooterNumber() throws {
+        let markdown = Array(
+            repeating: "A paragraph without digits that occupies space in the rendered document.",
+            count: 180
+        ).joined(separator: "\n\n")
+        let data = try PDFExporter().pdfData(from: MarkdownRenderer().render(markdown: markdown))
+        let document = try XCTUnwrap(PDFDocument(data: data))
+        XCTAssertGreaterThan(document.pageCount, 2)
+
+        for pageIndex in 0..<document.pageCount {
+            let page = try XCTUnwrap(document.page(at: pageIndex))
+            let pageNumber = String(pageIndex + 1)
+            XCTAssertEqual(page.string?.split(whereSeparator: \.isWhitespace).last.map(String.init), pageNumber)
+            let selection = try XCTUnwrap(
+                document.findString(pageNumber, withOptions: []).first(where: { $0.pages.contains(page) })
+            )
+            let bounds = selection.bounds(for: page)
+            XCTAssertEqual(bounds.midX, page.bounds(for: .mediaBox).midX, accuracy: 1)
+            XCTAssertLessThan(bounds.maxY, 54)
+        }
+    }
+
     func testLongTablePaginatesAndStaysSearchable() throws {
         let rows = (1...70).map { "| Row \($0) | Value \($0) |" }.joined(separator: "\n")
         let markdown = "| Name | Value |\n| --- | ---: |\n" + rows

@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-07-21 — Centered page-number footers
+
+- Added a small Avenir Next page number centered in the existing bottom margin of every generated PDF page.
+- Kept page numbers outside the document text area so pagination and content placement remain unchanged across preview, save, and print.
+
 ## 2026-07-21 — Compact heading and list transitions
 
 - Removed the redundant blank line after level-two through level-six headings, cutting their visible following space roughly in half while retaining the renderer's intentional paragraph spacing.

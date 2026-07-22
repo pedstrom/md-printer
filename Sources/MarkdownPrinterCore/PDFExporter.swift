@@ -25,7 +25,7 @@ public final class PDFExporter {
         }
 
         let pages = makePages(for: attributedText)
-        for page in pages {
+        for (pageIndex, page) in pages.enumerated() {
             context.beginPDFPage(nil)
             context.saveGState()
             context.translateBy(x: 0, y: configuration.pageSize.height)
@@ -36,6 +36,7 @@ public final class PDFExporter {
             let origin = CGPoint(x: configuration.pageMargins.left, y: configuration.pageMargins.top)
             page.layoutManager.drawBackground(forGlyphRange: page.glyphRange, at: origin)
             page.layoutManager.drawGlyphs(forGlyphRange: page.glyphRange, at: origin)
+            drawPageNumber(pageIndex + 1)
             NSGraphicsContext.restoreGraphicsState()
             context.restoreGState()
             context.endPDFPage()
@@ -99,6 +100,21 @@ public final class PDFExporter {
         } while coveredGlyphs < layoutManager.numberOfGlyphs
 
         return pages
+    }
+
+    private func drawPageNumber(_ pageNumber: Int) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let label = NSAttributedString(
+            string: String(pageNumber),
+            attributes: [
+                .font: FontBook(configuration: configuration).regular(size: 8),
+                .foregroundColor: configuration.secondaryTextColor,
+                .paragraphStyle: paragraph
+            ]
+        )
+        let footerTop = configuration.pageSize.height - configuration.pageMargins.bottom
+        label.draw(in: CGRect(x: 0, y: footerTop + 16, width: configuration.pageSize.width, height: 14))
     }
 
     private func printInfo() -> NSPrintInfo {
