@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-07-21 — Full-page launch and Space navigation
+
+- Changed the initial window to a portrait-oriented size and made the continuous PDF preview initially use PDFKit's best-fit scale, so the complete first Letter page is visible at launch.
+- Made the preview the initial keyboard focus and mapped an unmodified Space key to advance exactly one PDF page.
+- Added native PDFView regressions for full first-page visibility and one-page Space navigation.
+
 ## 2026-07-21 — Print margin fidelity
 
 - Removed the print path's second 54-point margin layer and disabled page-to-fit scaling, so printing and Print-dialog PDF saves preserve the generated Letter page's original size and placement.

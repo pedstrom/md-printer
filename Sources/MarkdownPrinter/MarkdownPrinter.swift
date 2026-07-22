@@ -10,7 +10,7 @@ struct MarkdownPrinterApp: App {
             MarkdownPrinterView(session: session)
                 .onOpenURL { session.load(url: $0) }
         }
-        .defaultSize(width: 820, height: 720)
+        .defaultSize(width: 760, height: 980)
         .commands {
             CommandGroup(replacing: .newItem) { }
         }
