@@ -11,6 +11,7 @@ if [[ -n "$MODE" && "$MODE" != "--staged" ]]; then
 fi
 
 required_files=(
+  LICENSE
   README.md
   AGENTS.md
   Package.swift

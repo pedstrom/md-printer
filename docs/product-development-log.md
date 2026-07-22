@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-07-22 — MIT license and public About link
+
+- Licensed Markdown Printer under the MIT License and linked the license from the public README.
+- Added a clickable MIT License link to the standard macOS About panel while preserving the app name, version, icon, and Peter Edstrom copyright metadata.
+- Removed references to unrelated private project names from the current public documentation.
+
 ## 2026-07-21 — Public 1.0 release
 
 - Promoted the app to version 1.0 and added Peter Edstrom's name to the standard macOS About panel metadata.
@@ -78,7 +84,7 @@
 - Chose a dependency-free native rendering pipeline: a testable Markdown parser and Avenir Next attributed renderer, TextKit pagination, CoreGraphics PDF generation, and PDFKit preview/print. This keeps documents local and ensures preview, save, and print use identical PDF bytes.
 - Added formatted headings, inline emphasis, strong text, `<u>` underlining, strikethrough, code, links, quotes, ordered/unordered/task lists, horizontal rules, native searchable tables, and aspect-fitted local images with visible missing/remote-image placeholders.
 - Registered Markdown document extensions in a real macOS `.app` bundle and added build, run, and command-line fixture-rendering workflows.
-- Adapted the useful Blutti and Dram Scout repository conventions into local agent instructions, product and change-gate skills, a product log, focused commit workflow, release verification, and an enforced 95% testable-production line-coverage floor.
+- Added local agent instructions, product and change-gate skills, a product log, focused commit workflow, release verification, and an enforced 95% testable-production line-coverage floor.
 - Added a rendered-page visual QA pass and corrected the CoreGraphics coordinate transform so PDF text is upright and begins at the intended top margin; an integration assertion now guards heading placement.
 - A native app-window smoke test found PDFKit initially preserving an offset that clipped the first heading beneath the toolbar; the preview now explicitly opens at the top of page one.
 - Hardened repeatable local packaging by removing Finder/resource-fork metadata from the generated app bundle before ad-hoc signing.
