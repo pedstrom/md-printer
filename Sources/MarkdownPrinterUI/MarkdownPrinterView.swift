@@ -5,10 +5,12 @@ import UniformTypeIdentifiers
 
 public struct MarkdownPrinterView: View {
     @ObservedObject private var session: DocumentSession
+    private let openFiles: ([URL]) -> Void
     @State private var isDropTargeted = false
 
-    public init(session: DocumentSession) {
+    public init(session: DocumentSession, openFiles: @escaping ([URL]) -> Void) {
         self.session = session
+        self.openFiles = openFiles
     }
 
     public var body: some View {
@@ -67,7 +69,7 @@ public struct MarkdownPrinterView: View {
                 .foregroundStyle(.tint)
             Text("Markdown Printer")
                 .font(.system(size: 30, weight: .semibold, design: .rounded))
-            Text("Drop a Markdown file here to turn it into a polished, printable PDF.")
+            Text("Drop Markdown files here to turn them into polished, printable PDFs.")
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -93,11 +95,11 @@ public struct MarkdownPrinterView: View {
         let panel = NSOpenPanel()
         panel.title = "Open Markdown"
         panel.prompt = "Open"
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.allowedContentTypes = markdownTypes
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        session.load(url: url)
+        guard panel.runModal() == .OK else { return }
+        openFiles(panel.urls)
     }
 
     private func savePDF() {
@@ -123,14 +125,12 @@ public struct MarkdownPrinterView: View {
     }
 
     private func acceptDrop(providers: [NSItemProvider]) -> Bool {
-        guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) }) else {
-            return false
-        }
-        provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, error in
-            guard error == nil,
-                  let data,
-                  let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-            Task { @MainActor in session.load(url: url) }
+        guard DroppedFileLoader.accepts(providers) else { return false }
+        Task {
+            let urls = await DroppedFileLoader.urls(from: providers)
+            await MainActor.run {
+                openFiles(urls)
+            }
         }
         return true
     }

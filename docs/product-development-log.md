@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-07-21 — Multi-document windows
+
+- Added native multi-document handling so batches sent from Finder, Open With, the file chooser, or drag-and-drop open one independent preview window per Markdown file.
+- Made the welcome chooser accept multiple selections and changed drop handling to collect every Markdown file instead of stopping after the first one.
+- Preserved per-document H1 window titles and independent Save PDF and Print actions in every window.
+
 ## 2026-07-21 — Quit after the final window closes
 
 - Added native macOS lifecycle handling so closing the last Markdown Printer window terminates the app instead of leaving it running without a window.
