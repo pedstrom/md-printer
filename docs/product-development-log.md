@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-07-22 — Local Markdown links and version 1.0.1
+
+- Resolved relative document links against the open Markdown file's folder before writing PDF annotations.
+- Routed clicks on local Markdown links back through the app's document opener so linked files open in their own Markdown Printer windows; web and other file links retain normal macOS handling.
+- Bumped the app to version 1.0.1, build 2.
+- Added an explicit release gate requiring the distributable ZIP to be rebuilt and validated before a version push, followed by verification of the refreshed public release asset.
+
 ## 2026-07-22 — MIT license and public About link
 
 - Licensed Markdown Printer under the MIT License and linked the license from the public README.

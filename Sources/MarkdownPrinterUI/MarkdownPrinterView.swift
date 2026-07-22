@@ -57,8 +57,16 @@ public struct MarkdownPrinterView: View {
     private var preview: some View {
         Group {
             if let pdfData = session.renderedPDFData {
-                PDFPreviewView(data: pdfData)
+                PDFPreviewView(data: pdfData, openURL: openLink)
             }
+        }
+    }
+
+    private func openLink(_ url: URL) {
+        if let markdownURL = MarkdownLinkTarget.fileURL(from: url) {
+            openFiles([markdownURL])
+        } else {
+            NSWorkspace.shared.open(url)
         }
     }
 

@@ -6,6 +6,33 @@ import XCTest
 
 @MainActor
 final class PDFPreviewViewTests: XCTestCase {
+    func testLinkCoordinatorForwardsPDFClicks() {
+        let expectedURL = URL(string: "https://example.com")!
+        var openedURL: URL?
+        let coordinator = PDFPreviewView.Coordinator { openedURL = $0 }
+
+        coordinator.pdfViewWillClick(onLink: PDFView(), with: expectedURL)
+
+        XCTAssertEqual(openedURL, expectedURL)
+    }
+
+    func testMarkdownLinkTargetRecognizesSupportedLocalFilesAndRemovesFragments() throws {
+        for pathExtension in ["md", "markdown", "mdown", "mkd", "MD"] {
+            let fileURL = URL(fileURLWithPath: "/tmp/notes.\(pathExtension)")
+            var components = try XCTUnwrap(URLComponents(url: fileURL, resolvingAgainstBaseURL: false))
+            components.query = "source=preview"
+            components.fragment = "details"
+            let linkedURL = try XCTUnwrap(components.url)
+
+            XCTAssertEqual(MarkdownLinkTarget.fileURL(from: linkedURL), fileURL.standardizedFileURL)
+        }
+    }
+
+    func testMarkdownLinkTargetLeavesWebAndOtherLocalFilesToTheSystem() {
+        XCTAssertNil(MarkdownLinkTarget.fileURL(from: URL(string: "https://example.com/notes.md")!))
+        XCTAssertNil(MarkdownLinkTarget.fileURL(from: URL(fileURLWithPath: "/tmp/report.pdf")))
+    }
+
     func testInitialLayoutFitsTheCompleteFirstPage() throws {
         let document = try makeMultiPageDocument()
         let firstPage = try XCTUnwrap(document.page(at: 0))

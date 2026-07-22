@@ -67,6 +67,21 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertTrue(annotations.contains(where: { $0.url?.absoluteString == "https://openai.com" }))
     }
 
+    func testPDFPreservesResolvedLocalMarkdownLinkAnnotation() throws {
+        let baseURL = URL(fileURLWithPath: "/tmp/reports/deeper-research", isDirectory: true)
+        let expectedURL = try XCTUnwrap(
+            URL(string: "../overview.md#details", relativeTo: baseURL)?.absoluteURL
+        )
+        let text = MarkdownRenderer().render(
+            markdown: "[Project overview](../overview.md#details)",
+            baseURL: baseURL
+        )
+        let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))
+        let annotations = try XCTUnwrap(document.page(at: 0)).annotations
+
+        XCTAssertTrue(annotations.contains(where: { $0.url == expectedURL }))
+    }
+
     func testFencedCodeBlockRendersWithoutStallingPagination() throws {
         let text = MarkdownRenderer().render(markdown: "```swift\nlet answer = 42\nprint(answer)\n```")
         let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))

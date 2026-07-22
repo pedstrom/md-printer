@@ -264,7 +264,7 @@ public final class MarkdownRenderer {
                 child.addAttributes([
                     .foregroundColor: configuration.accentColor,
                     .underlineStyle: NSUnderlineStyle.single.rawValue,
-                    .link: URL(string: destination) ?? destination
+                    .link: linkDestination(destination, baseURL: baseURL)
                 ], range: child.fullRange)
                 result.append(child)
             case let .image(alt, source):
@@ -274,6 +274,17 @@ public final class MarkdownRenderer {
             }
         }
         return result
+    }
+
+    private func linkDestination(_ destination: String, baseURL: URL?) -> Any {
+        guard let parsedURL = URL(string: destination) else { return destination }
+        guard parsedURL.scheme == nil,
+              !destination.hasPrefix("#"),
+              let baseURL,
+              let resolvedURL = URL(string: destination, relativeTo: baseURL)?.absoluteURL else {
+            return parsedURL
+        }
+        return resolvedURL
     }
 
     private func imageAttachment(alt: String, source: String, baseURL: URL?, font: NSFont) -> NSAttributedString {

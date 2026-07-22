@@ -64,6 +64,25 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertTrue(output.string.contains("Fourth\nFourth body."))
     }
 
+    func testRelativeLinksResolveAgainstTheMarkdownFileFolder() throws {
+        let baseURL = URL(fileURLWithPath: "/tmp/reports/deeper-research", isDirectory: true)
+        let output = renderer.render(
+            markdown: "[Overview](../overview.md#details) and [Section](#local)",
+            baseURL: baseURL
+        )
+        let overviewRange = (output.string as NSString).range(of: "Overview")
+        let sectionRange = (output.string as NSString).range(of: "Section")
+
+        XCTAssertEqual(
+            output.attribute(.link, at: overviewRange.location, effectiveRange: nil) as? URL,
+            URL(string: "../overview.md#details", relativeTo: baseURL)?.absoluteURL
+        )
+        XCTAssertEqual(
+            output.attribute(.link, at: sectionRange.location, effectiveRange: nil) as? URL,
+            URL(string: "#local")
+        )
+    }
+
     func testAllBlockTypesRenderReadableText() throws {
         let markdown = """
         > quoted

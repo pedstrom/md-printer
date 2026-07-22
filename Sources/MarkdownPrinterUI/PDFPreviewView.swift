@@ -1,21 +1,45 @@
-import PDFKit
+@preconcurrency import PDFKit
 import SwiftUI
 
 public struct PDFPreviewView: NSViewRepresentable {
     public let data: Data
+    private let openURL: (URL) -> Void
 
-    public init(data: Data) {
+    public init(data: Data, openURL: @escaping (URL) -> Void) {
         self.data = data
+        self.openURL = openURL
+    }
+
+    public func makeCoordinator() -> Coordinator {
+        Coordinator(openURL: openURL)
     }
 
     public func makeNSView(context: Context) -> PDFView {
-        PageAdvancingPDFView()
+        let view = PageAdvancingPDFView()
+        view.delegate = context.coordinator
+        return view
     }
 
     public func updateNSView(_ view: PDFView, context: Context) {
+        context.coordinator.openURL = openURL
         guard view.document?.dataRepresentation() != data else { return }
         guard let document = PDFDocument(data: data) else { return }
         (view as? PageAdvancingPDFView)?.display(document)
+    }
+
+    @MainActor
+    public final class Coordinator: NSObject {
+        var openURL: (URL) -> Void
+
+        init(openURL: @escaping (URL) -> Void) {
+            self.openURL = openURL
+        }
+    }
+}
+
+extension PDFPreviewView.Coordinator: @preconcurrency PDFViewDelegate {
+    public func pdfViewWillClick(onLink sender: PDFView, with url: URL) {
+        openURL(url)
     }
 }
 
