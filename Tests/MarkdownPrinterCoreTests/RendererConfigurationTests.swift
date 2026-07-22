@@ -6,11 +6,13 @@ final class RendererConfigurationTests: XCTestCase {
     func testDefaultsAndHeadingBounds() {
         let configuration = RendererConfiguration()
         XCTAssertEqual(configuration.fontFamily, "Avenir Next")
+        XCTAssertEqual(configuration.bodyFontSize, 10)
+        XCTAssertEqual(configuration.headingFontSizes, [24, 20, 17, 14, 12, 10])
         XCTAssertEqual(configuration.contentWidth, 504)
-        XCTAssertEqual(configuration.headingSize(for: -1), 28)
-        XCTAssertEqual(configuration.headingSize(for: 1), 28)
-        XCTAssertEqual(configuration.headingSize(for: 6), 12)
-        XCTAssertEqual(configuration.headingSize(for: 99), 12)
+        XCTAssertEqual(configuration.headingSize(for: -1), 24)
+        XCTAssertEqual(configuration.headingSize(for: 1), 24)
+        XCTAssertEqual(configuration.headingSize(for: 6), 10)
+        XCTAssertEqual(configuration.headingSize(for: 99), 10)
         XCTAssertEqual(configuration.codeBlockPadding, 8)
         XCTAssertEqual(configuration, RendererConfiguration())
     }

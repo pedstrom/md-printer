@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-07-21 — More compact document typography
+
+- Reduced body copy from 12 to 10 points and tightened the complete heading scale, with a larger reduction at the oversized top levels.
+- Kept inline and fenced code proportional to the smaller body text so documents fit materially more content on each page without losing their typographic hierarchy.
+
 ## 2026-07-21 — Retro printer app icon
 
 - Added a simple, original macOS app icon that combines a printer and Markdown page with a restrained mid-century travel-poster palette and screen-print texture.

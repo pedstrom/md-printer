@@ -21,7 +21,11 @@ final class MarkdownRendererTests: XCTestCase {
         let headingRange = (output.string as NSString).range(of: "Heading")
         let headingFont = output.attribute(.font, at: headingRange.location, effectiveRange: nil) as? NSFont
         XCTAssertEqual(headingFont?.familyName, "Avenir Next")
-        XCTAssertEqual(headingFont?.pointSize, 28)
+        XCTAssertEqual(headingFont?.pointSize, 24)
+
+        let bodyRange = (output.string as NSString).range(of: "Text")
+        let bodyFont = output.attribute(.font, at: bodyRange.location, effectiveRange: nil) as? NSFont
+        XCTAssertEqual(bodyFont?.pointSize, 10)
 
         assertAttribute(.underlineStyle, text: "under", in: output)
         assertAttribute(.strikethroughStyle, text: "gone", in: output)
@@ -30,6 +34,7 @@ final class MarkdownRendererTests: XCTestCase {
         let codeRange = (output.string as NSString).range(of: "code")
         let codeFont = output.attribute(.font, at: codeRange.location, effectiveRange: nil) as? NSFont
         XCTAssertTrue(try XCTUnwrap(codeFont).isFixedPitch)
+        XCTAssertEqual(codeFont?.pointSize, 9.5)
     }
 
     func testAllBlockTypesRenderReadableText() throws {
@@ -61,6 +66,7 @@ final class MarkdownRendererTests: XCTestCase {
         let codeRange = (output.string as NSString).range(of: "let x = 1")
         let codeFont = output.attribute(.font, at: codeRange.location, effectiveRange: nil) as? NSFont
         XCTAssertTrue(try XCTUnwrap(codeFont).isFixedPitch)
+        XCTAssertEqual(codeFont?.pointSize, 9)
         let codeParagraph = output.attribute(.paragraphStyle, at: codeRange.location, effectiveRange: nil) as? NSParagraphStyle
         let codeBlock = try XCTUnwrap(codeParagraph?.textBlocks.first)
         XCTAssertEqual(codeBlock.contentWidth, 100)

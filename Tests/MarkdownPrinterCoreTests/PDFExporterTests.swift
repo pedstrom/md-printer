@@ -59,9 +59,10 @@ final class PDFExporterTests: XCTestCase {
         let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))
         XCTAssertEqual(document.pageCount, 1)
         let extractedText = try XCTUnwrap(document.page(at: 0)?.string)
-        XCTAssertTrue(extractedText.contains("A quoted passage"))
-        XCTAssertTrue(extractedText.contains("continuous"))
-        XCTAssertTrue(extractedText.contains("left border"))
+        let normalizedText = extractedText.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        XCTAssertTrue(normalizedText.contains("A quoted passage"))
+        XCTAssertTrue(normalizedText.contains("continuous"))
+        XCTAssertTrue(normalizedText.contains("left border"), "Extracted quotation: \(extractedText)")
     }
 
     func testWriteAndPrintExistingPDF() throws {
