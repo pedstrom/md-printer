@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-07-21 — Public 1.0 release
+
+- Promoted the app to version 1.0 and added Peter Edstrom's name to the standard macOS About panel metadata.
+- Rewrote the public README around direct app download, local-first product benefits, multi-document use, and the afternoon vibe-coding origin story.
+- Moved build and run utilities into a dedicated folder, added a developer guide, and added a reproducible ZIP packager for GitHub releases.
+
 ## 2026-07-21 — Multi-document windows
 
 - Added native multi-document handling so batches sent from Finder, Open With, the file chooser, or drag-and-drop open one independent preview window per Markdown file.

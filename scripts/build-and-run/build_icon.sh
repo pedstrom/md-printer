@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SOURCE="$ROOT/Resources/MarkdownPrinterIcon.png"
 ICONSET="$ROOT/Resources/Assets.xcassets/AppIcon.appiconset"
 

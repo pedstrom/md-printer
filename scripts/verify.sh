@@ -43,10 +43,12 @@ else
   git diff --check --cached
 fi
 
-for script in scripts/*.sh; do
+while IFS= read -r script; do
   bash -n "$script"
-done
+done < <(find scripts -type f -name '*.sh' -print | sort)
 plutil -lint Resources/Info.plist >/dev/null
+[[ "$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)" == "1.0" ]]
+[[ "$(plutil -extract NSHumanReadableCopyright raw Resources/Info.plist)" == *"Peter Edstrom"* ]]
 
 mkdir -p .build/module-cache .build/swiftpm-cache
 export CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache"
@@ -71,13 +73,15 @@ awk -v coverage="$LINE_COVERAGE" 'BEGIN { exit(coverage + 0 >= 95 ? 0 : 1) }' ||
 }
 
 swift build -c release --product MarkdownPrinter
-scripts/build_app.sh --skip-build >/dev/null
+scripts/build-and-run/build_app.sh --skip-build >/dev/null
 test -x "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter"
 test -s "build/Markdown Printer.app/Contents/Resources/Assets.car"
 test -s "build/Markdown Printer.app/Contents/Resources/AppIcon.icns"
 plutil -lint "build/Markdown Printer.app/Contents/Info.plist" >/dev/null
 [[ "$(plutil -extract CFBundleIconFile raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
 [[ "$(plutil -extract CFBundleIconName raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
+[[ "$(plutil -extract CFBundleShortVersionString raw "build/Markdown Printer.app/Contents/Info.plist")" == "1.0" ]]
+[[ "$(plutil -extract NSHumanReadableCopyright raw "build/Markdown Printer.app/Contents/Info.plist")" == *"Peter Edstrom"* ]]
 
 if git ls-files --error-unmatch .DS_Store >/dev/null 2>&1; then
   echo ".DS_Store is tracked; remove it from the repository." >&2

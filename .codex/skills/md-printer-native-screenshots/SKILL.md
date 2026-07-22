@@ -5,7 +5,7 @@ description: Use when visually validating Markdown Printer with the real macOS a
 
 # Markdown Printer Native Visual Checks
 
-1. Build the real app with `scripts/build_app.sh` and keep the generated `.app` under ignored `build/`.
+1. Build the real app with `scripts/build-and-run/build_app.sh` and keep the generated `.app` under ignored `build/`.
 2. Render `Examples/showcase.md` to a PDF in `/private/tmp`, or open that fixture in the native app.
 3. Inspect representative first, table, image, and later pages using the native PDF preview or rendered page PNGs.
 4. Check Avenir Next typography, heading hierarchy, emphasis/underline, table borders and alignment, image aspect ratio, page margins, and page breaks.

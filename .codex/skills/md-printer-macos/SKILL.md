@@ -32,5 +32,5 @@ Use this skill for product or implementation work in this repository.
 - Every changed production behavior gets a deterministic XCTest.
 - Maintain 95% or better line coverage across testable production Swift.
 - Lock down page size, multi-page flow, searchable text, table flow, image scaling/placeholders, link annotations, initial preview fit, one-page keyboard navigation, and print-to-PDF placement fidelity with PDFKit integration tests.
-- After a rendering change, generate `Examples/showcase.md` through `scripts/render_markdown.sh` and inspect rendered pages outside the repo.
+- After a rendering change, generate `Examples/showcase.md` through `scripts/build-and-run/render_markdown.sh` and inspect rendered pages outside the repo.
 - Use `md-printer-change-gate` after focused tests pass.

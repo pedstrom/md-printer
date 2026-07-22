@@ -1,40 +1,43 @@
-# Markdown Printer
+<p align="center">
+  <img src="Resources/MarkdownPrinterIcon.png" width="144" alt="Markdown Printer app icon">
+</p>
 
-Markdown Printer is a native macOS app that turns local Markdown files into polished, printable PDFs. Drop a file into the window, open one from Finder or the app, then save or print the PDF shown in the preview.
+<h1 align="center">Markdown Printer</h1>
 
-## What it formats
+<p align="center">Turn Markdown files into clean, printable PDFs on your Mac.</p>
 
-- Avenir Next body text and headings, with true monospaced inline and fenced code
-- Bold, italic, bold-italic, `<u>underlined</u>`, and strikethrough text
-- Ordered, unordered, and task lists
-- Block quotes, inline code, fenced code blocks, links, and horizontal rules
-- Searchable native tables with alignment
-- PNG, JPEG, GIF, and other macOS-readable images referenced by local paths
+<p align="center">
+  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.0</strong></a>
+</p>
 
-Images are resolved relative to the Markdown file. Missing, corrupt, and remote images become visible placeholders instead of silently disappearing or making a network request.
+Markdown is suddenly everywhere. AI tools, coding assistants, note apps, and research workflows are producing copious `.md` files, but those files are not always pleasant to print, share, or read away from an editor. Markdown Printer gives them a polished page without sending the document anywhere.
 
-## Build and run
+Drop one file—or a whole batch—onto the app. Each document opens in its own window as a finished PDF that you can save or print.
 
-The project requires macOS 14 or newer and Xcode/Swift 6.1 or newer.
+## What it does
 
-```sh
-scripts/run_app.sh
-```
+- Formats headings, paragraphs, bold, italics, underlining, strikethrough, links, lists, quotations, tables, and local images
+- Uses Avenir Next for the document and a proper monospaced font for code
+- Produces searchable, US Letter PDFs with page numbers
+- Opens multiple Markdown files at once, each in its own window
+- Keeps your files entirely on your Mac: no account, upload, analytics, or remote rendering
 
-This builds `build/Markdown Printer.app` and opens it. The app registers `.md`, `.markdown`, `.mdown`, and `.mkd` as Markdown documents, so it can also be selected through Finder's Open With menu after it has been launched once.
+The PDF in the preview is the same PDF that gets saved or printed. Local images are resolved relative to the Markdown file; missing or remote images are shown as placeholders instead of being fetched from the internet.
 
-To render without opening the GUI:
+## Install
 
-```sh
-scripts/render_markdown.sh Examples/showcase.md /private/tmp/showcase.pdf
-```
+Markdown Printer requires macOS 14 Sonoma or newer.
 
-## Verification
+1. [Download Markdown Printer](https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip).
+2. Unzip it and move **Markdown Printer** to your Applications folder.
+3. Open the app, then drop Markdown files onto it or use Finder's **Open With** command.
 
-```sh
-scripts/verify.sh
-```
+This small independent build is not notarized. The first time you launch it, you may need to Control-click the app, choose **Open**, and confirm once.
 
-The verification gate runs XCTest with code coverage, requires at least 95% line coverage across testable production Swift, builds the release app, validates the `.app` bundle, checks shell scripts and the property list, and rejects common repository-hygiene problems. Only the minimal executable entrypoints and thin declarative SwiftUI/PDFKit views are excluded from the coverage calculation.
+## About this project
 
-See [AGENTS.md](AGENTS.md) and the repo-local skills under `.codex/skills/` for the borrowed Blutti/Dram Scout working conventions.
+I vibe coded Markdown Printer in an afternoon because I wanted the growing pile of AI-generated Markdown on my Mac to look good on paper. If it is helpful to you, awesome. If not, feel free to move on.
+
+— Peter Edstrom
+
+Want to inspect or build it yourself? The developer commands and project structure live in the [development guide](development/README.md).
