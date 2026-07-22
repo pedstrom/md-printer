@@ -25,10 +25,22 @@ public final class MarkdownRenderer {
     public func render(blocks: [MarkdownBlock], baseURL: URL? = nil) -> NSAttributedString {
         let result = NSMutableAttributedString()
         for (index, block) in blocks.enumerated() {
-            if index > 0 { result.append(NSAttributedString(string: "\n")) }
+            if index > 0, usesBlankLine(after: blocks[index - 1], before: block) {
+                result.append(NSAttributedString(string: "\n"))
+            }
             append(block: block, to: result, baseURL: baseURL)
         }
         return result
+    }
+
+    private func usesBlankLine(after previous: MarkdownBlock, before current: MarkdownBlock) -> Bool {
+        if case let .heading(level, _) = previous, level >= 2 {
+            return false
+        }
+        if case .paragraph = previous, case .list = current {
+            return false
+        }
+        return true
     }
 
     private func append(block: MarkdownBlock, to result: NSMutableAttributedString, baseURL: URL?) {

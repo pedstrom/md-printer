@@ -37,6 +37,33 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(codeFont?.pointSize, 9.5)
     }
 
+    func testSecondaryHeadingsAndIntroductoryParagraphsUseCompactBlockTransitions() {
+        let output = renderer.render(markdown: """
+        ## Second
+
+        Second body.
+
+        Introductory paragraph.
+
+        - first item
+
+        ### Third
+
+        Third body.
+
+        #### Fourth
+
+        Fourth body.
+        """)
+
+        XCTAssertTrue(output.string.contains("Second\nSecond body."))
+        XCTAssertFalse(output.string.contains("Second\n\nSecond body."))
+        XCTAssertTrue(output.string.contains("Introductory paragraph.\n•  first item"))
+        XCTAssertFalse(output.string.contains("Introductory paragraph.\n\n•  first item"))
+        XCTAssertTrue(output.string.contains("Third\nThird body."))
+        XCTAssertTrue(output.string.contains("Fourth\nFourth body."))
+    }
+
     func testAllBlockTypesRenderReadableText() throws {
         let markdown = """
         > quoted

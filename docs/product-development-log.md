@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-07-21 — Compact heading and list transitions
+
+- Removed the redundant blank line after level-two through level-six headings, cutting their visible following space roughly in half while retaining the renderer's intentional paragraph spacing.
+- Removed the extra blank line between an introductory paragraph and the list that immediately follows it, keeping the paragraph and its bullets visually connected.
+
 ## 2026-07-21 — Content-aware table columns
 
 - Replaced equal-width table columns with a constrained content-aware layout: each column retains a readable minimum, while prose-heavy columns receive more of the remaining page width.
