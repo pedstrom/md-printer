@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-07-27 — Version 1.0.2
+
+- Released the width-responsive preview and direct PDF-dragging improvements as version 1.0.2, build 3.
+- Refreshed the public README download label and the GitHub latest-release ZIP.
+
 ## 2026-07-27 — Drag PDFs directly from the preview
 
 - Added a native hold-then-drag gesture to the PDF preview so the complete generated PDF can be dropped onto the Desktop or into apps that accept PDF attachments.

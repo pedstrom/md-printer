@@ -48,8 +48,8 @@ while IFS= read -r script; do
   bash -n "$script"
 done < <(find scripts -type f -name '*.sh' -print | sort)
 plutil -lint Resources/Info.plist >/dev/null
-[[ "$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)" == "1.0.1" ]]
-[[ "$(plutil -extract CFBundleVersion raw Resources/Info.plist)" == "2" ]]
+[[ "$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)" == "1.0.2" ]]
+[[ "$(plutil -extract CFBundleVersion raw Resources/Info.plist)" == "3" ]]
 [[ "$(plutil -extract NSHumanReadableCopyright raw Resources/Info.plist)" == *"Peter Edstrom"* ]]
 
 mkdir -p .build/module-cache .build/swiftpm-cache
@@ -84,8 +84,8 @@ test -s "build/Markdown Printer.app/Contents/Resources/AppIcon.icns"
 plutil -lint "build/Markdown Printer.app/Contents/Info.plist" >/dev/null
 [[ "$(plutil -extract CFBundleIconFile raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
 [[ "$(plutil -extract CFBundleIconName raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
-[[ "$(plutil -extract CFBundleShortVersionString raw "build/Markdown Printer.app/Contents/Info.plist")" == "1.0.1" ]]
-[[ "$(plutil -extract CFBundleVersion raw "build/Markdown Printer.app/Contents/Info.plist")" == "2" ]]
+[[ "$(plutil -extract CFBundleShortVersionString raw "build/Markdown Printer.app/Contents/Info.plist")" == "1.0.2" ]]
+[[ "$(plutil -extract CFBundleVersion raw "build/Markdown Printer.app/Contents/Info.plist")" == "3" ]]
 [[ "$(plutil -extract NSHumanReadableCopyright raw "build/Markdown Printer.app/Contents/Info.plist")" == *"Peter Edstrom"* ]]
 
 if git ls-files --error-unmatch .DS_Store >/dev/null 2>&1; then
