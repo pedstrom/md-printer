@@ -57,7 +57,11 @@ public struct MarkdownPrinterView: View {
     private var preview: some View {
         Group {
             if let pdfData = session.renderedPDFData {
-                PDFPreviewView(data: pdfData, openURL: openLink)
+                PDFPreviewView(
+                    data: pdfData,
+                    fileName: session.suggestedPDFFileName,
+                    openURL: openLink
+                )
             }
         }
     }
@@ -115,7 +119,7 @@ public struct MarkdownPrinterView: View {
         panel.title = "Save PDF"
         panel.prompt = "Save"
         panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = session.title + ".pdf"
+        panel.nameFieldStringValue = session.suggestedPDFFileName
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try session.savePDF(to: url)

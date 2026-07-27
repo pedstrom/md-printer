@@ -9,6 +9,7 @@ final class DocumentSessionTests: XCTestCase {
         let session = DocumentSession()
         XCTAssertEqual(session.title, "Markdown Printer")
         XCTAssertFalse(session.hasDocument)
+        XCTAssertEqual(session.suggestedPDFFileName, "Markdown Printer.pdf")
         XCTAssertThrowsError(try session.pdfData()) { XCTAssertEqual($0 as? DocumentSessionError, .noDocument) }
         XCTAssertThrowsError(try session.savePDF(to: FileManager.default.temporaryDirectory.appendingPathComponent("none.pdf")))
         XCTAssertThrowsError(try session.printOperation())
@@ -20,6 +21,7 @@ final class DocumentSessionTests: XCTestCase {
         session.report(error: TestError.example)
         try session.apply(MarkdownDocument(title: "Sample", markdown: "# Sample"))
         XCTAssertEqual(session.title, "Sample")
+        XCTAssertEqual(session.suggestedPDFFileName, "Sample.pdf")
         XCTAssertTrue(session.hasDocument)
         XCTAssertNil(session.errorMessage)
         XCTAssertTrue(session.renderedText.string.contains("Sample"))
@@ -50,12 +52,36 @@ final class DocumentSessionTests: XCTestCase {
         let session = DocumentSession()
         session.load(url: input)
         XCTAssertEqual(session.title, "From File")
+        XCTAssertEqual(session.suggestedPDFFileName, "Input.pdf")
         try session.savePDF(to: output)
         XCTAssertNotNil(PDFDocument(url: output))
         XCTAssertNotNil(try session.printOperation().view)
 
         session.load(url: directory.appendingPathComponent("missing.md"))
         XCTAssertNotNil(session.errorMessage)
+    }
+
+    func testSuggestedPDFFileNameUsesOriginalCompoundFileNameInsteadOfH1() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appendingPathComponent("Quarterly Notes.final.markdown")
+        try Data("# Executive Summary".utf8).write(to: input)
+
+        let session = DocumentSession()
+        session.load(url: input)
+
+        XCTAssertEqual(session.title, "Executive Summary")
+        XCTAssertEqual(session.suggestedPDFFileName, "Quarterly Notes.final.pdf")
+    }
+
+    func testSuggestedPDFFileNameSanitizesInMemoryTitle() throws {
+        let session = DocumentSession()
+        try session.apply(MarkdownDocument(title: "Plans: July/August", markdown: "Body"))
+        XCTAssertEqual(session.suggestedPDFFileName, "Plans- July-August.pdf")
+
+        try session.apply(MarkdownDocument(title: "already.PDF", markdown: "Body"))
+        XCTAssertEqual(session.suggestedPDFFileName, "already.PDF")
     }
 }
 

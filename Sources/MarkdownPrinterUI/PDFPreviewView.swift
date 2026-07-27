@@ -3,10 +3,12 @@ import SwiftUI
 
 public struct PDFPreviewView: NSViewRepresentable {
     public let data: Data
+    public let fileName: String
     private let openURL: (URL) -> Void
 
-    public init(data: Data, openURL: @escaping (URL) -> Void) {
+    public init(data: Data, fileName: String, openURL: @escaping (URL) -> Void) {
         self.data = data
+        self.fileName = fileName
         self.openURL = openURL
     }
 
@@ -22,6 +24,7 @@ public struct PDFPreviewView: NSViewRepresentable {
 
     public func updateNSView(_ view: PDFView, context: Context) {
         context.coordinator.openURL = openURL
+        (view as? PageAdvancingPDFView)?.updateDragPayload(data: data, fileName: fileName)
         guard view.document?.dataRepresentation() != data else { return }
         guard let document = PDFDocument(data: data) else { return }
         (view as? PageAdvancingPDFView)?.display(document)
@@ -43,10 +46,18 @@ extension PDFPreviewView.Coordinator: @preconcurrency PDFViewDelegate {
     }
 }
 
-final class PageAdvancingPDFView: PDFView {
+final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     private var needsInitialPageFit = false
     private var displayRevision = 0
     private var fittedViewWidth: CGFloat?
+    private var dragData: Data?
+    private var dragFileName = "Untitled.pdf"
+    private var isDraggingPDF = false
+    private(set) lazy var outboundPDFDragRecognizer: NSPressGestureRecognizer = {
+        let recognizer = NSPressGestureRecognizer(target: self, action: #selector(handleOutboundPDFDrag(_:)))
+        recognizer.buttonMask = 0x1
+        return recognizer
+    }()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -67,6 +78,11 @@ final class PageAdvancingPDFView: PDFView {
         needsLayout = true
         focusForPageNavigation()
         scheduleSettledInitialPageFit(for: displayRevision)
+    }
+
+    func updateDragPayload(data: Data, fileName: String) {
+        dragData = data
+        dragFileName = fileName
     }
 
     override func layout() {
@@ -100,12 +116,68 @@ final class PageAdvancingPDFView: PDFView {
         goToNextPage(nil)
     }
 
+    func draggingSession(
+        _ session: NSDraggingSession,
+        sourceOperationMaskFor context: NSDraggingContext
+    ) -> NSDragOperation {
+        .copy
+    }
+
+    func draggingSession(
+        _ session: NSDraggingSession,
+        endedAt screenPoint: NSPoint,
+        operation: NSDragOperation
+    ) {
+        isDraggingPDF = false
+    }
+
     private func configure() {
         autoScales = false
         displayMode = .singlePageContinuous
         displayDirection = .vertical
         displaysPageBreaks = true
         backgroundColor = .windowBackgroundColor
+        addGestureRecognizer(outboundPDFDragRecognizer)
+    }
+
+    @objc
+    private func handleOutboundPDFDrag(_ recognizer: NSPressGestureRecognizer) {
+        guard recognizer.state == .changed,
+              !isDraggingPDF,
+              let dragData,
+              let event = NSApp.currentEvent,
+              event.type == .leftMouseDragged
+        else {
+            return
+        }
+
+        let writer = PDFFilePromiseWriter(pdfData: dragData, fileName: dragFileName)
+        let provider = writer.makeProvider()
+        let draggingItem = NSDraggingItem(pasteboardWriter: provider)
+        let image = dragThumbnail()
+        let location = recognizer.location(in: self)
+        draggingItem.setDraggingFrame(
+            NSRect(
+                x: location.x - image.size.width / 2,
+                y: location.y - image.size.height / 2,
+                width: image.size.width,
+                height: image.size.height
+            ),
+            contents: image
+        )
+
+        isDraggingPDF = true
+        beginDraggingSession(with: [draggingItem], event: event, source: self)
+    }
+
+    private func dragThumbnail() -> NSImage {
+        let size = NSSize(width: 110, height: 142)
+        guard let firstPage = document?.page(at: 0) else {
+            let icon = NSWorkspace.shared.icon(for: .pdf)
+            icon.size = size
+            return icon
+        }
+        return firstPage.thumbnail(of: size, for: .cropBox)
     }
 
     private func fitFirstPage() {

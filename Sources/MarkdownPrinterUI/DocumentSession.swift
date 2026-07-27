@@ -28,6 +28,19 @@ public final class DocumentSession: ObservableObject {
         document != nil
     }
 
+    public var suggestedPDFFileName: String {
+        if let sourceURL = document?.sourceURL {
+            return sourceURL.deletingPathExtension().lastPathComponent + ".pdf"
+        }
+
+        let fallback = title
+            .components(separatedBy: CharacterSet(charactersIn: "/:"))
+            .joined(separator: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseName = fallback.isEmpty ? "Untitled" : fallback
+        return baseName.lowercased().hasSuffix(".pdf") ? baseName : baseName + ".pdf"
+    }
+
     public func load(url: URL) {
         do {
             let accessesSecurityScopedResource = url.startAccessingSecurityScopedResource()

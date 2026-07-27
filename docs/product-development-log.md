@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-07-27 — Drag PDFs directly from the preview
+
+- Added a native hold-then-drag gesture to the PDF preview so the complete generated PDF can be dropped onto the Desktop or into apps that accept PDF attachments.
+- Kept quick PDF drags available for text selection and used a standard macOS file promise so the destination receives the same bytes shown in the preview.
+- Changed Save PDF and dragged-file defaults to preserve the original Markdown filename while replacing its extension with `.pdf`; H1 text remains the window title only.
+- Added regressions for source-filename precedence, compound extensions, file-promise type, exact promised bytes, write failures, and press-gesture configuration.
+
 ## 2026-07-22 — Local Markdown links and version 1.0.1
 
 - Resolved relative document links against the open Markdown file's folder before writing PDF annotations.

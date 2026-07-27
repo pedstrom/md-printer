@@ -1,5 +1,6 @@
 import AppKit
 import PDFKit
+import UniformTypeIdentifiers
 import XCTest
 @testable import MarkdownPrinterCore
 @testable import MarkdownPrinterUI
@@ -114,6 +115,52 @@ final class PDFPreviewViewTests: XCTestCase {
         await nextMainQueueTurn()
 
         XCTAssertEqual(document.index(for: try XCTUnwrap(view.currentPage)), 0)
+    }
+
+    func testOutboundPDFDragUsesADeferredPrimaryButtonPress() {
+        let view = PageAdvancingPDFView()
+        let recognizer = view.outboundPDFDragRecognizer
+
+        XCTAssertEqual(recognizer.buttonMask, 0x1)
+        XCTAssertEqual(recognizer.minimumPressDuration, NSEvent.doubleClickInterval)
+        XCTAssertTrue(view.gestureRecognizers.contains { $0 === recognizer })
+    }
+
+    func testPDFFilePromiseAdvertisesPDFAndWritesExactBytes() throws {
+        let expectedData = Data("exact preview bytes".utf8)
+        let writer = PDFFilePromiseWriter(pdfData: expectedData, fileName: "Original Name.pdf")
+        let provider = writer.makeProvider()
+        let output = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("pdf")
+        defer { try? FileManager.default.removeItem(at: output) }
+        var completionError: Error?
+
+        XCTAssertEqual(provider.fileType, UTType.pdf.identifier)
+        XCTAssertTrue(provider.userInfo as AnyObject === writer)
+        XCTAssertEqual(
+            writer.filePromiseProvider(provider, fileNameForType: provider.fileType),
+            "Original Name.pdf"
+        )
+        XCTAssertEqual(writer.operationQueue(for: provider).maxConcurrentOperationCount, 1)
+
+        writer.filePromiseProvider(provider, writePromiseTo: output) { completionError = $0 }
+
+        XCTAssertNil(completionError)
+        XCTAssertEqual(try Data(contentsOf: output), expectedData)
+    }
+
+    func testPDFFilePromiseReportsWriteFailures() {
+        let writer = PDFFilePromiseWriter(pdfData: Data("PDF".utf8), fileName: "Failure.pdf")
+        let provider = writer.makeProvider()
+        let missingParent = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("Failure.pdf")
+        var completionError: Error?
+
+        writer.filePromiseProvider(provider, writePromiseTo: missingParent) { completionError = $0 }
+
+        XCTAssertNotNil(completionError)
     }
 
     private func makeMultiPageDocument() throws -> PDFDocument {
