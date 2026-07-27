@@ -47,6 +47,12 @@
 - Kept balanced tables balanced and added regressions for both equal two-column layouts and narrow/wide/narrow three-column layouts.
 - Made PDF foreground, secondary, and link colors appearance-independent so rendering while macOS is in Dark Mode cannot produce white text on white paper.
 
+## 2026-07-27 — Width-responsive PDF preview
+
+- Made the continuous PDF preview refit to the available width whenever the document window becomes wider or narrower.
+- Preserved the initial full-page launch fit and limited responsive zoom changes to width changes, so resizing only the window height does not unexpectedly alter the PDF scale.
+- Added native PDFView regressions for both width-responsive scaling and height-only resizing.
+
 ## 2026-07-21 — More compact document typography
 
 - Reduced body copy from 12 to 10 points and tightened the complete heading scale, with a larger reduction at the oversized top levels.

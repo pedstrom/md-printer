@@ -46,6 +46,7 @@ extension PDFPreviewView.Coordinator: @preconcurrency PDFViewDelegate {
 final class PageAdvancingPDFView: PDFView {
     private var needsInitialPageFit = false
     private var displayRevision = 0
+    private var fittedViewWidth: CGFloat?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -61,6 +62,7 @@ final class PageAdvancingPDFView: PDFView {
         self.document = document
         displayRevision += 1
         needsInitialPageFit = true
+        fittedViewWidth = nil
         goToFirstPage(nil)
         needsLayout = true
         focusForPageNavigation()
@@ -69,9 +71,15 @@ final class PageAdvancingPDFView: PDFView {
 
     override func layout() {
         super.layout()
-        guard needsInitialPageFit, bounds.width > 0, bounds.height > 0 else { return }
-        needsInitialPageFit = false
-        fitFirstPage()
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        if needsInitialPageFit {
+            needsInitialPageFit = false
+            fitFirstPage()
+            fittedViewWidth = bounds.width
+        } else if let fittedViewWidth, abs(fittedViewWidth - bounds.width) > 0.5 {
+            self.fittedViewWidth = bounds.width
+            fitPageWidth()
+        }
     }
 
     override var acceptsFirstResponder: Bool {
@@ -114,6 +122,14 @@ final class PageAdvancingPDFView: PDFView {
         )
     }
 
+    private func fitPageWidth() {
+        guard let page = currentPage ?? document?.page(at: 0) else { return }
+        let pageWidth = page.bounds(for: .cropBox).width
+        guard pageWidth > 0 else { return }
+        // Keep a modest gutter for PDFKit's page edge and vertical scroller.
+        scaleFactor = max(bounds.width - 64, 1) / pageWidth
+    }
+
     private func focusForPageNavigation() {
         guard let window else { return }
         DispatchQueue.main.async { [weak self, weak window] in
@@ -128,6 +144,7 @@ final class PageAdvancingPDFView: PDFView {
                 guard let self, self.displayRevision == revision else { return }
                 self.needsInitialPageFit = false
                 self.fitFirstPage()
+                self.fittedViewWidth = self.bounds.width
             }
         }
     }
