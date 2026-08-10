@@ -43,6 +43,10 @@ I vibe coded Markdown Printer in an afternoon because I wanted the growing pile 
 
 Want to inspect or build it yourself? The developer commands and project structure live in the [development guide](development/README.md).
 
+## Support
+
+> ☕ **Found this project useful?** You can [buy me a coffee](https://buymeacoffee.com/peteedstrom) to support more small, practical, independent tools.
+
 ## License
 
 Markdown Printer is available under the [MIT License](LICENSE).
