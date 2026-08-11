@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-08-11 — Version 1.0.3 and notarized distribution
+
+- Replaced ad-hoc release signing with Developer ID Application signing, hardened runtime, and a secure timestamp.
+- Added automated Apple notarization, ticket stapling, final signature validation, and Gatekeeper assessment to the release packager.
+- Released the notarized distribution workflow and support link as version 1.0.3, build 4.
+- Updated installation guidance for the normal macOS security flow while keeping credentials in the local Keychain.
+
 ## 2026-07-27 — Version 1.0.2
 
 - Released the width-responsive preview and direct PDF-dragging improvements as version 1.0.2, build 3.

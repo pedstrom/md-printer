@@ -27,13 +27,22 @@ To render a Markdown file from the command line:
 scripts/build-and-run/render_markdown.sh Examples/showcase.md /private/tmp/showcase.pdf
 ```
 
-To create the same ZIP archive used for GitHub releases:
+To create the signed and Apple-notarized ZIP archive used for GitHub releases, first store notarization credentials in the login Keychain and identify the Developer ID Application certificate:
 
 ```sh
+xcrun notarytool store-credentials "MarkdownPrinterNotary"
+security find-identity -v -p codesigning
+```
+
+Then run the release packager with the full signing identity and Keychain profile name:
+
+```sh
+MARKDOWN_PRINTER_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+MARKDOWN_PRINTER_NOTARY_PROFILE="MarkdownPrinterNotary" \
 scripts/build-and-run/package_release.sh
 ```
 
-The archive is written to `build/Markdown-Printer.zip`.
+The packager enables the hardened runtime, adds a secure timestamp, waits for Apple to accept the submission, staples the ticket to the app, creates `build/Markdown-Printer.zip`, and validates the final archive with `codesign`, `stapler`, and Gatekeeper. Notarization credentials stay in the macOS Keychain and are never stored in the repository.
 
 ## Test and verify
 

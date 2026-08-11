@@ -24,7 +24,7 @@ These instructions apply to the whole repository.
 - Add or update tests with every production behavior change.
 - Maintain at least 95% line coverage across testable production Swift. The only coverage exclusions may be minimal executable entry points and thin SwiftUI/AppKit composition views; core rendering and platform adapters stay covered.
 - Run the narrowest relevant XCTest set first, then `scripts/verify.sh` before committing.
-- For an app-version change, commit the verified source, then run `scripts/build-and-run/package_release.sh` and validate the resulting universal, signed ZIP before pushing. If Pete authorized publishing the release, refresh the matching GitHub tag and release asset after the push and verify the public download.
+- For an app-version change, commit the verified source, then run `scripts/build-and-run/package_release.sh` with the Developer ID identity and notarytool Keychain profile. Require Apple acceptance, a stapled ticket, a passing Gatekeeper assessment, and a validated universal ZIP before pushing. If Pete authorized publishing the release, refresh the matching GitHub tag and release asset after the push and verify the public download matches the notarized local archive.
 - Cover headings, inline styles, underline, lists, quotes, tables, code, links, Unicode, image success/failure, multi-page text, multi-page tables, PDF page size, searchable text, link annotations, saving, and printing seams.
 - For rendering changes, build a real PDF fixture and inspect its rendered pages in addition to structural tests.
 - If a test, coverage check, release build, bundle check, or visual check fails, keep iterating until it is green or report the exact blocker.
