@@ -73,33 +73,199 @@ public final class PDFExporter {
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
         var pages: [TextPage] = []
-        var coveredGlyphs = 0
 
-        repeat {
-            let textContainer = NSTextContainer(containerSize: contentSize)
-            textContainer.widthTracksTextView = true
-            textContainer.heightTracksTextView = true
-            layoutManager.addTextContainer(textContainer)
-            let textView = NSTextView(
-                frame: NSRect(origin: .zero, size: contentSize),
-                textContainer: textContainer
-            )
-            textView.textContainerInset = .zero
-            textView.drawsBackground = false
-            layoutManager.ensureLayout(for: textContainer)
-            let glyphRange = layoutManager.glyphRange(for: textContainer)
-            pages.append(TextPage(
-                layoutManager: layoutManager,
-                textContainer: textContainer,
-                textView: textView,
-                glyphRange: glyphRange
-            ))
-            let nextCoveredGlyphs = NSMaxRange(glyphRange)
-            if nextCoveredGlyphs <= coveredGlyphs { break }
-            coveredGlyphs = nextCoveredGlyphs
-        } while coveredGlyphs < layoutManager.numberOfGlyphs
+        appendPagesUntilCovered(
+            pages: &pages,
+            layoutManager: layoutManager,
+            contentSize: contentSize
+        )
+        keepHeadingsWithFollowingContent(
+            pages: &pages,
+            layoutManager: layoutManager,
+            textStorage: textStorage,
+            contentSize: contentSize
+        )
 
         return pages
+    }
+
+    private func appendPagesUntilCovered(
+        pages: inout [TextPage],
+        layoutManager: NSLayoutManager,
+        contentSize: CGSize
+    ) {
+        if pages.isEmpty {
+            pages.append(makePage(layoutManager: layoutManager, contentSize: contentSize))
+        }
+
+        layoutManager.ensureLayout(for: pages[pages.count - 1].textContainer)
+        var coveredGlyphs = NSMaxRange(pages[pages.count - 1].glyphRange)
+        while coveredGlyphs < layoutManager.numberOfGlyphs {
+            let page = makePage(layoutManager: layoutManager, contentSize: contentSize)
+            pages.append(page)
+            layoutManager.ensureLayout(for: page.textContainer)
+            let nextCoveredGlyphs = NSMaxRange(page.glyphRange)
+            if nextCoveredGlyphs <= coveredGlyphs { break }
+            coveredGlyphs = nextCoveredGlyphs
+        }
+    }
+
+    private func makePage(layoutManager: NSLayoutManager, contentSize: CGSize) -> TextPage {
+        let textContainer = NSTextContainer(containerSize: contentSize)
+        textContainer.widthTracksTextView = true
+        textContainer.heightTracksTextView = false
+        layoutManager.addTextContainer(textContainer)
+        let textView = NSTextView(
+            frame: NSRect(origin: .zero, size: contentSize),
+            textContainer: textContainer
+        )
+        textView.textContainerInset = .zero
+        textView.drawsBackground = false
+        return TextPage(
+            layoutManager: layoutManager,
+            textContainer: textContainer,
+            textView: textView
+        )
+    }
+
+    private func keepHeadingsWithFollowingContent(
+        pages: inout [TextPage],
+        layoutManager: NSLayoutManager,
+        textStorage: NSTextStorage,
+        contentSize: CGSize
+    ) {
+        var pageIndex = 0
+        while pageIndex < pages.count {
+            appendPagesUntilCovered(
+                pages: &pages,
+                layoutManager: layoutManager,
+                contentSize: contentSize
+            )
+            let rows = visualRows(
+                pages: pages,
+                layoutManager: layoutManager,
+                textStorage: textStorage
+            )
+            guard let headingTop = orphanedHeadingTop(on: pageIndex, rows: rows) else {
+                pageIndex += 1
+                continue
+            }
+
+            let page = pages[pageIndex]
+            let oldHeight = page.textContainer.containerSize.height
+            let newHeight = max(1, headingTop - 0.5)
+            guard newHeight < oldHeight - 0.5 else {
+                pageIndex += 1
+                continue
+            }
+
+            let oldGlyphEnd = NSMaxRange(page.glyphRange)
+            page.textContainer.containerSize.height = newHeight
+            layoutManager.ensureLayout(for: page.textContainer)
+            guard NSMaxRange(page.glyphRange) < oldGlyphEnd else {
+                page.textContainer.containerSize.height = oldHeight
+                pageIndex += 1
+                continue
+            }
+        }
+    }
+
+    private func orphanedHeadingTop(on pageIndex: Int, rows: [VisualRow]) -> CGFloat? {
+        let pageRows = rows.indices.filter { rows[$0].pageIndex == pageIndex }
+        guard let lastHeading = pageRows.last(where: { rows[$0].isHeading }) else { return nil }
+
+        var headingGroupStart = lastHeading
+        while headingGroupStart > 0, rows[headingGroupStart - 1].isHeading {
+            headingGroupStart -= 1
+        }
+        guard rows[headingGroupStart].pageIndex == pageIndex,
+              pageRows.contains(where: { $0 < headingGroupStart }) else {
+            return nil
+        }
+
+        var headingGroupEnd = lastHeading
+        while headingGroupEnd + 1 < rows.count, rows[headingGroupEnd + 1].isHeading {
+            headingGroupEnd += 1
+        }
+
+        var availableFollowingRows = 0
+        var rowIndex = headingGroupEnd + 1
+        while rowIndex < rows.count,
+              !rows[rowIndex].isHeading,
+              availableFollowingRows < 2 {
+            availableFollowingRows += 1
+            rowIndex += 1
+        }
+        let requiredFollowingRows = min(2, availableFollowingRows)
+        let followingRowsOnPage = pageRows.filter { $0 > lastHeading }.count
+        guard followingRowsOnPage < requiredFollowingRows else { return nil }
+        return rows[headingGroupStart].minY
+    }
+
+    private func visualRows(
+        pages: [TextPage],
+        layoutManager: NSLayoutManager,
+        textStorage: NSTextStorage
+    ) -> [VisualRow] {
+        var result: [VisualRow] = []
+        for (pageIndex, page) in pages.enumerated() {
+            layoutManager.ensureLayout(for: page.textContainer)
+            var fragments: [VisualRow] = []
+            layoutManager.enumerateLineFragments(forGlyphRange: page.glyphRange) {
+                lineFragmentRect, _, textContainer, glyphRange, _ in
+                guard textContainer === page.textContainer,
+                      let characterIndex = self.firstVisibleCharacterIndex(
+                          in: glyphRange,
+                          layoutManager: layoutManager,
+                          textStorage: textStorage
+                      ) else {
+                    return
+                }
+                let paragraph = textStorage.attribute(
+                    .paragraphStyle,
+                    at: characterIndex,
+                    effectiveRange: nil
+                ) as? NSParagraphStyle
+                fragments.append(VisualRow(
+                    pageIndex: pageIndex,
+                    minY: lineFragmentRect.minY,
+                    isHeading: (paragraph?.headerLevel ?? 0) > 0
+                ))
+            }
+
+            fragments.sort { lhs, rhs in lhs.minY < rhs.minY }
+            for fragment in fragments {
+                if let lastIndex = result.indices.last,
+                   result[lastIndex].pageIndex == fragment.pageIndex,
+                   abs(result[lastIndex].minY - fragment.minY) < 0.5 {
+                    result[lastIndex].isHeading = result[lastIndex].isHeading || fragment.isHeading
+                } else {
+                    result.append(fragment)
+                }
+            }
+        }
+        return result
+    }
+
+    private func firstVisibleCharacterIndex(
+        in glyphRange: NSRange,
+        layoutManager: NSLayoutManager,
+        textStorage: NSTextStorage
+    ) -> Int? {
+        let characterRange = layoutManager.characterRange(
+            forGlyphRange: glyphRange,
+            actualGlyphRange: nil
+        )
+        let string = textStorage.string as NSString
+        for characterIndex in characterRange.location..<NSMaxRange(characterRange) {
+            let codeUnit = string.character(at: characterIndex)
+            if let scalar = UnicodeScalar(codeUnit),
+               CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                continue
+            }
+            return characterIndex
+        }
+        return nil
     }
 
     private func drawPageNumber(_ pageNumber: Int) {
@@ -174,11 +340,26 @@ private final class PDFPrintView: NSView {
     }
 }
 
-private struct TextPage {
+private final class TextPage {
     let layoutManager: NSLayoutManager
     let textContainer: NSTextContainer
     let textView: NSTextView
-    let glyphRange: NSRange
+
+    init(layoutManager: NSLayoutManager, textContainer: NSTextContainer, textView: NSTextView) {
+        self.layoutManager = layoutManager
+        self.textContainer = textContainer
+        self.textView = textView
+    }
+
+    var glyphRange: NSRange {
+        layoutManager.glyphRange(for: textContainer)
+    }
+}
+
+private struct VisualRow {
+    let pageIndex: Int
+    let minY: CGFloat
+    var isHeading: Bool
 }
 
 public enum PDFExporterError: LocalizedError, Equatable {

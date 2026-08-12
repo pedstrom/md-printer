@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-08-12 — Keep headings with following content
+
+- Marked every rendered H1–H6 paragraph with native heading metadata for pagination without changing its typography.
+- Added a TextKit pagination pass that moves a bottom-of-page heading group forward unless it already has two following visual rows, while using all available content for shorter sections.
+- Added regressions for every heading level, wrapped and consecutive headings, paragraphs, lists, quotations, code, tables, images, and end-of-document behavior.
+
 ## 2026-08-12 — Version 1.0.4
 
 - Released concrete PDF file-URL dragging for destinations such as Microsoft Teams as version 1.0.4, build 5.

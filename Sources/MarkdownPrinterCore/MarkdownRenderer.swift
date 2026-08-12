@@ -48,6 +48,7 @@ public final class MarkdownRenderer {
         case let .heading(level, content):
             let size = configuration.headingSize(for: level)
             let paragraph = paragraphStyle(spacingAfter: level <= 2 ? 12 : 8)
+            paragraph.headerLevel = level
             let rendered = renderInline(content, font: fonts.bold(size: size), baseURL: baseURL)
             rendered.addAttribute(.paragraphStyle, value: paragraph, range: rendered.fullRange)
             result.append(rendered)

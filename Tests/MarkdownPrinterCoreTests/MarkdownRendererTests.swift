@@ -37,6 +37,22 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(codeFont?.pointSize, 9.5)
     }
 
+    func testAllHeadingLevelsCarryNativeHeaderMetadata() throws {
+        let markdown = (1...6)
+            .map { "\(String(repeating: "#", count: $0)) Heading \($0)" }
+            .joined(separator: "\n")
+        let output = renderer.render(markdown: markdown)
+
+        for level in 1...6 {
+            let range = (output.string as NSString).range(of: "Heading \(level)")
+            let paragraph = try XCTUnwrap(
+                output.attribute(.paragraphStyle, at: range.location, effectiveRange: nil)
+                    as? NSParagraphStyle
+            )
+            XCTAssertEqual(paragraph.headerLevel, level)
+        }
+    }
+
     func testSecondaryHeadingsAndIntroductoryParagraphsUseCompactBlockTransitions() {
         let output = renderer.render(markdown: """
         ## Second
