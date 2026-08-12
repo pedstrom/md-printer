@@ -5,15 +5,22 @@ public struct PDFPreviewView: NSViewRepresentable {
     public let data: Data
     public let fileName: String
     private let openURL: (URL) -> Void
+    private let onDragError: (Error) -> Void
 
-    public init(data: Data, fileName: String, openURL: @escaping (URL) -> Void) {
+    public init(
+        data: Data,
+        fileName: String,
+        openURL: @escaping (URL) -> Void,
+        onDragError: @escaping (Error) -> Void = { _ in }
+    ) {
         self.data = data
         self.fileName = fileName
         self.openURL = openURL
+        self.onDragError = onDragError
     }
 
     public func makeCoordinator() -> Coordinator {
-        Coordinator(openURL: openURL)
+        Coordinator(openURL: openURL, onDragError: onDragError)
     }
 
     public func makeNSView(context: Context) -> PDFView {
@@ -24,7 +31,12 @@ public struct PDFPreviewView: NSViewRepresentable {
 
     public func updateNSView(_ view: PDFView, context: Context) {
         context.coordinator.openURL = openURL
-        (view as? PageAdvancingPDFView)?.updateDragPayload(data: data, fileName: fileName)
+        context.coordinator.onDragError = onDragError
+        (view as? PageAdvancingPDFView)?.updateDragPayload(
+            data: data,
+            fileName: fileName,
+            onError: context.coordinator.reportDragError
+        )
         guard view.document?.dataRepresentation() != data else { return }
         guard let document = PDFDocument(data: data) else { return }
         (view as? PageAdvancingPDFView)?.display(document)
@@ -33,9 +45,15 @@ public struct PDFPreviewView: NSViewRepresentable {
     @MainActor
     public final class Coordinator: NSObject {
         var openURL: (URL) -> Void
+        var onDragError: (Error) -> Void
 
-        init(openURL: @escaping (URL) -> Void) {
+        init(openURL: @escaping (URL) -> Void, onDragError: @escaping (Error) -> Void) {
             self.openURL = openURL
+            self.onDragError = onDragError
+        }
+
+        func reportDragError(_ error: Error) {
+            onDragError(error)
         }
     }
 }
@@ -52,6 +70,9 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     private var fittedViewWidth: CGFloat?
     private var dragData: Data?
     private var dragFileName = "Untitled.pdf"
+    private var dragErrorHandler: ((Error) -> Void)?
+    private lazy var dragFileStore = PDFDragFileStore()
+    private var activeDragArtifact: PDFDragArtifact?
     private var isDraggingPDF = false
     private(set) lazy var outboundPDFDragRecognizer: NSPressGestureRecognizer = {
         let recognizer = NSPressGestureRecognizer(target: self, action: #selector(handleOutboundPDFDrag(_:)))
@@ -80,9 +101,10 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         scheduleSettledInitialPageFit(for: displayRevision)
     }
 
-    func updateDragPayload(data: Data, fileName: String) {
+    func updateDragPayload(data: Data, fileName: String, onError: @escaping (Error) -> Void) {
         dragData = data
         dragFileName = fileName
+        dragErrorHandler = onError
     }
 
     override func layout() {
@@ -128,6 +150,10 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         endedAt screenPoint: NSPoint,
         operation: NSDragOperation
     ) {
+        if let activeDragArtifact {
+            dragFileStore.finish(activeDragArtifact, operation: operation)
+            self.activeDragArtifact = nil
+        }
         isDraggingPDF = false
     }
 
@@ -151,9 +177,15 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
             return
         }
 
-        let writer = PDFFilePromiseWriter(pdfData: dragData, fileName: dragFileName)
-        let provider = writer.makeProvider()
-        let draggingItem = NSDraggingItem(pasteboardWriter: provider)
+        let artifact: PDFDragArtifact
+        do {
+            artifact = try dragFileStore.materialize(pdfData: dragData, fileName: dragFileName)
+        } catch {
+            dragErrorHandler?(error)
+            return
+        }
+
+        let draggingItem = NSDraggingItem(pasteboardWriter: artifact.fileURL as NSURL)
         let image = dragThumbnail()
         let location = recognizer.location(in: self)
         draggingItem.setDraggingFrame(
@@ -166,6 +198,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
             contents: image
         )
 
+        activeDragArtifact = artifact
         isDraggingPDF = true
         beginDraggingSession(with: [draggingItem], event: event, source: self)
     }

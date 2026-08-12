@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-08-12 — Compatible PDF attachments for Microsoft Teams
+
+- Replaced preview file-promise drags with concrete local PDF file URLs so destinations such as Microsoft Teams receive the same attachment form as a Finder drag.
+- Preserved the original Markdown basename for the dragged PDF while isolating repeated names in private temporary directories.
+- Added bounded cleanup for canceled, accepted, and abandoned drag artifacts without changing preview, save, print, or PDF bytes.
+- Added regression coverage for file-URL pasteboard data, exact bytes and filenames, private permissions, cleanup timing, and error forwarding.
+
 ## 2026-08-11 — Version 1.0.3 and notarized distribution
 
 - Replaced ad-hoc release signing with Developer ID Application signing, hardened runtime, and a secure timestamp.

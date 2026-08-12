@@ -12,7 +12,7 @@
 
 Markdown is suddenly everywhere. AI tools, coding assistants, note apps, and research workflows are producing copious `.md` files, but those files are not always pleasant to print, share, or read away from an editor. Markdown Printer gives them a polished page without sending the document anywhere.
 
-Drop one file—or a whole batch—onto the app. Each document opens in its own window as a finished PDF that you can save, print, or drag directly into Finder, Messages, and other apps that accept PDF attachments.
+Drop one file—or a whole batch—onto the app. Each document opens in its own window as a finished PDF that you can save, print, or drag directly into Finder, Microsoft Teams, Messages, and other apps that accept PDF attachments.
 
 ## What it does
 
@@ -23,7 +23,7 @@ Drop one file—or a whole batch—onto the app. Each document opens in its own 
 - Lets you hold and drag the PDF preview directly to the Desktop or another app
 - Keeps your files entirely on your Mac: no account, upload, analytics, or remote rendering
 
-The PDF in the preview is the same PDF that gets saved, printed, or dragged out of the app. Saved and dragged PDFs keep the original Markdown filename with the extension changed to `.pdf`. Local images are resolved relative to the Markdown file; missing or remote images are shown as placeholders instead of being fetched from the internet.
+The PDF in the preview is the same PDF that gets saved, printed, or dragged out of the app. Saved and dragged PDFs keep the original Markdown filename with the extension changed to `.pdf`. A dragged PDF is prepared locally only when the drag begins, so apps that accept normal Mac file attachments receive a concrete file with the correct name. Local images are resolved relative to the Markdown file; missing or remote images are shown as placeholders instead of being fetched from the internet.
 
 ## Install
 

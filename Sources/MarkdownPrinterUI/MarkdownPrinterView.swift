@@ -60,7 +60,8 @@ public struct MarkdownPrinterView: View {
                 PDFPreviewView(
                     data: pdfData,
                     fileName: session.suggestedPDFFileName,
-                    openURL: openLink
+                    openURL: openLink,
+                    onDragError: { session.report(error: $0) }
                 )
             }
         }

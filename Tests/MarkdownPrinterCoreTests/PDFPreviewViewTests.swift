@@ -1,6 +1,5 @@
 import AppKit
 import PDFKit
-import UniformTypeIdentifiers
 import XCTest
 @testable import MarkdownPrinterCore
 @testable import MarkdownPrinterUI
@@ -10,11 +9,26 @@ final class PDFPreviewViewTests: XCTestCase {
     func testLinkCoordinatorForwardsPDFClicks() {
         let expectedURL = URL(string: "https://example.com")!
         var openedURL: URL?
-        let coordinator = PDFPreviewView.Coordinator { openedURL = $0 }
+        let coordinator = PDFPreviewView.Coordinator(
+            openURL: { openedURL = $0 },
+            onDragError: { _ in }
+        )
 
         coordinator.pdfViewWillClick(onLink: PDFView(), with: expectedURL)
 
         XCTAssertEqual(openedURL, expectedURL)
+    }
+
+    func testDragErrorsAreForwarded() {
+        var reportedError: PreviewTestError?
+        let coordinator = PDFPreviewView.Coordinator(
+            openURL: { _ in },
+            onDragError: { reportedError = $0 as? PreviewTestError }
+        )
+
+        coordinator.reportDragError(PreviewTestError.example)
+
+        XCTAssertEqual(reportedError, .example)
     }
 
     func testMarkdownLinkTargetRecognizesSupportedLocalFilesAndRemovesFragments() throws {
@@ -126,43 +140,6 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertTrue(view.gestureRecognizers.contains { $0 === recognizer })
     }
 
-    func testPDFFilePromiseAdvertisesPDFAndWritesExactBytes() throws {
-        let expectedData = Data("exact preview bytes".utf8)
-        let writer = PDFFilePromiseWriter(pdfData: expectedData, fileName: "Original Name.pdf")
-        let provider = writer.makeProvider()
-        let output = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathExtension("pdf")
-        defer { try? FileManager.default.removeItem(at: output) }
-        var completionError: Error?
-
-        XCTAssertEqual(provider.fileType, UTType.pdf.identifier)
-        XCTAssertTrue(provider.userInfo as AnyObject === writer)
-        XCTAssertEqual(
-            writer.filePromiseProvider(provider, fileNameForType: provider.fileType),
-            "Original Name.pdf"
-        )
-        XCTAssertEqual(writer.operationQueue(for: provider).maxConcurrentOperationCount, 1)
-
-        writer.filePromiseProvider(provider, writePromiseTo: output) { completionError = $0 }
-
-        XCTAssertNil(completionError)
-        XCTAssertEqual(try Data(contentsOf: output), expectedData)
-    }
-
-    func testPDFFilePromiseReportsWriteFailures() {
-        let writer = PDFFilePromiseWriter(pdfData: Data("PDF".utf8), fileName: "Failure.pdf")
-        let provider = writer.makeProvider()
-        let missingParent = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString)
-            .appendingPathComponent("Failure.pdf")
-        var completionError: Error?
-
-        writer.filePromiseProvider(provider, writePromiseTo: missingParent) { completionError = $0 }
-
-        XCTAssertNotNil(completionError)
-    }
-
     private func makeMultiPageDocument() throws -> PDFDocument {
         let markdown = (1...100)
             .map { "Paragraph \($0): Enough text to create several pages for preview navigation." }
@@ -178,4 +155,8 @@ final class PDFPreviewViewTests: XCTestCase {
             DispatchQueue.main.async { continuation.resume() }
         }
     }
+}
+
+private enum PreviewTestError: Error, Equatable {
+    case example
 }
