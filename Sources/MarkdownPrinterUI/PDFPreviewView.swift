@@ -1,11 +1,30 @@
 @preconcurrency import PDFKit
+import MarkdownPrinterCore
 import SwiftUI
 
 public struct PDFPreviewView: NSViewRepresentable {
     public let data: Data
+    public let exportFormat: ExportFormat
     public let fileName: String
+    private let exportData: () throws -> Data
     private let openURL: (URL) -> Void
     private let onDragError: (Error) -> Void
+
+    public init(
+        data: Data,
+        exportFormat: ExportFormat,
+        fileName: String,
+        exportData: @escaping () throws -> Data,
+        openURL: @escaping (URL) -> Void,
+        onDragError: @escaping (Error) -> Void = { _ in }
+    ) {
+        self.data = data
+        self.exportFormat = exportFormat
+        self.fileName = fileName
+        self.exportData = exportData
+        self.openURL = openURL
+        self.onDragError = onDragError
+    }
 
     public init(
         data: Data,
@@ -13,10 +32,14 @@ public struct PDFPreviewView: NSViewRepresentable {
         openURL: @escaping (URL) -> Void,
         onDragError: @escaping (Error) -> Void = { _ in }
     ) {
-        self.data = data
-        self.fileName = fileName
-        self.openURL = openURL
-        self.onDragError = onDragError
+        self.init(
+            data: data,
+            exportFormat: .pdf,
+            fileName: fileName,
+            exportData: { data },
+            openURL: openURL,
+            onDragError: onDragError
+        )
     }
 
     public func makeCoordinator() -> Coordinator {
@@ -33,8 +56,9 @@ public struct PDFPreviewView: NSViewRepresentable {
         context.coordinator.openURL = openURL
         context.coordinator.onDragError = onDragError
         (view as? PageAdvancingPDFView)?.updateDragPayload(
-            data: data,
+            format: exportFormat,
             fileName: fileName,
+            dataProvider: exportData,
             onError: context.coordinator.reportDragError
         )
         guard view.document?.dataRepresentation() != data else { return }
@@ -68,13 +92,14 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     private var needsInitialPageFit = false
     private var displayRevision = 0
     private var fittedViewWidth: CGFloat?
-    private var dragData: Data?
+    private var dragDataProvider: (() throws -> Data)?
+    private var dragFormat = ExportFormat.pdf
     private var dragFileName = "Untitled.pdf"
     private var dragErrorHandler: ((Error) -> Void)?
-    private lazy var dragFileStore = PDFDragFileStore()
-    private var activeDragArtifact: PDFDragArtifact?
-    private var isDraggingPDF = false
-    private(set) lazy var outboundPDFDragRecognizer: NSPressGestureRecognizer = {
+    private lazy var dragFileStore = ExportDragFileStore()
+    private var activeDragArtifact: ExportDragArtifact?
+    private var isDraggingExport = false
+    private(set) lazy var outboundExportDragRecognizer: NSPressGestureRecognizer = {
         let recognizer = NSPressGestureRecognizer(target: self, action: #selector(handleOutboundPDFDrag(_:)))
         recognizer.buttonMask = 0x1
         return recognizer
@@ -101,9 +126,15 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         scheduleSettledInitialPageFit(for: displayRevision)
     }
 
-    func updateDragPayload(data: Data, fileName: String, onError: @escaping (Error) -> Void) {
-        dragData = data
+    func updateDragPayload(
+        format: ExportFormat,
+        fileName: String,
+        dataProvider: @escaping () throws -> Data,
+        onError: @escaping (Error) -> Void
+    ) {
+        dragFormat = format
         dragFileName = fileName
+        dragDataProvider = dataProvider
         dragErrorHandler = onError
     }
 
@@ -154,7 +185,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
             dragFileStore.finish(activeDragArtifact, operation: operation)
             self.activeDragArtifact = nil
         }
-        isDraggingPDF = false
+        isDraggingExport = false
     }
 
     private func configure() {
@@ -163,23 +194,26 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         displayDirection = .vertical
         displaysPageBreaks = true
         backgroundColor = .windowBackgroundColor
-        addGestureRecognizer(outboundPDFDragRecognizer)
+        addGestureRecognizer(outboundExportDragRecognizer)
     }
 
     @objc
     private func handleOutboundPDFDrag(_ recognizer: NSPressGestureRecognizer) {
         guard recognizer.state == .changed,
-              !isDraggingPDF,
-              let dragData,
+              !isDraggingExport,
+              let dragDataProvider,
               let event = NSApp.currentEvent,
               event.type == .leftMouseDragged
         else {
             return
         }
 
-        let artifact: PDFDragArtifact
+        let artifact: ExportDragArtifact
         do {
-            artifact = try dragFileStore.materialize(pdfData: dragData, fileName: dragFileName)
+            artifact = try dragFileStore.materialize(
+                data: dragDataProvider(),
+                fileName: dragFileName
+            )
         } catch {
             dragErrorHandler?(error)
             return
@@ -199,12 +233,17 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         )
 
         activeDragArtifact = artifact
-        isDraggingPDF = true
+        isDraggingExport = true
         beginDraggingSession(with: [draggingItem], event: event, source: self)
     }
 
     private func dragThumbnail() -> NSImage {
         let size = NSSize(width: 110, height: 142)
+        guard dragFormat == .pdf else {
+            let icon = NSWorkspace.shared.icon(for: dragFormat.contentType)
+            icon.size = size
+            return icon
+        }
         guard let firstPage = document?.page(at: 0) else {
             let icon = NSWorkspace.shared.icon(for: .pdf)
             icon.size = size

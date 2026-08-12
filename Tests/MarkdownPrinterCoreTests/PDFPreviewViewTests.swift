@@ -131,9 +131,9 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertEqual(document.index(for: try XCTUnwrap(view.currentPage)), 0)
     }
 
-    func testOutboundPDFDragUsesADeferredPrimaryButtonPress() {
+    func testOutboundExportDragUsesADeferredPrimaryButtonPress() {
         let view = PageAdvancingPDFView()
-        let recognizer = view.outboundPDFDragRecognizer
+        let recognizer = view.outboundExportDragRecognizer
 
         XCTAssertEqual(recognizer.buttonMask, 0x1)
         XCTAssertEqual(recognizer.minimumPressDuration, NSEvent.doubleClickInterval)

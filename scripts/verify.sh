@@ -66,7 +66,7 @@ fi
 
 COVERAGE_REPORT="$(xcrun llvm-cov report "$TEST_BINARY" \
   -instr-profile "$PROFDATA" \
-  -ignore-filename-regex='(/Tests/|MarkdownPrinterPackageTests.derived|Sources/MarkdownPrinter/MarkdownPrinter.swift|Sources/MarkdownPrinterCLI/MarkdownPrinterCLI.swift|Sources/MarkdownPrinterUI/MarkdownPrinterView.swift|Sources/MarkdownPrinterUI/PDFPreviewView.swift)')"
+  -ignore-filename-regex='(/Tests/|MarkdownPrinterPackageTests.derived|Sources/MarkdownPrinter/MarkdownPrinter.swift|Sources/MarkdownPrinterCLI/MarkdownPrinterCLI.swift|Sources/MarkdownPrinterUI/MarkdownPrinterView.swift|Sources/MarkdownPrinterUI/PDFPreviewView.swift|Sources/MarkdownPrinterUI/ExportSettingsView.swift)')"
 echo "$COVERAGE_REPORT"
 LINE_COVERAGE="$(awk '/^TOTAL/ { gsub("%", "", $10); print $10 }' <<< "$COVERAGE_REPORT")"
 awk -v coverage="$LINE_COVERAGE" 'BEGIN { exit(coverage + 0 >= 95 ? 0 : 1) }' || {

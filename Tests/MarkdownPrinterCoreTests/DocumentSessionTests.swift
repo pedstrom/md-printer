@@ -10,7 +10,11 @@ final class DocumentSessionTests: XCTestCase {
         XCTAssertEqual(session.title, "Markdown Printer")
         XCTAssertFalse(session.hasDocument)
         XCTAssertEqual(session.suggestedPDFFileName, "Markdown Printer.pdf")
+        XCTAssertEqual(session.suggestedWordFileName, "Markdown Printer.docx")
         XCTAssertThrowsError(try session.pdfData()) { XCTAssertEqual($0 as? DocumentSessionError, .noDocument) }
+        XCTAssertThrowsError(try session.exportData(as: .word)) {
+            XCTAssertEqual($0 as? DocumentSessionError, .noDocument)
+        }
         XCTAssertThrowsError(try session.savePDF(to: FileManager.default.temporaryDirectory.appendingPathComponent("none.pdf")))
         XCTAssertThrowsError(try session.printOperation())
         XCTAssertEqual(DocumentSessionError.noDocument.localizedDescription, "Open a Markdown file before saving or printing.")
@@ -22,6 +26,7 @@ final class DocumentSessionTests: XCTestCase {
         try session.apply(MarkdownDocument(title: "Sample", markdown: "# Sample"))
         XCTAssertEqual(session.title, "Sample")
         XCTAssertEqual(session.suggestedPDFFileName, "Sample.pdf")
+        XCTAssertEqual(session.suggestedWordFileName, "Sample.docx")
         XCTAssertTrue(session.hasDocument)
         XCTAssertNil(session.errorMessage)
         XCTAssertTrue(session.renderedText.string.contains("Sample"))
@@ -47,14 +52,19 @@ final class DocumentSessionTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let input = directory.appendingPathComponent("Input.md")
         let output = directory.appendingPathComponent("Output.pdf")
+        let wordOutput = directory.appendingPathComponent("Output.docx")
         try Data("# From File".utf8).write(to: input)
 
         let session = DocumentSession()
         session.load(url: input)
         XCTAssertEqual(session.title, "From File")
         XCTAssertEqual(session.suggestedPDFFileName, "Input.pdf")
+        XCTAssertEqual(session.suggestedWordFileName, "Input.docx")
         try session.savePDF(to: output)
+        try session.save(to: wordOutput, as: .word)
         XCTAssertNotNil(PDFDocument(url: output))
+        XCTAssertEqual(try Data(contentsOf: output), try session.exportData(as: .pdf))
+        XCTAssertTrue(try Data(contentsOf: wordOutput).starts(with: Data([0x50, 0x4B])))
         XCTAssertNotNil(try session.printOperation().view)
 
         session.load(url: directory.appendingPathComponent("missing.md"))
@@ -73,6 +83,7 @@ final class DocumentSessionTests: XCTestCase {
 
         XCTAssertEqual(session.title, "Executive Summary")
         XCTAssertEqual(session.suggestedPDFFileName, "Quarterly Notes.final.pdf")
+        XCTAssertEqual(session.suggestedWordFileName, "Quarterly Notes.final.docx")
     }
 
     func testSuggestedPDFFileNameSanitizesInMemoryTitle() throws {
@@ -82,6 +93,11 @@ final class DocumentSessionTests: XCTestCase {
 
         try session.apply(MarkdownDocument(title: "already.PDF", markdown: "Body"))
         XCTAssertEqual(session.suggestedPDFFileName, "already.PDF")
+        XCTAssertEqual(session.suggestedWordFileName, "already.docx")
+
+        try session.apply(MarkdownDocument(title: "already.DOCX", markdown: "Body"))
+        XCTAssertEqual(session.suggestedPDFFileName, "already.pdf")
+        XCTAssertEqual(session.suggestedWordFileName, "already.DOCX")
     }
 }
 

@@ -1,23 +1,23 @@
 import AppKit
 import Foundation
 
-struct PDFDragArtifact: Equatable {
+struct ExportDragArtifact: Equatable {
     let fileURL: URL
     let directoryURL: URL
 }
 
-enum PDFDragFileStoreError: LocalizedError, Equatable {
+enum ExportDragFileStoreError: LocalizedError, Equatable {
     case invalidFileName
 
     var errorDescription: String? {
         switch self {
         case .invalidFileName:
-            return "The PDF could not be prepared for dragging because its filename is invalid."
+            return "The document could not be prepared for dragging because its filename is invalid."
         }
     }
 }
 
-final class PDFDragFileStore {
+final class ExportDragFileStore {
     typealias CleanupScheduler = (_ delay: TimeInterval, _ workItem: DispatchWorkItem) -> Void
 
     static let acceptedDragRetention: TimeInterval = 10 * 60
@@ -33,8 +33,8 @@ final class PDFDragFileStore {
     init(
         fileManager: FileManager = .default,
         temporaryDirectory: URL? = nil,
-        cleanupDelay: TimeInterval = PDFDragFileStore.acceptedDragRetention,
-        abandonedArtifactAge: TimeInterval = PDFDragFileStore.abandonedArtifactAge,
+        cleanupDelay: TimeInterval = ExportDragFileStore.acceptedDragRetention,
+        abandonedArtifactAge: TimeInterval = ExportDragFileStore.abandonedArtifactAge,
         now: @escaping () -> Date = Date.init,
         scheduleCleanup: @escaping CleanupScheduler = { delay, workItem in
             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
@@ -49,9 +49,9 @@ final class PDFDragFileStore {
         self.scheduleCleanup = scheduleCleanup
     }
 
-    func materialize(pdfData: Data, fileName: String) throws -> PDFDragArtifact {
+    func materialize(data: Data, fileName: String) throws -> ExportDragArtifact {
         guard Self.isValidFileName(fileName) else {
-            throw PDFDragFileStoreError.invalidFileName
+            throw ExportDragFileStoreError.invalidFileName
         }
 
         try prepareRootDirectory()
@@ -66,16 +66,16 @@ final class PDFDragFileStore {
                 attributes: [.posixPermissions: 0o700]
             )
             let fileURL = directoryURL.appendingPathComponent(fileName, isDirectory: false)
-            try pdfData.write(to: fileURL, options: .atomic)
+            try data.write(to: fileURL, options: .atomic)
             try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
-            return PDFDragArtifact(fileURL: fileURL, directoryURL: directoryURL)
+            return ExportDragArtifact(fileURL: fileURL, directoryURL: directoryURL)
         } catch {
             try? fileManager.removeItem(at: directoryURL)
             throw error
         }
     }
 
-    func finish(_ artifact: PDFDragArtifact, operation: NSDragOperation) {
+    func finish(_ artifact: ExportDragArtifact, operation: NSDragOperation) {
         guard operation.contains(.copy) else {
             remove(artifact)
             return
@@ -87,7 +87,7 @@ final class PDFDragFileStore {
         scheduleCleanup(cleanupDelay, cleanup)
     }
 
-    func remove(_ artifact: PDFDragArtifact) {
+    func remove(_ artifact: ExportDragArtifact) {
         try? fileManager.removeItem(at: artifact.directoryURL)
     }
 

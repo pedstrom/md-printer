@@ -1,40 +1,48 @@
 import AppKit
 import XCTest
+@testable import MarkdownPrinterCore
 @testable import MarkdownPrinterUI
 
 @MainActor
-final class PDFDragFileStoreTests: XCTestCase {
-    func testMaterializedPDFAdvertisesConcreteFileURLWithExactNameBytesAndPermissions() throws {
+final class ExportDragFileStoreTests: XCTestCase {
+    func testMaterializedExportsAdvertiseConcreteFileURLsWithExactNamesBytesAndPermissions() throws {
         let temporaryDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
-        let expectedData = Data("exact preview bytes".utf8)
-        let expectedFileName = "Quarterly Notes.final.pdf"
-        let store = PDFDragFileStore(temporaryDirectory: temporaryDirectory)
+        let store = ExportDragFileStore(temporaryDirectory: temporaryDirectory)
 
-        let artifact = try store.materialize(pdfData: expectedData, fileName: expectedFileName)
-        let pasteboard = NSPasteboard(name: NSPasteboard.Name(UUID().uuidString))
-        pasteboard.clearContents()
+        for (expectedFileName, expectedData, expectedContentType) in [
+            ("Quarterly Notes.final.pdf", Data("exact PDF bytes".utf8), ExportFormat.pdf.contentType),
+            ("Quarterly Notes.final.docx", Data("exact Word bytes".utf8), ExportFormat.word.contentType)
+        ] {
+            let artifact = try store.materialize(data: expectedData, fileName: expectedFileName)
+            let pasteboard = NSPasteboard(name: NSPasteboard.Name(UUID().uuidString))
+            pasteboard.clearContents()
 
-        XCTAssertTrue(pasteboard.writeObjects([artifact.fileURL as NSURL]))
-        XCTAssertEqual(pasteboard.availableType(from: [.fileURL]), .fileURL)
-        let fileURLs = try XCTUnwrap(pasteboard.readObjects(
-            forClasses: [NSURL.self],
-            options: [.urlReadingFileURLsOnly: true]
-        ) as? [URL])
-        XCTAssertEqual(fileURLs, [artifact.fileURL])
-        XCTAssertEqual(artifact.fileURL.lastPathComponent, expectedFileName)
-        XCTAssertEqual(try Data(contentsOf: artifact.fileURL), expectedData)
-        XCTAssertEqual(try permissions(of: artifact.directoryURL), 0o700)
-        XCTAssertEqual(try permissions(of: artifact.fileURL), 0o600)
+            XCTAssertTrue(pasteboard.writeObjects([artifact.fileURL as NSURL]))
+            XCTAssertEqual(pasteboard.availableType(from: [.fileURL]), .fileURL)
+            let fileURLs = try XCTUnwrap(pasteboard.readObjects(
+                forClasses: [NSURL.self],
+                options: [.urlReadingFileURLsOnly: true]
+            ) as? [URL])
+            XCTAssertEqual(fileURLs, [artifact.fileURL])
+            XCTAssertEqual(artifact.fileURL.lastPathComponent, expectedFileName)
+            XCTAssertEqual(try Data(contentsOf: artifact.fileURL), expectedData)
+            XCTAssertEqual(
+                try artifact.fileURL.resourceValues(forKeys: [.contentTypeKey]).contentType,
+                expectedContentType
+            )
+            XCTAssertEqual(try permissions(of: artifact.directoryURL), 0o700)
+            XCTAssertEqual(try permissions(of: artifact.fileURL), 0o600)
+        }
     }
 
     func testRepeatedFileNamesUseUniqueDirectoriesWithoutChangingVisibleName() throws {
         let temporaryDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
-        let store = PDFDragFileStore(temporaryDirectory: temporaryDirectory)
+        let store = ExportDragFileStore(temporaryDirectory: temporaryDirectory)
 
-        let first = try store.materialize(pdfData: Data("first".utf8), fileName: "Report.pdf")
-        let second = try store.materialize(pdfData: Data("second".utf8), fileName: "Report.pdf")
+        let first = try store.materialize(data: Data("first".utf8), fileName: "Report.pdf")
+        let second = try store.materialize(data: Data("second".utf8), fileName: "Report.pdf")
 
         XCTAssertNotEqual(first.directoryURL, second.directoryURL)
         XCTAssertEqual(first.fileURL.lastPathComponent, "Report.pdf")
@@ -46,8 +54,8 @@ final class PDFDragFileStoreTests: XCTestCase {
     func testCanceledDragRemovesArtifactImmediately() throws {
         let temporaryDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
-        let store = PDFDragFileStore(temporaryDirectory: temporaryDirectory)
-        let artifact = try store.materialize(pdfData: Data("PDF".utf8), fileName: "Canceled.pdf")
+        let store = ExportDragFileStore(temporaryDirectory: temporaryDirectory)
+        let artifact = try store.materialize(data: Data("PDF".utf8), fileName: "Canceled.pdf")
 
         store.finish(artifact, operation: [])
 
@@ -59,18 +67,18 @@ final class PDFDragFileStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
         var scheduledDelay: TimeInterval?
         var scheduledCleanup: DispatchWorkItem?
-        let store = PDFDragFileStore(
+        let store = ExportDragFileStore(
             temporaryDirectory: temporaryDirectory,
             scheduleCleanup: { delay, action in
                 scheduledDelay = delay
                 scheduledCleanup = action
             }
         )
-        let artifact = try store.materialize(pdfData: Data("PDF".utf8), fileName: "Accepted.pdf")
+        let artifact = try store.materialize(data: Data("PDF".utf8), fileName: "Accepted.pdf")
 
         store.finish(artifact, operation: .copy)
 
-        XCTAssertEqual(scheduledDelay, PDFDragFileStore.acceptedDragRetention)
+        XCTAssertEqual(scheduledDelay, ExportDragFileStore.acceptedDragRetention)
         XCTAssertTrue(FileManager.default.fileExists(atPath: artifact.fileURL.path))
         try XCTUnwrap(scheduledCleanup).perform()
         XCTAssertFalse(FileManager.default.fileExists(atPath: artifact.directoryURL.path))
@@ -80,7 +88,7 @@ final class PDFDragFileStoreTests: XCTestCase {
         let temporaryDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
         let currentDate = Date(timeIntervalSinceReferenceDate: 1_000_000)
-        let store = PDFDragFileStore(
+        let store = ExportDragFileStore(
             temporaryDirectory: temporaryDirectory,
             now: { currentDate }
         )
@@ -93,7 +101,7 @@ final class PDFDragFileStoreTests: XCTestCase {
         try FileManager.default.createDirectory(at: staleDirectory, withIntermediateDirectories: false)
         try FileManager.default.createDirectory(at: freshDirectory, withIntermediateDirectories: false)
         try FileManager.default.setAttributes(
-            [.modificationDate: currentDate.addingTimeInterval(-PDFDragFileStore.abandonedArtifactAge - 1)],
+            [.modificationDate: currentDate.addingTimeInterval(-ExportDragFileStore.abandonedArtifactAge - 1)],
             ofItemAtPath: staleDirectory.path
         )
         try FileManager.default.setAttributes(
@@ -110,20 +118,24 @@ final class PDFDragFileStoreTests: XCTestCase {
     func testInvalidNameAndUnavailableTemporaryDirectoryReportFailures() throws {
         let temporaryDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
-        let store = PDFDragFileStore(temporaryDirectory: temporaryDirectory)
+        let store = ExportDragFileStore(temporaryDirectory: temporaryDirectory)
 
         XCTAssertThrowsError(try store.materialize(
-            pdfData: Data("PDF".utf8),
+            data: Data("PDF".utf8),
             fileName: "Nested/Report.pdf"
         )) { error in
-            XCTAssertEqual(error as? PDFDragFileStoreError, .invalidFileName)
+            XCTAssertEqual(error as? ExportDragFileStoreError, .invalidFileName)
+            XCTAssertEqual(
+                error.localizedDescription,
+                "The document could not be prepared for dragging because its filename is invalid."
+            )
         }
 
         let unavailableDirectory = temporaryDirectory.appendingPathComponent("not-a-directory")
         try Data("blocked".utf8).write(to: unavailableDirectory)
-        let unavailableStore = PDFDragFileStore(temporaryDirectory: unavailableDirectory)
+        let unavailableStore = ExportDragFileStore(temporaryDirectory: unavailableDirectory)
         XCTAssertThrowsError(try unavailableStore.materialize(
-            pdfData: Data("PDF".utf8),
+            data: Data("PDF".utf8),
             fileName: "Report.pdf"
         ))
     }

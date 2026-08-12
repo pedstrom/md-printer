@@ -5,10 +5,11 @@ import SwiftUI
 @main
 struct MarkdownPrinterApp: App {
     @NSApplicationDelegateAdaptor(ApplicationLifecycleDelegate.self) private var applicationDelegate
+    @StateObject private var exportPreferences = ExportPreferences()
 
     var body: some Scene {
         Window("Markdown Printer", id: "welcome") {
-            WelcomeMarkdownWindow()
+            WelcomeMarkdownWindow(exportPreferences: exportPreferences)
         }
         .defaultSize(width: 760, height: 980)
         .commands {
@@ -23,10 +24,15 @@ struct MarkdownPrinterApp: App {
         DocumentGroup(viewing: MarkdownFileDocument.self) { configuration in
             MarkdownDocumentWindow(
                 fileDocument: configuration.document,
-                sourceURL: configuration.fileURL
+                sourceURL: configuration.fileURL,
+                exportPreferences: exportPreferences
             )
         }
         .defaultSize(width: 760, height: 980)
+
+        Settings {
+            ExportSettingsView(preferences: exportPreferences)
+        }
     }
 }
 
@@ -35,9 +41,14 @@ private struct WelcomeMarkdownWindow: View {
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.openDocument) private var openDocument
     @StateObject private var session = DocumentSession()
+    @ObservedObject var exportPreferences: ExportPreferences
 
     var body: some View {
-        MarkdownPrinterView(session: session, openFiles: openFiles)
+        MarkdownPrinterView(
+            session: session,
+            exportPreferences: exportPreferences,
+            openFiles: openFiles
+        )
     }
 
     private func openFiles(_ urls: [URL]) {
@@ -64,9 +75,15 @@ private struct MarkdownDocumentWindow: View {
     @Environment(\.openDocument) private var openDocument
     @StateObject private var session: DocumentSession
     private let sourceURL: URL?
+    @ObservedObject var exportPreferences: ExportPreferences
 
-    init(fileDocument: MarkdownFileDocument, sourceURL: URL?) {
+    init(
+        fileDocument: MarkdownFileDocument,
+        sourceURL: URL?,
+        exportPreferences: ExportPreferences
+    ) {
         self.sourceURL = sourceURL
+        self.exportPreferences = exportPreferences
         let session = DocumentSession()
         do {
             try session.apply(fileDocument.markdownDocument(sourceURL: sourceURL))
@@ -77,7 +94,11 @@ private struct MarkdownDocumentWindow: View {
     }
 
     var body: some View {
-        MarkdownPrinterView(session: session, openFiles: openFiles)
+        MarkdownPrinterView(
+            session: session,
+            exportPreferences: exportPreferences,
+            openFiles: openFiles
+        )
             .onAppear(perform: applyMarkdownWindowTitle)
     }
 

@@ -11,13 +11,16 @@ public final class DocumentSession: ObservableObject {
 
     public let renderer: MarkdownRenderer
     public let exporter: PDFExporter
+    public let wordExporter: WordExporter
 
     public init(
         renderer: MarkdownRenderer = MarkdownRenderer(),
-        exporter: PDFExporter? = nil
+        exporter: PDFExporter? = nil,
+        wordExporter: WordExporter? = nil
     ) {
         self.renderer = renderer
         self.exporter = exporter ?? PDFExporter(configuration: renderer.configuration)
+        self.wordExporter = wordExporter ?? WordExporter()
     }
 
     public var title: String {
@@ -29,8 +32,16 @@ public final class DocumentSession: ObservableObject {
     }
 
     public var suggestedPDFFileName: String {
+        suggestedFileName(for: .pdf)
+    }
+
+    public var suggestedWordFileName: String {
+        suggestedFileName(for: .word)
+    }
+
+    public func suggestedFileName(for format: ExportFormat) -> String {
         if let sourceURL = document?.sourceURL {
-            return sourceURL.deletingPathExtension().lastPathComponent + ".pdf"
+            return sourceURL.deletingPathExtension().lastPathComponent + ".\(format.pathExtension)"
         }
 
         let fallback = title
@@ -38,7 +49,14 @@ public final class DocumentSession: ObservableObject {
             .joined(separator: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let baseName = fallback.isEmpty ? "Untitled" : fallback
-        return baseName.lowercased().hasSuffix(".pdf") ? baseName : baseName + ".pdf"
+        if baseName.lowercased().hasSuffix(".\(format.pathExtension)") {
+            return baseName
+        }
+        let lowercasedBaseName = baseName.lowercased()
+        let nameWithoutExportExtension = ExportFormat.allCases.contains {
+            lowercasedBaseName.hasSuffix(".\($0.pathExtension)")
+        } ? (baseName as NSString).deletingPathExtension : baseName
+        return nameWithoutExportExtension + ".\(format.pathExtension)"
     }
 
     public func load(url: URL) {
@@ -83,9 +101,22 @@ public final class DocumentSession: ObservableObject {
         return renderedPDFData
     }
 
+    public func exportData(as format: ExportFormat) throws -> Data {
+        guard hasDocument else { throw DocumentSessionError.noDocument }
+        switch format {
+        case .pdf:
+            return try pdfData()
+        case .word:
+            return try wordExporter.wordData(from: renderedText)
+        }
+    }
+
     public func savePDF(to url: URL) throws {
-        guard let renderedPDFData else { throw DocumentSessionError.noDocument }
-        try renderedPDFData.write(to: url, options: .atomic)
+        try save(to: url, as: .pdf)
+    }
+
+    public func save(to url: URL, as format: ExportFormat) throws {
+        try exportData(as: format).write(to: url, options: .atomic)
     }
 
     public func printOperation() throws -> NSPrintOperation {

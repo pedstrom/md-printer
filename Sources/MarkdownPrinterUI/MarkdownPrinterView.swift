@@ -5,11 +5,17 @@ import UniformTypeIdentifiers
 
 public struct MarkdownPrinterView: View {
     @ObservedObject private var session: DocumentSession
+    @ObservedObject private var exportPreferences: ExportPreferences
     private let openFiles: ([URL]) -> Void
     @State private var isDropTargeted = false
 
-    public init(session: DocumentSession, openFiles: @escaping ([URL]) -> Void) {
+    public init(
+        session: DocumentSession,
+        exportPreferences: ExportPreferences,
+        openFiles: @escaping ([URL]) -> Void
+    ) {
         self.session = session
+        self.exportPreferences = exportPreferences
         self.openFiles = openFiles
     }
 
@@ -35,8 +41,8 @@ public struct MarkdownPrinterView: View {
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: acceptDrop)
         .toolbar {
             ToolbarItemGroup {
-                Button(action: savePDF) {
-                    Label("Save PDF", systemImage: "square.and.arrow.down")
+                Button(action: saveDocument) {
+                    Label("Save…", systemImage: "square.and.arrow.down")
                 }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!session.hasDocument)
@@ -57,9 +63,12 @@ public struct MarkdownPrinterView: View {
     private var preview: some View {
         Group {
             if let pdfData = session.renderedPDFData {
+                let exportFormat = exportPreferences.defaultFormat
                 PDFPreviewView(
                     data: pdfData,
-                    fileName: session.suggestedPDFFileName,
+                    exportFormat: exportFormat,
+                    fileName: session.suggestedFileName(for: exportFormat),
+                    exportData: { try session.exportData(as: exportFormat) },
                     openURL: openLink,
                     onDragError: { session.report(error: $0) }
                 )
@@ -115,15 +124,15 @@ public struct MarkdownPrinterView: View {
         openFiles(panel.urls)
     }
 
-    private func savePDF() {
-        let panel = NSSavePanel()
-        panel.title = "Save PDF"
-        panel.prompt = "Save"
-        panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = session.suggestedPDFFileName
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    private func saveDocument() {
+        let defaultFormat = exportPreferences.defaultFormat
+        let controller = ExportSavePanelController(
+            defaultFormat: defaultFormat,
+            suggestedFileName: session.suggestedFileName(for: defaultFormat)
+        )
+        guard let selection = controller.runModal() else { return }
         do {
-            try session.savePDF(to: url)
+            try session.save(to: selection.url, as: selection.format)
         } catch {
             session.report(error: error)
         }

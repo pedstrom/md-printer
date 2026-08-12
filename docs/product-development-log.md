@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-08-12 — Optional Microsoft Word export
+
+- Added editable Microsoft Word (`.docx`) export alongside the unchanged PDF preview and print path, preserving styled text, links, tables, Unicode, local images, and offline-image placeholders.
+- Added a standard Settings window whose persistent PDF-or-Word preference controls the initial Save format and the concrete file produced when dragging from the preview; PDF remains the default.
+- Replaced the fixed Save PDF action with a neutral Save dialog that can override the format for one export without changing Settings.
+- Generalized private drag-file materialization and cleanup for exact PDF or DOCX bytes, filenames, type information, permissions, cancellation, and accepted-drop retention.
+- Added focused regressions for DOCX package structure and editable content, exporter failures, session data and filenames, preferences, per-save overrides, and both drag formats.
+
 ## 2026-08-12 — Keep headings with following content
 
 - Marked every rendered H1–H6 paragraph with native heading metadata for pagination without changing its typography.
