@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-12 — Version 1.0.4
+
+- Released concrete PDF file-URL dragging for destinations such as Microsoft Teams as version 1.0.4, build 5.
+- Refreshed the public README download label and the signed, notarized GitHub release ZIP.
+
 ## 2026-08-12 — Compatible PDF attachments for Microsoft Teams
 
 - Replaced preview file-promise drags with concrete local PDF file URLs so destinations such as Microsoft Teams receive the same attachment form as a Finder drag.
