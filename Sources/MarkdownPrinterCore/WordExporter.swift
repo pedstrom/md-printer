@@ -74,6 +74,7 @@ public final class WordExporter {
         }
 
         let tables = tables(in: attributedText)
+        let quotes = quotes(in: attributedText)
         images.removeAll { image in tables.contains { NSIntersectionRange($0.range, image.range).length > 0 } }
         links.removeAll { link in tables.contains { NSIntersectionRange($0.range, link.range).length > 0 } }
         footnoteReferences.removeAll { reference in
@@ -89,13 +90,15 @@ public final class WordExporter {
             attributedText: attributedText
         )
 
-        guard !images.isEmpty || !links.isEmpty || !tables.isEmpty || !renderedFootnoteLinks.isEmpty else {
+        guard !images.isEmpty || !links.isEmpty || !tables.isEmpty
+                || !renderedFootnoteLinks.isEmpty || !quotes.isEmpty else {
             return PreparedWordDocument(
                 text: attributedText,
                 images: [],
                 links: [],
                 footnoteLinks: [],
-                tables: []
+                tables: [],
+                quotes: []
             )
         }
 
@@ -104,20 +107,61 @@ public final class WordExporter {
         let renderedTables = tables.map(render)
         let text = NSMutableAttributedString(attributedString: attributedText)
         let replacements = renderedImages.map {
-            WordReplacement(range: $0.range, token: $0.token, removedAttribute: .attachment)
+            WordReplacement(
+                range: $0.range,
+                token: $0.token,
+                removedAttribute: .attachment,
+                preservesParagraphStyle: false
+            )
         } + renderedLinks.map {
-            WordReplacement(range: $0.range, token: $0.token, removedAttribute: .link)
+            WordReplacement(
+                range: $0.range,
+                token: $0.token,
+                removedAttribute: .link,
+                preservesParagraphStyle: false
+            )
         } + renderedFootnoteLinks.map {
-            WordReplacement(range: $0.range, token: $0.token, removedAttribute: nil)
+            WordReplacement(
+                range: $0.range,
+                token: $0.token,
+                removedAttribute: nil,
+                preservesParagraphStyle: false
+            )
         } + renderedTables.map {
-            WordReplacement(range: $0.range, token: $0.token, removedAttribute: nil)
+            WordReplacement(
+                range: $0.range,
+                token: $0.token,
+                removedAttribute: nil,
+                preservesParagraphStyle: false
+            )
+        } + quotes.map {
+            WordReplacement(
+                range: $0.range,
+                token: $0.token,
+                removedAttribute: nil,
+                preservesParagraphStyle: true
+            )
         }
-        for replacement in replacements.sorted(by: { $0.range.location > $1.range.location }) {
-            var attributes = text.attributes(at: replacement.range.location, effectiveRange: nil)
+        for replacement in replacements.sorted(by: {
+            if $0.range.location != $1.range.location {
+                return $0.range.location > $1.range.location
+            }
+            return $0.range.length > $1.range.length
+        }) {
+            var attributes = replacement.preservesParagraphStyle
+                ? attributedText.attributes(at: replacement.range.location, effectiveRange: nil)
+                : text.attributes(at: replacement.range.location, effectiveRange: nil)
             if let removedAttribute = replacement.removedAttribute {
                 attributes.removeValue(forKey: removedAttribute)
             }
-            attributes.removeValue(forKey: .paragraphStyle)
+            if replacement.preservesParagraphStyle {
+                attributes.removeValue(forKey: .attachment)
+                attributes.removeValue(forKey: .link)
+                attributes.removeValue(forKey: .markdownFootnoteReference)
+                attributes.removeValue(forKey: .markdownFootnoteDefinition)
+            } else {
+                attributes.removeValue(forKey: .paragraphStyle)
+            }
             text.replaceCharacters(in: replacement.range, with: replacement.token)
             text.addAttributes(
                 attributes,
@@ -129,7 +173,8 @@ public final class WordExporter {
             images: renderedImages,
             links: renderedLinks,
             footnoteLinks: renderedFootnoteLinks,
-            tables: renderedTables
+            tables: renderedTables,
+            quotes: quotes
         )
     }
 
@@ -168,6 +213,53 @@ public final class WordExporter {
                 cells: cells
             )
         }
+    }
+
+    private func quotes(in attributedText: NSAttributedString) -> [RenderedWordQuote] {
+        var quotes: [RenderedWordQuote] = []
+        attributedText.enumerateAttribute(
+            .paragraphStyle,
+            in: NSRange(location: 0, length: attributedText.length)
+        ) { value, range, _ in
+            guard let style = value as? NSParagraphStyle,
+                  style.textBlocks.contains(where: { block in
+                      !(block is NSTextTableBlock)
+                          && block.width(for: .border, edge: .minX) > 0
+                  }) else { return }
+
+            quotes.append(RenderedWordQuote(
+                token: Self.quoteToken(at: quotes.count),
+                range: NSRange(location: range.location, length: 0)
+            ))
+            let string = attributedText.string as NSString
+            var searchLocation = range.location
+            while searchLocation < NSMaxRange(range),
+                  let newlineRange = Self.nextNewline(
+                      in: string,
+                      range: NSRange(
+                          location: searchLocation,
+                          length: NSMaxRange(range) - searchLocation
+                      )
+                  ) {
+                let nextLineLocation = NSMaxRange(newlineRange)
+                guard nextLineLocation < NSMaxRange(range) else { break }
+                quotes.append(RenderedWordQuote(
+                    token: Self.quoteToken(at: quotes.count),
+                    range: NSRange(location: nextLineLocation, length: 0)
+                ))
+                searchLocation = nextLineLocation
+            }
+        }
+        return quotes
+    }
+
+    private static func nextNewline(in string: NSString, range: NSRange) -> NSRange? {
+        let result = string.range(of: "\n", options: [], range: range)
+        return result.location == NSNotFound ? nil : result
+    }
+
+    private static func quoteToken(at index: Int) -> String {
+        "MDPRINTERQUOTE\(index)\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
     }
 
     private static func trimmingTrailingNewline(from range: NSRange, in string: String) -> NSRange {
@@ -325,7 +417,7 @@ public final class WordExporter {
 
         for (offset, link) in document.links.enumerated() {
             let relationshipID = "rIdMarkdownPrinterLink\(offset + 1)"
-            guard replaceTextElement(
+            guard replaceRunElement(
                 containing: link.token,
                 with: "<w:hyperlink r:id=\"\(relationshipID)\">\(link.runXML)</w:hyperlink>",
                 in: &documentXML
@@ -345,7 +437,7 @@ public final class WordExporter {
             } ?? link.runXML
             let bookmarkID = 2_000 + offset
             let replacement = "<w:bookmarkStart w:id=\"\(bookmarkID)\" w:name=\"\(link.bookmarkAnchor)\"/>\(content)<w:bookmarkEnd w:id=\"\(bookmarkID)\"/>"
-            guard replaceTextElement(
+            guard replaceRunElement(
                 containing: link.token,
                 with: replacement,
                 in: &documentXML
@@ -360,6 +452,12 @@ public final class WordExporter {
                 with: table.tableXML,
                 in: &documentXML
             ) else {
+                throw WordExporterError.packagingFailed
+            }
+        }
+
+        for quote in document.quotes {
+            guard styleQuoteParagraph(containing: quote.token, in: &documentXML) else {
                 throw WordExporterError.packagingFailed
             }
         }
@@ -402,6 +500,20 @@ public final class WordExporter {
         return true
     }
 
+    private func replaceRunElement(
+        containing token: String,
+        with replacement: String,
+        in xml: inout String
+    ) -> Bool {
+        guard let tokenRange = xml.range(of: token),
+              let start = xml[..<tokenRange.lowerBound].range(of: "<w:r>", options: .backwards),
+              let end = xml[tokenRange.upperBound...].range(of: "</w:r>") else {
+            return false
+        }
+        xml.replaceSubrange(start.lowerBound..<end.upperBound, with: replacement)
+        return true
+    }
+
     private func replaceParagraph(
         containing token: String,
         with replacement: String,
@@ -413,6 +525,36 @@ public final class WordExporter {
             return false
         }
         xml.replaceSubrange(start.lowerBound..<end.upperBound, with: replacement)
+        return true
+    }
+
+    private func styleQuoteParagraph(containing token: String, in xml: inout String) -> Bool {
+        guard let tokenRange = xml.range(of: token),
+              let start = xml[..<tokenRange.lowerBound].range(of: "<w:p>", options: .backwards),
+              let end = xml[tokenRange.upperBound...].range(of: "</w:p>") else {
+            return false
+        }
+
+        var paragraph = String(xml[start.lowerBound..<end.upperBound])
+        guard paragraph.contains(token) else { return false }
+        paragraph = paragraph.replacingOccurrences(of: token, with: "")
+        let border = "<w:pBdr><w:left w:val=\"single\" w:sz=\"12\" w:space=\"8\" w:color=\"7F7F7F\"/></w:pBdr>"
+        let indent = "<w:ind w:left=\"360\"/>"
+        if let propertiesStart = paragraph.range(of: "<w:pPr>"),
+           paragraph.range(of: "</w:pPr>") != nil {
+            paragraph.insert(contentsOf: border, at: propertiesStart.upperBound)
+            guard let updatedPropertiesEnd = paragraph.range(of: "</w:pPr>") else {
+                return false
+            }
+            paragraph.insert(contentsOf: indent, at: updatedPropertiesEnd.lowerBound)
+        } else {
+            guard let openingParagraph = paragraph.range(of: "<w:p>") else { return false }
+            paragraph.insert(
+                contentsOf: "<w:pPr>\(border)\(indent)</w:pPr>",
+                at: openingParagraph.upperBound
+            )
+        }
+        xml.replaceSubrange(start.lowerBound..<end.upperBound, with: paragraph)
         return true
     }
 
@@ -521,9 +663,11 @@ private struct PreparedWordDocument {
     let links: [RenderedWordLink]
     let footnoteLinks: [RenderedWordFootnoteLink]
     let tables: [RenderedWordTable]
+    let quotes: [RenderedWordQuote]
 
     var requiresPackaging: Bool {
-        !images.isEmpty || !links.isEmpty || !footnoteLinks.isEmpty || !tables.isEmpty
+        !images.isEmpty || !links.isEmpty || !footnoteLinks.isEmpty
+            || !tables.isEmpty || !quotes.isEmpty
     }
 }
 
@@ -531,6 +675,12 @@ private struct WordReplacement {
     let range: NSRange
     let token: String
     let removedAttribute: NSAttributedString.Key?
+    let preservesParagraphStyle: Bool
+}
+
+private struct RenderedWordQuote {
+    let token: String
+    let range: NSRange
 }
 
 private struct WordImage {

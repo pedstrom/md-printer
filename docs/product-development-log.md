@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-08-13 — Word blockquote fidelity
+
+- Preserved Markdown blockquotes as editable Word paragraphs while adding the same visual hierarchy used by PDF: a thin gray left rule, modest left indent, and italic text.
+- Applied the Word-specific paragraph treatment to every line of a multi-line quote without changing PDF preview, print, or pagination behavior.
+- Added DOCX regression coverage for multi-line quotes containing bold text, external links, and linked footnote references, plus a nearby code block to prevent false-positive quote styling.
+
 ## 2026-08-12 — Linked, print-friendly footnotes
 
 - Added labeled Markdown footnotes with numbering by first citation, compact superscript references, repeated-reference reuse, and small-format definitions collected after the document body.

@@ -127,6 +127,59 @@ final class WordExporterTests: XCTestCase {
         XCTAssertTrue(decoded.string.contains("Supporting note."))
     }
 
+    func testWordBlockquotesPreserveBorderIndentItalicAndInlineLinks() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let rendered = MarkdownRenderer().render(markdown: """
+        > First quoted line with **bold** text.
+        > Second quoted line with [a link](https://example.com) and note[^source].
+
+        ```swift
+        let unquoted = true
+        ```
+
+        [^source]: Supporting note.
+        """)
+        let data = try WordExporter().wordData(from: rendered)
+        let outputURL = directory.appendingPathComponent("Blockquotes.docx")
+        try data.write(to: outputURL)
+
+        let documentXML = try unzip(arguments: ["-p", outputURL.path, "word/document.xml"])
+        let relationshipsXML = try unzip(
+            arguments: ["-p", outputURL.path, "word/_rels/document.xml.rels"]
+        )
+        XCTAssertEqual(documentXML.components(separatedBy: "<w:pBdr>").count - 1, 2)
+        XCTAssertEqual(documentXML.components(separatedBy: "<w:ind w:left=\"360\"/>").count - 1, 2)
+        XCTAssertEqual(
+            documentXML.components(
+                separatedBy: "<w:left w:val=\"single\" w:sz=\"12\" w:space=\"8\" w:color=\"7F7F7F\"/>"
+            ).count - 1,
+            2
+        )
+        XCTAssertTrue(documentXML.contains("<w:i"))
+        XCTAssertTrue(documentXML.contains("<w:b"))
+        XCTAssertTrue(documentXML.contains("<w:hyperlink"))
+        XCTAssertTrue(documentXML.contains("w:anchor=\"MarkdownPrinterFootnoteDefinition1\""))
+        XCTAssertFalse(documentXML.contains("</w:rPr><w:hyperlink"))
+        XCTAssertTrue(relationshipsXML.contains("https://example.com"))
+        XCTAssertFalse(documentXML.contains("MDPRINTERQUOTE"))
+
+        let decoded = try NSAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
+            documentAttributes: nil
+        )
+        XCTAssertTrue(
+            decoded.string.contains("First quoted line with bold text."),
+            decoded.string.debugDescription
+        )
+        XCTAssertTrue(
+            decoded.string.contains("Second quoted line with a link and note"),
+            decoded.string.debugDescription
+        )
+        XCTAssertTrue(decoded.string.contains("let unquoted = true"))
+    }
+
     func testWordExporterReportsImageAndPackagingFailuresReadably() throws {
         let missingImage = NSTextAttachment()
         XCTAssertThrowsError(try WordExporter().wordData(from: NSAttributedString(attachment: missingImage))) {
