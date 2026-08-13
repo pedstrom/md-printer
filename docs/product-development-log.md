@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-13 — Version 1.1.0
+
+- Promoted heading-aware pagination, optional editable Word export, linked footnotes, and Word blockquote fidelity together as version 1.1.0, build 6.
+- Updated the public download label and release verification metadata for the signed, notarized GitHub release ZIP.
+
 ## 2026-08-13 — Word blockquote fidelity
 
 - Preserved Markdown blockquotes as editable Word paragraphs while adding the same visual hierarchy used by PDF: a thin gray left rule, modest left indent, and italic text.
