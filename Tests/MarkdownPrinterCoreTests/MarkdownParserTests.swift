@@ -75,4 +75,31 @@ final class MarkdownParserTests: XCTestCase {
             .list(items: [MarkdownListItem(content: [.text("yes")])], ordered: true, start: 0)
         ])
     }
+
+    func testFootnoteDefinitionsAreBlocksWithIndentedContinuations() {
+        let markdown = """
+        Claim[^evidence].
+
+        [^evidence]: First line with **emphasis**.
+            Continued line.
+
+            Final paragraph.
+
+        Afterward.
+        """
+        XCTAssertEqual(parser.parse(markdown), [
+            .paragraph([.text("Claim"), .footnoteReference(label: "evidence"), .text(".")]),
+            .footnoteDefinition(label: "evidence", content: [
+                .text("First line with "),
+                .strong([.text("emphasis")]),
+                .text("."),
+                .lineBreak,
+                .text("Continued line."),
+                .lineBreak,
+                .lineBreak,
+                .text("Final paragraph.")
+            ]),
+            .paragraph([.text("Afterward.")])
+        ])
+    }
 }

@@ -41,6 +41,21 @@ final class InlineParserTests: XCTestCase {
         )
     }
 
+    func testFootnoteReferencesBecomeDedicatedInlineNodes() {
+        XCTAssertEqual(
+            parser.parse("Claim[^source] and again[^source]."),
+            [
+                .text("Claim"),
+                .footnoteReference(label: "source"),
+                .text(" and again"),
+                .footnoteReference(label: "source"),
+                .text(".")
+            ]
+        )
+        XCTAssertEqual(parser.parse("escaped \\[^source]"), [.text("escaped [^source]")])
+        XCTAssertEqual(parser.parse("empty [^]"), [.text("empty [^]")])
+    }
+
     func testMalformedDelimitersRemainText() {
         let source = "**open *still _open `tick [link](missing"
         XCTAssertEqual(plainText(from: parser.parse(source)), source)

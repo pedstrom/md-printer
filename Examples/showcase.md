@@ -31,6 +31,12 @@ let pdf = try PDFExporter().pdfData(from: renderer.render(document: document))
 
 Links remain available in the PDF, including [OpenAI](https://openai.com).
 
+## Footnotes
+
+Footnote references become compact superscript links instead of exposing their Markdown markers.[^sample]
+
+[^sample]: Footnote text is collected here in a smaller, print-friendly style with a link back to its first reference.
+
 ### Missing image behavior
 
 ![A deliberately missing sample image](missing-showcase-image.png)

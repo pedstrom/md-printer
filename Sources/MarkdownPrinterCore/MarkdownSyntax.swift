@@ -8,6 +8,7 @@ public indirect enum InlineNode: Equatable, Sendable {
     case strikethrough([InlineNode])
     case code(String)
     case link(children: [InlineNode], destination: String)
+    case footnoteReference(label: String)
     case image(alt: String, source: String)
     case lineBreak
 }
@@ -35,6 +36,7 @@ public enum MarkdownBlock: Equatable, Sendable {
     case list(items: [MarkdownListItem], ordered: Bool, start: Int)
     case codeBlock(language: String?, code: String)
     case thematicBreak
+    case footnoteDefinition(label: String, content: [InlineNode])
     case table(
         headers: [[InlineNode]],
         alignments: [TableAlignment],

@@ -31,6 +31,13 @@ public struct InlineParser: Sendable {
                 continue
             }
 
+            if let parsed = parseFootnoteReference(in: source, at: index) {
+                flushText()
+                nodes.append(.footnoteReference(label: parsed.label))
+                index = parsed.endIndex
+                continue
+            }
+
             if let parsed = parseImage(in: source, at: index) {
                 flushText()
                 nodes.append(.image(alt: parsed.label, source: parsed.destination))
@@ -154,6 +161,19 @@ public struct InlineParser: Sendable {
     ) -> (label: String, destination: String, endIndex: String.Index)? {
         guard source[index...].hasPrefix("![") else { return nil }
         return parseLabelAndDestination(in: source, at: source.index(after: index))
+    }
+
+    private func parseFootnoteReference(
+        in source: String,
+        at index: String.Index
+    ) -> (label: String, endIndex: String.Index)? {
+        guard source[index...].hasPrefix("[^") else { return nil }
+        let labelStart = source.index(index, offsetBy: 2)
+        guard labelStart < source.endIndex,
+              let labelEnd = source[labelStart...].firstIndex(of: "]") else { return nil }
+        let label = source[labelStart..<labelEnd].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else { return nil }
+        return (label, source.index(after: labelEnd))
     }
 
     private func parseLink(

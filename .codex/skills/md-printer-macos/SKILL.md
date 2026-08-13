@@ -16,7 +16,7 @@ Use this skill for product or implementation work in this repository.
 - Save the same PDF bytes shown in the preview. Print that complete PDF page at its original scale without adding a second set of margins; the generated page already contains its print-safe margins.
 - Offer editable Microsoft Word export as an optional local DOCX path. Keep PDF as the default, provide a standard Settings preference shared by Save and preview dragging, and allow a one-save format override without changing that preference.
 - Format prose in Avenir Next with deliberate heading, bold, italic, and bold-italic variants. Use a true monospaced system font for inline and fenced code, with visible internal padding inside fenced code blocks.
-- Support headings 1–6, paragraphs, bold, emphasis, `<u>` underline, strikethrough, inline/fenced code, links, quotes, ordered/unordered/task lists, horizontal rules, tables, and local embedded images. Render quotations with a native continuous left border that spans every wrapped line in the quoted block.
+- Support headings 1–6, paragraphs, bold, emphasis, `<u>` underline, strikethrough, inline/fenced code, links, linked footnotes, quotes, ordered/unordered/task lists, horizontal rules, tables, and local embedded images. Render footnote references as numbered superscripts and collect their definitions in a compact end-note section. Render quotations with a native continuous left border that spans every wrapped line in the quoted block.
 - Keep remote images offline and visible as placeholders. Resolve local relative images against the Markdown file's folder and preserve aspect ratio within the printable area.
 - Use US Letter pages with print-safe margins unless a later product decision adds configurable paper sizes.
 

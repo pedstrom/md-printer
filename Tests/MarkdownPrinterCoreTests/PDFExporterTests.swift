@@ -239,6 +239,49 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertTrue(annotations.contains(where: { $0.url == expectedURL }))
     }
 
+    func testPDFFootnoteReferencesAndDefinitionsLinkInBothDirections() throws {
+        let filler = (1...80)
+            .map { "Filler paragraph \($0) keeps the notes after the body." }
+            .joined(separator: "\n\n")
+        let markdown = """
+        First claim[^source] and repeated[^source].
+
+        \(filler)
+
+        [^source]: Supporting footnote text.
+        """
+        let text = MarkdownRenderer().render(markdown: markdown)
+        let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))
+        XCTAssertGreaterThan(document.pageCount, 1)
+
+        var links: [(pageIndex: Int, action: PDFActionGoTo)] = []
+        for pageIndex in 0..<document.pageCount {
+            for annotation in try XCTUnwrap(document.page(at: pageIndex)).annotations {
+                if let action = annotation.action as? PDFActionGoTo {
+                    links.append((pageIndex, action))
+                }
+            }
+        }
+
+        XCTAssertEqual(links.count, 3)
+        XCTAssertEqual(links.filter { $0.pageIndex == 0 }.count, 2)
+        XCTAssertEqual(links.filter { $0.pageIndex == document.pageCount - 1 }.count, 1)
+        XCTAssertTrue(links.filter { $0.pageIndex == 0 }.allSatisfy {
+            $0.action.destination.page.map(document.index(for:)) == document.pageCount - 1
+        })
+        let backLink = try XCTUnwrap(links.first { $0.pageIndex == document.pageCount - 1 })
+        XCTAssertEqual(
+            document.index(for: try XCTUnwrap(backLink.action.destination.page)),
+            0
+        )
+
+        let allText = (0..<document.pageCount)
+            .compactMap { document.page(at: $0)?.string }
+            .joined(separator: "\n")
+        XCTAssertFalse(allText.contains("[^source]"))
+        XCTAssertTrue(allText.contains("Supporting footnote text."))
+    }
+
     func testFencedCodeBlockRendersWithoutStallingPagination() throws {
         let text = MarkdownRenderer().render(markdown: "```swift\nlet answer = 42\nprint(answer)\n```")
         let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))

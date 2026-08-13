@@ -44,7 +44,11 @@ public final class PDFExporter {
         context.closePDF()
 
         guard data.length > 0 else { throw PDFExporterError.renderingFailed }
-        return data as Data
+        return try addingFootnoteNavigation(
+            to: data as Data,
+            attributedText: attributedText,
+            pages: pages
+        )
     }
 
     public func write(_ attributedText: NSAttributedString, to url: URL) throws {
@@ -283,6 +287,107 @@ public final class PDFExporter {
         label.draw(in: CGRect(x: 0, y: footerTop + 16, width: configuration.pageSize.width, height: 14))
     }
 
+    private func addingFootnoteNavigation(
+        to data: Data,
+        attributedText: NSAttributedString,
+        pages: [TextPage]
+    ) throws -> Data {
+        let references = footnoteLocations(
+            for: .markdownFootnoteReference,
+            in: attributedText,
+            pages: pages
+        )
+        let definitions = footnoteLocations(
+            for: .markdownFootnoteDefinition,
+            in: attributedText,
+            pages: pages
+        )
+        guard !references.isEmpty, !definitions.isEmpty else { return data }
+        guard let document = PDFDocument(data: data) else { throw PDFExporterError.renderingFailed }
+
+        let definitionByLabel = Dictionary(
+            uniqueKeysWithValues: definitions.map { ($0.label, $0) }
+        )
+        let firstReferenceByLabel = Dictionary(
+            references.map { ($0.label, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for reference in references {
+            guard let definition = definitionByLabel[reference.label] else { continue }
+            addFootnoteLink(from: reference, to: definition, in: document)
+        }
+        for definition in definitions {
+            guard let reference = firstReferenceByLabel[definition.label] else { continue }
+            addFootnoteLink(from: definition, to: reference, in: document)
+        }
+
+        guard let linkedData = document.dataRepresentation() else {
+            throw PDFExporterError.renderingFailed
+        }
+        return linkedData
+    }
+
+    private func footnoteLocations(
+        for key: NSAttributedString.Key,
+        in attributedText: NSAttributedString,
+        pages: [TextPage]
+    ) -> [FootnoteLocation] {
+        var locations: [FootnoteLocation] = []
+        for (pageIndex, page) in pages.enumerated() {
+            page.layoutManager.ensureLayout(for: page.textContainer)
+            let characterRange = page.layoutManager.characterRange(
+                forGlyphRange: page.glyphRange,
+                actualGlyphRange: nil
+            )
+            guard characterRange.length > 0 else { continue }
+            attributedText.enumerateAttribute(key, in: characterRange) { value, range, _ in
+                guard let label = value as? String else { return }
+                let visibleCharacters = NSIntersectionRange(range, characterRange)
+                guard visibleCharacters.length > 0 else { return }
+                let glyphs = page.layoutManager.glyphRange(
+                    forCharacterRange: visibleCharacters,
+                    actualCharacterRange: nil
+                )
+                let visibleGlyphs = NSIntersectionRange(glyphs, page.glyphRange)
+                guard visibleGlyphs.length > 0 else { return }
+                let textBounds = page.layoutManager.boundingRect(
+                    forGlyphRange: visibleGlyphs,
+                    in: page.textContainer
+                )
+                let pdfBounds = CGRect(
+                    x: configuration.pageMargins.left + textBounds.minX,
+                    y: configuration.pageSize.height - configuration.pageMargins.top - textBounds.maxY,
+                    width: textBounds.width,
+                    height: textBounds.height
+                ).insetBy(dx: -1, dy: -1)
+                locations.append(FootnoteLocation(
+                    label: label,
+                    pageIndex: pageIndex,
+                    bounds: pdfBounds
+                ))
+            }
+        }
+        return locations
+    }
+
+    private func addFootnoteLink(
+        from source: FootnoteLocation,
+        to target: FootnoteLocation,
+        in document: PDFDocument
+    ) {
+        guard let sourcePage = document.page(at: source.pageIndex),
+              let targetPage = document.page(at: target.pageIndex) else { return }
+        let annotation = PDFAnnotation(bounds: source.bounds, forType: .link, withProperties: nil)
+        let border = PDFBorder()
+        border.lineWidth = 0
+        annotation.border = border
+        annotation.action = PDFActionGoTo(destination: PDFDestination(
+            page: targetPage,
+            at: CGPoint(x: target.bounds.minX, y: target.bounds.maxY + 4)
+        ))
+        sourcePage.addAnnotation(annotation)
+    }
+
     private func printInfo() -> NSPrintInfo {
         let info = NSPrintInfo()
         info.paperSize = configuration.pageSize
@@ -360,6 +465,12 @@ private struct VisualRow {
     let pageIndex: Int
     let minY: CGFloat
     var isHeading: Bool
+}
+
+private struct FootnoteLocation {
+    let label: String
+    let pageIndex: Int
+    let bounds: CGRect
 }
 
 public enum PDFExporterError: LocalizedError, Equatable {

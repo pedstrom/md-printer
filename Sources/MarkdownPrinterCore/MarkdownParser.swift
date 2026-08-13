@@ -38,6 +38,31 @@ public struct MarkdownParser: Sendable {
                 continue
             }
 
+            if let definition = footnoteDefinition(in: line) {
+                var contentLines = [definition.text]
+                index += 1
+                while index < lines.count {
+                    if let continuation = footnoteContinuation(in: lines[index]) {
+                        contentLines.append(continuation)
+                        index += 1
+                        continue
+                    }
+                    if lines[index].trimmingCharacters(in: .whitespaces).isEmpty,
+                       index + 1 < lines.count,
+                       footnoteContinuation(in: lines[index + 1]) != nil {
+                        contentLines.append("")
+                        index += 1
+                        continue
+                    }
+                    break
+                }
+                blocks.append(.footnoteDefinition(
+                    label: definition.label,
+                    content: inlineParser.parse(contentLines.joined(separator: "\n"))
+                ))
+                continue
+            }
+
             if let heading = heading(in: line) {
                 blocks.append(.heading(level: heading.level, content: inlineParser.parse(heading.text)))
                 index += 1
@@ -115,6 +140,29 @@ public struct MarkdownParser: Sendable {
             || isThematicBreak(line)
             || line.trimmingCharacters(in: .whitespaces).hasPrefix(">")
             || listItem(in: line) != nil
+            || footnoteDefinition(in: line) != nil
+    }
+
+    private func footnoteDefinition(in line: String) -> (label: String, text: String)? {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("[^") else { return nil }
+        let labelStart = trimmed.index(trimmed.startIndex, offsetBy: 2)
+        guard let labelEnd = trimmed[labelStart...].firstIndex(of: "]") else { return nil }
+        let colon = trimmed.index(after: labelEnd)
+        guard colon < trimmed.endIndex, trimmed[colon] == ":" else { return nil }
+        let label = trimmed[labelStart..<labelEnd].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else { return nil }
+        let textStart = trimmed.index(after: colon)
+        return (
+            label,
+            String(trimmed[textStart...]).trimmingCharacters(in: .whitespaces)
+        )
+    }
+
+    private func footnoteContinuation(in line: String) -> String? {
+        if line.hasPrefix("\t") { return String(line.dropFirst()) }
+        guard line.hasPrefix("    ") else { return nil }
+        return String(line.dropFirst(4))
     }
 
     private func fenceMarker(in line: String) -> String? {

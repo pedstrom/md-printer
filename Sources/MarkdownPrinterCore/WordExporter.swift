@@ -31,6 +31,8 @@ public final class WordExporter {
     private func prepareDocument(_ attributedText: NSAttributedString) throws -> PreparedWordDocument {
         var images: [WordImage] = []
         var links: [WordLink] = []
+        var footnoteReferences: [(label: String, range: NSRange)] = []
+        var footnoteDefinitions: [(label: String, range: NSRange)] = []
         attributedText.enumerateAttribute(
             .attachment,
             in: NSRange(location: 0, length: attributedText.length)
@@ -56,12 +58,45 @@ public final class WordExporter {
             ))
         }
 
+        attributedText.enumerateAttribute(
+            .markdownFootnoteReference,
+            in: NSRange(location: 0, length: attributedText.length)
+        ) { value, range, _ in
+            guard let label = value as? String else { return }
+            footnoteReferences.append((label, range))
+        }
+        attributedText.enumerateAttribute(
+            .markdownFootnoteDefinition,
+            in: NSRange(location: 0, length: attributedText.length)
+        ) { value, range, _ in
+            guard let label = value as? String else { return }
+            footnoteDefinitions.append((label, range))
+        }
+
         let tables = tables(in: attributedText)
         images.removeAll { image in tables.contains { NSIntersectionRange($0.range, image.range).length > 0 } }
         links.removeAll { link in tables.contains { NSIntersectionRange($0.range, link.range).length > 0 } }
+        footnoteReferences.removeAll { reference in
+            tables.contains { NSIntersectionRange($0.range, reference.range).length > 0 }
+        }
+        footnoteDefinitions.removeAll { definition in
+            tables.contains { NSIntersectionRange($0.range, definition.range).length > 0 }
+        }
 
-        guard !images.isEmpty || !links.isEmpty || !tables.isEmpty else {
-            return PreparedWordDocument(text: attributedText, images: [], links: [], tables: [])
+        let renderedFootnoteLinks = renderFootnoteLinks(
+            references: footnoteReferences,
+            definitions: footnoteDefinitions,
+            attributedText: attributedText
+        )
+
+        guard !images.isEmpty || !links.isEmpty || !tables.isEmpty || !renderedFootnoteLinks.isEmpty else {
+            return PreparedWordDocument(
+                text: attributedText,
+                images: [],
+                links: [],
+                footnoteLinks: [],
+                tables: []
+            )
         }
 
         let renderedImages = try images.map { try render($0) }
@@ -72,6 +107,8 @@ public final class WordExporter {
             WordReplacement(range: $0.range, token: $0.token, removedAttribute: .attachment)
         } + renderedLinks.map {
             WordReplacement(range: $0.range, token: $0.token, removedAttribute: .link)
+        } + renderedFootnoteLinks.map {
+            WordReplacement(range: $0.range, token: $0.token, removedAttribute: nil)
         } + renderedTables.map {
             WordReplacement(range: $0.range, token: $0.token, removedAttribute: nil)
         }
@@ -91,6 +128,7 @@ public final class WordExporter {
             text: text,
             images: renderedImages,
             links: renderedLinks,
+            footnoteLinks: renderedFootnoteLinks,
             tables: renderedTables
         )
     }
@@ -180,6 +218,45 @@ public final class WordExporter {
         )
     }
 
+    private func renderFootnoteLinks(
+        references: [(label: String, range: NSRange)],
+        definitions: [(label: String, range: NSRange)],
+        attributedText: NSAttributedString
+    ) -> [RenderedWordFootnoteLink] {
+        let definitionAnchors = Dictionary(uniqueKeysWithValues: definitions.enumerated().map {
+            ($0.element.label, "MarkdownPrinterFootnoteDefinition\($0.offset + 1)")
+        })
+        let referenceAnchors = references.enumerated().map {
+            "MarkdownPrinterFootnoteReference\($0.offset + 1)"
+        }
+        let firstReferenceAnchorByLabel = Dictionary(
+            references.enumerated().map { ($0.element.label, referenceAnchors[$0.offset]) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        let renderedReferences = references.enumerated().compactMap { offset, reference in
+            definitionAnchors[reference.label].map { definitionAnchor in
+                RenderedWordFootnoteLink(
+                    token: "MDPRINTERFOOTNOTE\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))",
+                    range: reference.range,
+                    bookmarkAnchor: referenceAnchors[offset],
+                    targetAnchor: definitionAnchor,
+                    runXML: runXML(for: attributedText.attributedSubstring(from: reference.range))
+                )
+            }
+        }
+        let renderedDefinitions = definitions.enumerated().map { offset, definition in
+            RenderedWordFootnoteLink(
+                token: "MDPRINTERFOOTNOTE\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))",
+                range: definition.range,
+                bookmarkAnchor: definitionAnchors[definition.label]!,
+                targetAnchor: firstReferenceAnchorByLabel[definition.label],
+                runXML: runXML(for: attributedText.attributedSubstring(from: definition.range))
+            )
+        }
+        return renderedReferences + renderedDefinitions
+    }
+
     private func packaging(_ document: PreparedWordDocument, nativeData: Data) throws -> Data {
         let temporaryDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("MarkdownPrinter-Word-\(UUID().uuidString)", isDirectory: true)
@@ -260,6 +337,21 @@ public final class WordExporter {
                 before: "</Relationships>",
                 in: relationshipsXML
             )
+        }
+
+        for (offset, link) in document.footnoteLinks.enumerated() {
+            let content = link.targetAnchor.map {
+                "<w:hyperlink w:anchor=\"\($0)\">\(link.runXML)</w:hyperlink>"
+            } ?? link.runXML
+            let bookmarkID = 2_000 + offset
+            let replacement = "<w:bookmarkStart w:id=\"\(bookmarkID)\" w:name=\"\(link.bookmarkAnchor)\"/>\(content)<w:bookmarkEnd w:id=\"\(bookmarkID)\"/>"
+            guard replaceTextElement(
+                containing: link.token,
+                with: replacement,
+                in: &documentXML
+            ) else {
+                throw WordExporterError.packagingFailed
+            }
         }
 
         for table in document.tables {
@@ -357,6 +449,9 @@ public final class WordExporter {
             }
             if attributes[.underlineStyle] != nil { properties += "<w:u w:val=\"single\"/>" }
             if attributes[.strikethroughStyle] != nil { properties += "<w:strike/>" }
+            if let baselineOffset = attributes[.baselineOffset] as? NSNumber {
+                properties += "<w:position w:val=\"\(Int(baselineOffset.doubleValue * 2))\"/>"
+            }
             xml += "<w:r><w:rPr>\(properties)</w:rPr><w:t xml:space=\"preserve\">\(Self.escapeXML(value))</w:t></w:r>"
         }
         return xml
@@ -424,10 +519,11 @@ private struct PreparedWordDocument {
     let text: NSAttributedString
     let images: [RenderedWordImage]
     let links: [RenderedWordLink]
+    let footnoteLinks: [RenderedWordFootnoteLink]
     let tables: [RenderedWordTable]
 
     var requiresPackaging: Bool {
-        !images.isEmpty || !links.isEmpty || !tables.isEmpty
+        !images.isEmpty || !links.isEmpty || !footnoteLinks.isEmpty || !tables.isEmpty
     }
 }
 
@@ -462,6 +558,14 @@ private struct RenderedWordLink {
     let token: String
     let range: NSRange
     let destination: String
+    let runXML: String
+}
+
+private struct RenderedWordFootnoteLink {
+    let token: String
+    let range: NSRange
+    let bookmarkAnchor: String
+    let targetAnchor: String?
     let runXML: String
 }
 

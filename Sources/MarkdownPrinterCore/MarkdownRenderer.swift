@@ -24,11 +24,20 @@ public final class MarkdownRenderer {
 
     public func render(blocks: [MarkdownBlock], baseURL: URL? = nil) -> NSAttributedString {
         let result = NSMutableAttributedString()
-        for (index, block) in blocks.enumerated() {
-            if index > 0, usesBlankLine(after: blocks[index - 1], before: block) {
+        let footnotes = FootnoteCatalog(blocks: blocks)
+        let bodyBlocks = blocks.filter { block in
+            if case .footnoteDefinition = block { return false }
+            return true
+        }
+        for (index, block) in bodyBlocks.enumerated() {
+            if index > 0, usesBlankLine(after: bodyBlocks[index - 1], before: block) {
                 result.append(NSAttributedString(string: "\n"))
             }
-            append(block: block, to: result, baseURL: baseURL)
+            append(block: block, to: result, baseURL: baseURL, footnotes: footnotes)
+        }
+        if !footnotes.entries.isEmpty {
+            if !bodyBlocks.isEmpty { result.append(NSAttributedString(string: "\n")) }
+            appendFootnotes(footnotes, to: result, baseURL: baseURL)
         }
         return result
     }
@@ -43,19 +52,24 @@ public final class MarkdownRenderer {
         return true
     }
 
-    private func append(block: MarkdownBlock, to result: NSMutableAttributedString, baseURL: URL?) {
+    private func append(
+        block: MarkdownBlock,
+        to result: NSMutableAttributedString,
+        baseURL: URL?,
+        footnotes: FootnoteCatalog
+    ) {
         switch block {
         case let .heading(level, content):
             let size = configuration.headingSize(for: level)
             let paragraph = paragraphStyle(spacingAfter: level <= 2 ? 12 : 8)
             paragraph.headerLevel = level
-            let rendered = renderInline(content, font: fonts.bold(size: size), baseURL: baseURL)
+            let rendered = renderInline(content, font: fonts.bold(size: size), baseURL: baseURL, footnotes: footnotes)
             rendered.addAttribute(.paragraphStyle, value: paragraph, range: rendered.fullRange)
             result.append(rendered)
             result.append(NSAttributedString(string: "\n"))
 
         case let .paragraph(content):
-            let rendered = renderInline(content, font: fonts.regular(size: configuration.bodyFontSize), baseURL: baseURL)
+            let rendered = renderInline(content, font: fonts.regular(size: configuration.bodyFontSize), baseURL: baseURL, footnotes: footnotes)
             rendered.addAttribute(.paragraphStyle, value: paragraphStyle(), range: rendered.fullRange)
             result.append(rendered)
             result.append(NSAttributedString(string: "\n"))
@@ -70,7 +84,7 @@ public final class MarkdownRenderer {
             block.setWidth(3, type: .absoluteValueType, for: .padding, edge: .maxY)
             let paragraph = paragraphStyle()
             paragraph.textBlocks = [block]
-            let quote = renderInline(content, font: fonts.italic(size: configuration.bodyFontSize), baseURL: baseURL)
+            let quote = renderInline(content, font: fonts.italic(size: configuration.bodyFontSize), baseURL: baseURL, footnotes: footnotes)
             quote.addAttribute(.paragraphStyle, value: paragraph, range: quote.fullRange)
             result.append(quote)
             result.append(NSAttributedString(string: "\n"))
@@ -89,7 +103,12 @@ public final class MarkdownRenderer {
                     string: prefix,
                     attributes: bodyAttributes(font: fonts.bold(size: configuration.bodyFontSize))
                 )
-                line.append(renderInline(item.content, font: fonts.regular(size: configuration.bodyFontSize), baseURL: baseURL))
+                line.append(renderInline(
+                    item.content,
+                    font: fonts.regular(size: configuration.bodyFontSize),
+                    baseURL: baseURL,
+                    footnotes: footnotes
+                ))
                 let paragraph = paragraphStyle(spacingAfter: 4)
                 paragraph.firstLineHeadIndent = 8
                 paragraph.headIndent = 30
@@ -130,8 +149,62 @@ public final class MarkdownRenderer {
             )
             result.append(line)
 
+        case .footnoteDefinition:
+            break
+
         case let .table(headers, alignments, rows):
-            appendTable(headers: headers, alignments: alignments, rows: rows, to: result, baseURL: baseURL)
+            appendTable(
+                headers: headers,
+                alignments: alignments,
+                rows: rows,
+                to: result,
+                baseURL: baseURL,
+                footnotes: footnotes
+            )
+        }
+    }
+
+    private func appendFootnotes(
+        _ footnotes: FootnoteCatalog,
+        to result: NSMutableAttributedString,
+        baseURL: URL?
+    ) {
+        let footnoteSize = max(7.5, configuration.bodyFontSize * 0.8)
+        result.append(NSAttributedString(
+            string: "────────────\n",
+            attributes: [
+                .font: fonts.regular(size: 6),
+                .foregroundColor: configuration.tableBorderColor,
+                .paragraphStyle: paragraphStyle(spacingAfter: 4)
+            ]
+        ))
+
+        for entry in footnotes.entries {
+            let line = NSMutableAttributedString(
+                string: "\(entry.number).",
+                attributes: [
+                    .font: fonts.bold(size: footnoteSize),
+                    .foregroundColor: configuration.accentColor,
+                    .underlineStyle: NSUnderlineStyle.single.rawValue,
+                    .markdownFootnoteDefinition: entry.label
+                ]
+            )
+            line.append(NSAttributedString(
+                string: " ",
+                attributes: bodyAttributes(font: fonts.regular(size: footnoteSize))
+            ))
+            line.append(renderInline(
+                entry.content,
+                font: fonts.regular(size: footnoteSize),
+                baseURL: baseURL,
+                footnotes: footnotes
+            ))
+            let paragraph = paragraphStyle(spacingAfter: 4)
+            paragraph.lineSpacing = 1.5
+            paragraph.headIndent = 18
+            line.addAttribute(.paragraphStyle, value: paragraph, range: line.fullRange)
+            result.append(line)
+            result.append(NSAttributedString(string: "\n"))
         }
     }
 
@@ -140,7 +213,8 @@ public final class MarkdownRenderer {
         alignments: [TableAlignment],
         rows: [[[InlineNode]]],
         to result: NSMutableAttributedString,
-        baseURL: URL?
+        baseURL: URL?,
+        footnotes: FootnoteCatalog
     ) {
         let columnCount = max(headers.count, rows.map(\.count).max() ?? 0)
         guard columnCount > 0 else { return }
@@ -159,7 +233,7 @@ public final class MarkdownRenderer {
                 let font = rowIndex == 0
                     ? fonts.bold(size: configuration.bodyFontSize - 0.5)
                     : fonts.regular(size: configuration.bodyFontSize - 0.5)
-                let cell = renderInline(nodes, font: font, baseURL: baseURL)
+                let cell = renderInline(nodes, font: font, baseURL: baseURL, footnotes: footnotes)
                 let block = NSTextTableBlock(
                     table: table,
                     startingRow: rowIndex,
@@ -223,6 +297,8 @@ public final class MarkdownRenderer {
                 return plainText(from: children)
             case let .link(children, _):
                 return plainText(from: children)
+            case let .footnoteReference(label):
+                return label
             case let .image(alt, _):
                 return alt
             case .lineBreak:
@@ -231,24 +307,29 @@ public final class MarkdownRenderer {
         }.joined()
     }
 
-    private func renderInline(_ nodes: [InlineNode], font: NSFont, baseURL: URL?) -> NSMutableAttributedString {
+    private func renderInline(
+        _ nodes: [InlineNode],
+        font: NSFont,
+        baseURL: URL?,
+        footnotes: FootnoteCatalog
+    ) -> NSMutableAttributedString {
         let result = NSMutableAttributedString()
         for node in nodes {
             switch node {
             case let .text(text):
                 result.append(NSAttributedString(string: text, attributes: bodyAttributes(font: font)))
             case let .emphasis(children):
-                let child = renderInline(children, font: italicVariant(of: font), baseURL: baseURL)
+                let child = renderInline(children, font: italicVariant(of: font), baseURL: baseURL, footnotes: footnotes)
                 result.append(child)
             case let .strong(children):
-                let child = renderInline(children, font: boldVariant(of: font), baseURL: baseURL)
+                let child = renderInline(children, font: boldVariant(of: font), baseURL: baseURL, footnotes: footnotes)
                 result.append(child)
             case let .underline(children):
-                let child = renderInline(children, font: font, baseURL: baseURL)
+                let child = renderInline(children, font: font, baseURL: baseURL, footnotes: footnotes)
                 child.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: child.fullRange)
                 result.append(child)
             case let .strikethrough(children):
-                let child = renderInline(children, font: font, baseURL: baseURL)
+                let child = renderInline(children, font: font, baseURL: baseURL, footnotes: footnotes)
                 child.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: child.fullRange)
                 result.append(child)
             case let .code(code):
@@ -261,13 +342,32 @@ public final class MarkdownRenderer {
                     ]
                 ))
             case let .link(children, destination):
-                let child = renderInline(children, font: font, baseURL: baseURL)
+                let child = renderInline(children, font: font, baseURL: baseURL, footnotes: footnotes)
                 child.addAttributes([
                     .foregroundColor: configuration.accentColor,
                     .underlineStyle: NSUnderlineStyle.single.rawValue,
                     .link: linkDestination(destination, baseURL: baseURL)
                 ], range: child.fullRange)
                 result.append(child)
+            case let .footnoteReference(label):
+                guard let number = footnotes.number(for: label) else {
+                    result.append(NSAttributedString(
+                        string: "[^\(label)]",
+                        attributes: bodyAttributes(font: font)
+                    ))
+                    continue
+                }
+                let referenceSize = max(7, font.pointSize * 0.72)
+                result.append(NSAttributedString(
+                    string: String(number),
+                    attributes: [
+                        .font: fonts.bold(size: referenceSize),
+                        .foregroundColor: configuration.accentColor,
+                        .underlineStyle: NSUnderlineStyle.single.rawValue,
+                        .baselineOffset: max(2, font.pointSize * 0.32),
+                        .markdownFootnoteReference: label
+                    ]
+                ))
             case let .image(alt, source):
                 result.append(imageAttachment(alt: alt, source: source, baseURL: baseURL, font: font))
             case .lineBreak:
@@ -357,6 +457,99 @@ public final class MarkdownRenderer {
         case .trailing: return .right
         }
     }
+}
+
+private struct FootnoteCatalog {
+    let entries: [FootnoteEntry]
+    private let numberByLabel: [String: Int]
+
+    init(blocks: [MarkdownBlock]) {
+        var definitions: [String: [InlineNode]] = [:]
+        var definitionOrder: [String] = []
+        for block in blocks {
+            guard case let .footnoteDefinition(label, content) = block,
+                  definitions[label] == nil else { continue }
+            definitions[label] = content
+            definitionOrder.append(label)
+        }
+
+        var orderedLabels: [String] = []
+        var seenLabels: Set<String> = []
+        for block in blocks where !block.isFootnoteDefinition {
+            for label in block.footnoteReferenceLabels
+                where definitions[label] != nil && seenLabels.insert(label).inserted {
+                orderedLabels.append(label)
+            }
+        }
+        for label in definitionOrder where seenLabels.insert(label).inserted {
+            orderedLabels.append(label)
+        }
+
+        let entries = orderedLabels.enumerated().compactMap { offset, label in
+            definitions[label].map {
+                FootnoteEntry(label: label, number: offset + 1, content: $0)
+            }
+        }
+        self.entries = entries
+        self.numberByLabel = Dictionary(uniqueKeysWithValues: entries.map { ($0.label, $0.number) })
+    }
+
+    func number(for label: String) -> Int? {
+        numberByLabel[label]
+    }
+}
+
+private struct FootnoteEntry {
+    let label: String
+    let number: Int
+    let content: [InlineNode]
+}
+
+private extension MarkdownBlock {
+    var isFootnoteDefinition: Bool {
+        if case .footnoteDefinition = self { return true }
+        return false
+    }
+
+    var footnoteReferenceLabels: [String] {
+        switch self {
+        case let .heading(_, content),
+             let .paragraph(content),
+             let .blockquote(content),
+             let .footnoteDefinition(_, content):
+            return content.footnoteReferenceLabels
+        case let .list(items, _, _):
+            return items.flatMap { $0.content.footnoteReferenceLabels }
+        case let .table(headers, _, rows):
+            return (headers + rows.flatMap { $0 }).flatMap(\.footnoteReferenceLabels)
+        case .codeBlock, .thematicBreak:
+            return []
+        }
+    }
+}
+
+private extension Array where Element == InlineNode {
+    var footnoteReferenceLabels: [String] {
+        flatMap { node in
+            switch node {
+            case let .footnoteReference(label):
+                return [label]
+            case let .emphasis(children),
+                 let .strong(children),
+                 let .underline(children),
+                 let .strikethrough(children),
+                 let .link(children, _):
+                return children.footnoteReferenceLabels
+            case .text, .code, .image, .lineBreak:
+                return []
+            }
+        }
+    }
+}
+
+extension NSAttributedString.Key {
+    static let markdownFootnoteReference = NSAttributedString.Key("MarkdownPrinterFootnoteReference")
+    static let markdownFootnoteDefinition = NSAttributedString.Key("MarkdownPrinterFootnoteDefinition")
 }
 
 private extension NSMutableAttributedString {

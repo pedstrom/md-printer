@@ -63,6 +63,8 @@ public struct MarkdownDocument: Equatable, Sendable {
                 return plainText(from: children)
             case let .link(children, _):
                 return plainText(from: children)
+            case .footnoteReference:
+                return ""
             case let .image(alt, _):
                 return alt
             case .lineBreak:

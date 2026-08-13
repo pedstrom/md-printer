@@ -99,6 +99,63 @@ final class MarkdownRendererTests: XCTestCase {
         )
     }
 
+    func testFootnotesRenderAsNumberedSuperscriptLinksAndCompactNotes() throws {
+        let output = renderer.render(markdown: """
+        First claim[^A], another[^B], and repeated[^A].
+
+        [^B]: Beta note with **bold** detail.
+        [^A]: Alpha note.
+        """)
+
+        XCTAssertEqual(
+            output.string,
+            "First claim1, another2, and repeated1.\n\n────────────\n1. Alpha note.\n2. Beta note with bold detail.\n"
+        )
+        XCTAssertFalse(output.string.contains("[^"))
+
+        let firstReferenceRange = (output.string as NSString).range(of: "1,")
+        let referenceFont = try XCTUnwrap(
+            output.attribute(.font, at: firstReferenceRange.location, effectiveRange: nil) as? NSFont
+        )
+        XCTAssertEqual(referenceFont.pointSize, 7.2, accuracy: 0.01)
+        let baselineOffset = try XCTUnwrap(
+            output.attribute(.baselineOffset, at: firstReferenceRange.location, effectiveRange: nil)
+                as? CGFloat
+        )
+        XCTAssertEqual(baselineOffset, 3.2, accuracy: 0.01)
+        XCTAssertEqual(
+            output.attribute(.markdownFootnoteReference, at: firstReferenceRange.location, effectiveRange: nil) as? String,
+            "A"
+        )
+        XCTAssertNotNil(output.attribute(.underlineStyle, at: firstReferenceRange.location, effectiveRange: nil))
+
+        let alphaRange = (output.string as NSString).range(of: "Alpha note.")
+        let footnoteFont = try XCTUnwrap(
+            output.attribute(.font, at: alphaRange.location, effectiveRange: nil) as? NSFont
+        )
+        XCTAssertEqual(footnoteFont.pointSize, 8, accuracy: 0.01)
+        let footnoteParagraph = try XCTUnwrap(
+            output.attribute(.paragraphStyle, at: alphaRange.location, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(footnoteParagraph.lineSpacing, 1.5, accuracy: 0.01)
+        XCTAssertEqual(footnoteParagraph.headIndent, 18, accuracy: 0.01)
+
+        let alphaDefinition = (output.string as NSString).range(of: "1. Alpha")
+        XCTAssertEqual(
+            output.attribute(.markdownFootnoteDefinition, at: alphaDefinition.location, effectiveRange: nil) as? String,
+            "A"
+        )
+        assertAttribute(.font, text: "bold", in: output)
+    }
+
+    func testUndefinedFootnoteReferenceRemainsReadableLiteralText() {
+        XCTAssertEqual(
+            renderer.render(markdown: "Unresolved[^missing].").string,
+            "Unresolved[^missing].\n"
+        )
+    }
+
     func testAllBlockTypesRenderReadableText() throws {
         let markdown = """
         > quoted

@@ -16,7 +16,7 @@ Drop one file—or a whole batch—onto the app. Each document opens in its own 
 
 ## What it does
 
-- Formats headings, paragraphs, bold, italics, underlining, strikethrough, links, lists, quotations, tables, and local images
+- Formats headings, paragraphs, bold, italics, underlining, strikethrough, links, footnotes, lists, quotations, tables, and local images
 - Uses Avenir Next for the document and a proper monospaced font for code
 - Produces searchable, US Letter PDFs with page numbers
 - Exports editable Microsoft Word documents with formatting, links, tables, and local images

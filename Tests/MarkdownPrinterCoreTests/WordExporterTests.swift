@@ -95,6 +95,38 @@ final class WordExporterTests: XCTestCase {
         XCTAssertEqual(decoded.string.trimmingCharacters(in: .newlines), "Editable")
     }
 
+    func testWordFootnotesPreserveSuperscriptAndBidirectionalLinks() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let rendered = MarkdownRenderer().render(markdown: """
+        Claim[^source] and repeated[^source].
+
+        [^source]: Supporting note.
+        """)
+        let data = try WordExporter().wordData(from: rendered)
+        let outputURL = directory.appendingPathComponent("Footnotes.docx")
+        try data.write(to: outputURL)
+
+        let documentXML = try unzip(arguments: ["-p", outputURL.path, "word/document.xml"])
+        XCTAssertEqual(
+            documentXML.components(separatedBy: "w:anchor=\"MarkdownPrinterFootnoteDefinition1\"").count - 1,
+            2
+        )
+        XCTAssertTrue(documentXML.contains("w:anchor=\"MarkdownPrinterFootnoteReference1\""))
+        XCTAssertTrue(documentXML.contains("w:name=\"MarkdownPrinterFootnoteDefinition1\""))
+        XCTAssertTrue(documentXML.contains("w:name=\"MarkdownPrinterFootnoteReference1\""))
+        XCTAssertTrue(documentXML.contains("<w:position w:val=\"6\"/>"))
+        XCTAssertFalse(documentXML.contains("MDPRINTERFOOTNOTE"))
+
+        let decoded = try NSAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
+            documentAttributes: nil
+        )
+        XCTAssertFalse(decoded.string.contains("[^source]"))
+        XCTAssertTrue(decoded.string.contains("Supporting note."))
+    }
+
     func testWordExporterReportsImageAndPackagingFailuresReadably() throws {
         let missingImage = NSTextAttachment()
         XCTAssertThrowsError(try WordExporter().wordData(from: NSAttributedString(attachment: missingImage))) {

@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-08-12 — Linked, print-friendly footnotes
+
+- Added labeled Markdown footnotes with numbering by first citation, compact superscript references, repeated-reference reuse, and small-format definitions collected after the document body.
+- Added bidirectional reference-to-note navigation in PDF and Microsoft Word exports without exposing valid footnote Markdown markers in rendered content.
+- Added parser, typography, numbering, PDF annotation, DOCX bookmark, and multi-page navigation regressions plus a representative showcase fixture for native visual review.
+
 ## 2026-08-12 — Optional Microsoft Word export
 
 - Added editable Microsoft Word (`.docx`) export alongside the unchanged PDF preview and print path, preserving styled text, links, tables, Unicode, local images, and offline-image placeholders.
