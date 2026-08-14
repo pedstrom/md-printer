@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-08-14 — Seamless live Markdown refresh
+
+- Added per-window local source monitoring with coordinated-file notifications, re-arming file and parent-directory filesystem watchers for both in-place and atomic saves, and a 150 ms trailing debounce so open previews update automatically after external Markdown edits.
+- Published each regenerated document, styled text, and PDF as one session snapshot while retaining the last valid preview across read or render failures.
+- Double-buffered the native PDFKit preview so a replacement PDF is laid out, drawn, and restored to the same semantic text anchor behind the visible preview before an animation-free atomic swap.
+- Preserved zoom and page-offset fallbacks, rejected stale prepared revisions, and corrected initial PDF navigation to the true top of page one instead of its lower edge beside page two.
+- Added deterministic coverage for in-place and atomic writes, independent window refreshes, unchanged and invalid files, monitor cleanup, buffered swaps, stale revisions, semantic anchors, page fallbacks, and first-page positioning.
+
 ## 2026-08-13 — Version 1.1.0
 
 - Promoted heading-aware pagination, optional editable Word export, linked footnotes, and Word blockquote fidelity together as version 1.1.0, build 6.

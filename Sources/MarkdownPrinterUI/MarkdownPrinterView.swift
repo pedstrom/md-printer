@@ -62,10 +62,11 @@ public struct MarkdownPrinterView: View {
 
     private var preview: some View {
         Group {
-            if let pdfData = session.renderedPDFData {
+            if let snapshot = session.renderedSnapshot {
                 let exportFormat = exportPreferences.defaultFormat
                 PDFPreviewView(
-                    data: pdfData,
+                    data: snapshot.pdfData,
+                    revision: snapshot.revision,
                     exportFormat: exportFormat,
                     fileName: session.suggestedFileName(for: exportFormat),
                     exportData: { try session.exportData(as: exportFormat) },

@@ -64,6 +64,25 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertFalse(view.autoScales)
     }
 
+    func testSettledInitialLayoutTargetsTheTopOfTheFirstPage() async throws {
+        let document = try makeMultiPageDocument()
+        let firstPage = try XCTUnwrap(document.page(at: 0))
+        let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+
+        view.displayInitial(document)
+        view.layoutSubtreeIfNeeded()
+        await nextMainQueueTurn()
+        await nextMainQueueTurn()
+
+        let destination = try XCTUnwrap(view.currentDestination)
+        XCTAssertEqual(document.index(for: try XCTUnwrap(destination.page)), 0)
+        XCTAssertEqual(
+            destination.point.y,
+            firstPage.bounds(for: .cropBox).maxY,
+            accuracy: 1
+        )
+    }
+
     func testWidthResizeFitsThePageToTheAvailableWidth() throws {
         let document = try makeMultiPageDocument()
         let firstPage = try XCTUnwrap(document.page(at: 0))
@@ -140,6 +159,218 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertTrue(view.gestureRecognizers.contains { $0 === recognizer })
     }
 
+    func testBufferedPreviewKeepsTheOldDocumentVisibleUntilThePreparedSwapCommits() async throws {
+        let first = try makeDocument(markdown: "# First\n\nThe original visible document.")
+        let second = try makeDocument(markdown: "# Second\n\nThe replacement visible document.")
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.layoutSubtreeIfNeeded()
+
+        container.display(first.document, data: first.data, revision: 1)
+        let originalView = container.activeView
+        XCTAssertEqual(container.activeData, first.data)
+        XCTAssertFalse(originalView.isHidden)
+
+        container.display(second.document, data: second.data, revision: 2)
+
+        XCTAssertTrue(container.activeView === originalView)
+        XCTAssertEqual(container.activeData, first.data)
+        XCTAssertFalse(originalView.isHidden)
+        let preparedViews = container.subviews.compactMap { $0 as? PageAdvancingPDFView }
+        XCTAssertTrue(preparedViews.contains {
+            $0 !== originalView && $0.document?.string?.contains("replacement visible") == true
+        })
+
+        await nextMainQueueTurn()
+
+        XCTAssertFalse(container.activeView === originalView)
+        XCTAssertEqual(container.activeData, second.data)
+        XCTAssertEqual(container.activeRevision, 2)
+        XCTAssertTrue(originalView.isHidden)
+        XCTAssertFalse(container.activeView.isHidden)
+        XCTAssertTrue(container.activeView.document?.string?.contains("replacement visible") == true)
+    }
+
+    func testBufferedPreviewDiscardsAStalePreparedRevision() async throws {
+        let first = try makeDocument(markdown: "# First\n\nInitial.")
+        let stale = try makeDocument(markdown: "# Stale\n\nNever show this revision.")
+        let latest = try makeDocument(markdown: "# Latest\n\nOnly show this revision.")
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.layoutSubtreeIfNeeded()
+        container.display(first.document, data: first.data, revision: 1)
+
+        container.display(stale.document, data: stale.data, revision: 2)
+        container.display(latest.document, data: latest.data, revision: 3)
+        await nextMainQueueTurn()
+
+        XCTAssertEqual(container.activeData, latest.data)
+        XCTAssertEqual(container.activeRevision, 3)
+        XCTAssertTrue(container.activeView.document?.string?.contains("Only show this revision") == true)
+        XCTAssertFalse(container.activeView.document?.string?.contains("Never show") == true)
+    }
+
+    func testViewportRestoresTheClosestSurvivingTextAnchor() throws {
+        let paragraphs = (1...120).map { index in
+            if index == 12 || index == 100 {
+                return "Repeated semantic anchor used to preserve the visible paragraph."
+            }
+            return "Paragraph \(index): enough unique text to create a stable multipage document for viewport tests."
+        }
+        let rendered = try makeDocument(markdown: paragraphs.joined(separator: "\n\n"))
+        let matches = rendered.document.findString(
+            "Repeated semantic anchor used to preserve the visible paragraph.",
+            withOptions: []
+        )
+        XCTAssertEqual(matches.count, 2)
+        let laterPage = try XCTUnwrap(matches.last?.pages.first)
+        let laterPageIndex = rendered.document.index(for: laterPage)
+        let viewport = PreviewViewport(
+            scaleFactor: 0.9,
+            pageIndex: 0,
+            normalizedPagePoint: CGPoint(x: 0, y: 0.5),
+            documentProgress: 0.8,
+            textAnchors: [
+                .init(
+                    text: "A changed sentence that no longer exists.",
+                    documentProgress: 0.8,
+                    viewportTopFraction: 0.2
+                ),
+                .init(
+                    text: "Repeated semantic anchor used to preserve the visible paragraph.",
+                    documentProgress: 0.8,
+                    viewportTopFraction: 0.35
+                )
+            ]
+        )
+        let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+
+        view.displayReplacement(rendered.document, viewport: viewport)
+
+        XCTAssertEqual(
+            rendered.document.index(for: try XCTUnwrap(view.currentDestination?.page)),
+            laterPageIndex
+        )
+        XCTAssertEqual(view.scaleFactor, 0.9, accuracy: 0.001)
+    }
+
+    func testViewportFollowsTheSameParagraphWhenPaginationGrowsAndShrinks() throws {
+        let anchorText = "The nearby unchanged paragraph keeps this viewport steady."
+        let originalParagraphs = (1...120).map { index in
+            index == 70
+                ? anchorText
+                : "Original paragraph \(index): unique searchable text for pagination changes."
+        }
+        let original = try makeDocument(markdown: originalParagraphs.joined(separator: "\n\n"))
+        let originalSelection = try XCTUnwrap(
+            original.document.findString(anchorText, withOptions: []).first
+        )
+        let originalPage = try XCTUnwrap(originalSelection.pages.first)
+        let originalProgress = (
+            CGFloat(original.document.index(for: originalPage)) + 0.5
+        ) / CGFloat(original.document.pageCount)
+        let viewport = PreviewViewport(
+            scaleFactor: 0.85,
+            pageIndex: original.document.index(for: originalPage),
+            normalizedPagePoint: CGPoint(x: 0, y: 0.5),
+            documentProgress: originalProgress,
+            textAnchors: [
+                .init(
+                    text: anchorText,
+                    documentProgress: originalProgress,
+                    viewportTopFraction: 0.4
+                )
+            ]
+        )
+        let variants = [
+            (1...80).map { "Inserted paragraph \($0): content added above the anchor." }
+                + originalParagraphs,
+            Array(originalParagraphs[59...79])
+        ]
+        XCTAssertGreaterThan(
+            try makeDocument(markdown: variants[0].joined(separator: "\n\n")).document.pageCount,
+            original.document.pageCount
+        )
+        XCTAssertLessThan(
+            try makeDocument(markdown: variants[1].joined(separator: "\n\n")).document.pageCount,
+            original.document.pageCount
+        )
+
+        for paragraphs in variants {
+            let replacement = try makeDocument(markdown: paragraphs.joined(separator: "\n\n"))
+            let expectedSelection = try XCTUnwrap(
+                replacement.document.findString(anchorText, withOptions: []).first
+            )
+            let expectedPage = try XCTUnwrap(expectedSelection.pages.first)
+            let view = PageAdvancingPDFView(
+                frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+            )
+
+            view.displayReplacement(replacement.document, viewport: viewport)
+
+            XCTAssertEqual(
+                replacement.document.index(for: try XCTUnwrap(view.currentDestination?.page)),
+                replacement.document.index(for: expectedPage)
+            )
+            XCTAssertEqual(view.scaleFactor, 0.85, accuracy: 0.001)
+        }
+    }
+
+    func testViewportFallsBackWhenEveryTextAnchorIsRemoved() throws {
+        let rendered = try makeDocument(markdown: (1...100)
+            .map { "Fallback paragraph \($0): enough text to require several pages." }
+            .joined(separator: "\n\n"))
+        XCTAssertGreaterThan(rendered.document.pageCount, 2)
+        let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        let pageViewport = PreviewViewport(
+            scaleFactor: 0.8,
+            pageIndex: 1,
+            normalizedPagePoint: CGPoint(x: 0.2, y: 0.6),
+            documentProgress: 0.95,
+            textAnchors: [
+                .init(
+                    text: "Every former semantic anchor has been removed.",
+                    documentProgress: 0.95,
+                    viewportTopFraction: 0.3
+                )
+            ]
+        )
+
+        view.displayReplacement(rendered.document, viewport: pageViewport)
+        XCTAssertEqual(
+            rendered.document.index(for: try XCTUnwrap(view.currentDestination?.page)),
+            1
+        )
+
+        let progressViewport = PreviewViewport(
+            scaleFactor: 0.8,
+            pageIndex: rendered.document.pageCount + 10,
+            normalizedPagePoint: CGPoint(x: 0.2, y: 0.6),
+            documentProgress: 0.95,
+            textAnchors: []
+        )
+        view.displayReplacement(rendered.document, viewport: progressViewport)
+        let lastPage = try XCTUnwrap(rendered.document.page(at: rendered.document.pageCount - 1))
+        XCTAssertTrue(view.convert(lastPage.bounds(for: .cropBox), from: lastPage).intersects(view.bounds))
+    }
+
+    func testViewportCaptureCollectsVisibleTextWithoutChangingScale() throws {
+        let rendered = try makeDocument(markdown: (1...100)
+            .map { "Visible anchor paragraph \($0): distinctive searchable viewport content." }
+            .joined(separator: "\n\n"))
+        let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        view.displayInitial(rendered.document)
+        view.layoutSubtreeIfNeeded()
+        let target = try XCTUnwrap(rendered.document.findString("Visible anchor paragraph 60", withOptions: []).first)
+        view.go(to: target)
+        let originalScale = view.scaleFactor
+
+        let viewport = try XCTUnwrap(PreviewViewport.capture(from: view))
+
+        XCTAssertFalse(viewport.textAnchors.isEmpty)
+        XCTAssertEqual(viewport.scaleFactor, originalScale, accuracy: 0.001)
+        XCTAssertTrue(viewport.textAnchors.allSatisfy { !$0.text.isEmpty })
+        XCTAssertTrue(viewport.textAnchors.allSatisfy { 0...1 ~= $0.viewportTopFraction })
+    }
+
     private func makeMultiPageDocument() throws -> PDFDocument {
         let markdown = (1...100)
             .map { "Paragraph \($0): Enough text to create several pages for preview navigation." }
@@ -148,6 +379,11 @@ final class PDFPreviewViewTests: XCTestCase {
         let document = try XCTUnwrap(PDFDocument(data: data))
         XCTAssertGreaterThan(document.pageCount, 2)
         return document
+    }
+
+    private func makeDocument(markdown: String) throws -> (data: Data, document: PDFDocument) {
+        let data = try PDFExporter().pdfData(from: MarkdownRenderer().render(markdown: markdown))
+        return (data, try XCTUnwrap(PDFDocument(data: data)))
     }
 
     private func nextMainQueueTurn() async {

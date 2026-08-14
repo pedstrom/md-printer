@@ -74,6 +74,7 @@ private struct WelcomeMarkdownWindow: View {
 private struct MarkdownDocumentWindow: View {
     @Environment(\.openDocument) private var openDocument
     @StateObject private var session: DocumentSession
+    private let fileDocument: MarkdownFileDocument
     private let sourceURL: URL?
     @ObservedObject var exportPreferences: ExportPreferences
 
@@ -82,15 +83,12 @@ private struct MarkdownDocumentWindow: View {
         sourceURL: URL?,
         exportPreferences: ExportPreferences
     ) {
+        self.fileDocument = fileDocument
         self.sourceURL = sourceURL
         self.exportPreferences = exportPreferences
-        let session = DocumentSession()
-        do {
-            try session.apply(fileDocument.markdownDocument(sourceURL: sourceURL))
-        } catch {
-            session.report(error: error)
-        }
-        _session = StateObject(wrappedValue: session)
+        _session = StateObject(
+            wrappedValue: Self.makeSession(fileDocument: fileDocument, sourceURL: sourceURL)
+        )
     }
 
     var body: some View {
@@ -99,7 +97,18 @@ private struct MarkdownDocumentWindow: View {
             exportPreferences: exportPreferences,
             openFiles: openFiles
         )
-            .onAppear(perform: applyMarkdownWindowTitle)
+            .onAppear {
+                synchronizeFileDocument()
+                applyMarkdownWindowTitle()
+                session.startMonitoringSourceChanges()
+            }
+            .onChange(of: fileDocument.markdownDocument(sourceURL: sourceURL).markdown) {
+                synchronizeFileDocument()
+                session.startMonitoringSourceChanges()
+            }
+            .onChange(of: session.renderedSnapshot?.revision) {
+                applyMarkdownWindowTitle()
+            }
     }
 
     private func openFiles(_ urls: [URL]) {
@@ -111,6 +120,27 @@ private struct MarkdownDocumentWindow: View {
                     session.report(error: error)
                 }
             }
+        }
+    }
+
+    private static func makeSession(
+        fileDocument: MarkdownFileDocument,
+        sourceURL: URL?
+    ) -> DocumentSession {
+        let session = DocumentSession()
+        do {
+            try session.apply(fileDocument.markdownDocument(sourceURL: sourceURL))
+        } catch {
+            session.report(error: error)
+        }
+        return session
+    }
+
+    private func synchronizeFileDocument() {
+        do {
+            try session.synchronize(with: fileDocument.markdownDocument(sourceURL: sourceURL))
+        } catch {
+            session.report(error: error)
         }
     }
 
