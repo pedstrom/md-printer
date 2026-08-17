@@ -165,16 +165,22 @@ struct PreviewViewport {
     static func capture(from view: PDFView) -> PreviewViewport? {
         guard let document = view.document,
               document.pageCount > 0,
-              let currentPage = view.currentDestination?.page ?? view.currentPage
+              let reference = viewportReference(in: view)
         else { return nil }
 
-        let pageIndex = max(document.index(for: currentPage), 0)
-        let pageBounds = currentPage.bounds(for: .cropBox)
-        let point = view.currentDestination?.point
-            ?? CGPoint(x: pageBounds.minX, y: pageBounds.maxY)
+        let pageIndex = max(document.index(for: reference.page), 0)
+        let pageBounds = reference.page.bounds(for: .cropBox)
         let normalizedPoint = CGPoint(
-            x: normalized(point.x, minimum: pageBounds.minX, length: pageBounds.width),
-            y: normalized(point.y, minimum: pageBounds.minY, length: pageBounds.height)
+            x: normalized(
+                reference.point.x,
+                minimum: pageBounds.minX,
+                length: pageBounds.width
+            ),
+            y: normalized(
+                reference.point.y,
+                minimum: pageBounds.minY,
+                length: pageBounds.height
+            )
         )
         let progressWithinPage = 1 - normalizedPoint.y
         let documentProgress = clamped(
@@ -200,9 +206,10 @@ struct PreviewViewport {
             view.scaleFactor = scaleFactor
         }
 
-        if let resolvedAnchor = resolvedTextAnchor(in: document) {
-            scroll(to: resolvedAnchor.selection, anchor: resolvedAnchor.anchor, in: view)
-            return
+        for resolvedAnchor in resolvedTextAnchors(in: document) {
+            if scroll(to: resolvedAnchor.selection, anchor: resolvedAnchor.anchor, in: view) {
+                return
+            }
         }
 
         let targetPageIndex: Int
@@ -223,10 +230,10 @@ struct PreviewViewport {
         go(to: point, on: page, in: view)
     }
 
-    private func resolvedTextAnchor(
+    private func resolvedTextAnchors(
         in document: PDFDocument
-    ) -> (anchor: TextAnchor, selection: PDFSelection)? {
-        var best: (anchor: TextAnchor, selection: PDFSelection, distance: CGFloat)?
+    ) -> [(anchor: TextAnchor, selection: PDFSelection)] {
+        var resolved: [(anchor: TextAnchor, selection: PDFSelection, distance: CGFloat)] = []
         for anchor in textAnchors {
             let matches = document.findString(
                 anchor.text,
@@ -235,28 +242,29 @@ struct PreviewViewport {
             for selection in matches {
                 let progress = Self.documentProgress(of: selection, in: document)
                 let distance = abs(progress - anchor.documentProgress)
-                if best == nil || distance < best!.distance {
-                    best = (anchor, selection, distance)
-                }
+                resolved.append((anchor, selection, distance))
             }
         }
-        return best.map { ($0.anchor, $0.selection) }
+        return resolved
+            .sorted { $0.distance < $1.distance }
+            .map { ($0.anchor, $0.selection) }
     }
 
-    private func scroll(to selection: PDFSelection, anchor: TextAnchor, in view: PDFView) {
-        guard let page = selection.pages.first else { return }
+    private func scroll(
+        to selection: PDFSelection,
+        anchor: TextAnchor,
+        in view: PDFView
+    ) -> Bool {
+        guard let page = selection.pages.first else { return false }
         let pageBounds = page.bounds(for: .cropBox)
         let selectionBounds = selection.bounds(for: page)
         let viewportHeightInPage = view.bounds.height / max(view.scaleFactor, 0.01)
-        let targetY = min(
-            max(
-                selectionBounds.maxY + anchor.viewportTopFraction * viewportHeightInPage,
-                pageBounds.minY
-            ),
-            pageBounds.maxY
-        )
+        let targetY = selectionBounds.maxY
+            + anchor.viewportTopFraction * viewportHeightInPage
+        guard pageBounds.minY...pageBounds.maxY ~= targetY else { return false }
         let targetX = pageBounds.minX + normalizedPagePoint.x * pageBounds.width
         go(to: CGPoint(x: targetX, y: targetY), on: page, in: view)
+        return true
     }
 
     private func go(to point: CGPoint, on page: PDFPage, in view: PDFView) {
@@ -308,8 +316,30 @@ struct PreviewViewport {
 
         return anchors
             .sorted { $0.viewportTopFraction < $1.viewportTopFraction }
-            .prefix(8)
-            .map { $0 }
+            .evenlySampled(maximumCount: 16)
+    }
+
+    private static func viewportReference(
+        in view: PDFView
+    ) -> (page: PDFPage, point: CGPoint)? {
+        let viewportTop = CGPoint(
+            x: view.bounds.midX,
+            y: view.isFlipped ? view.bounds.minY : view.bounds.maxY
+        )
+        if let page = view.page(for: viewportTop, nearest: true) {
+            let pageBounds = page.bounds(for: .cropBox)
+            let convertedPoint = view.convert(viewportTop, to: page)
+            return (
+                page,
+                CGPoint(x: pageBounds.minX, y: convertedPoint.y)
+            )
+        }
+
+        guard let page = view.currentPage ?? view.currentDestination?.page else { return nil }
+        let pageBounds = page.bounds(for: .cropBox)
+        let destination = view.currentDestination
+        let point = destination?.page === page ? destination?.point : nil
+        return (page, point ?? CGPoint(x: pageBounds.minX, y: pageBounds.maxY))
     }
 
     private static func anchorText(from string: String?) -> String {
@@ -337,6 +367,20 @@ struct PreviewViewport {
 
     private static func clamped(_ value: CGFloat) -> CGFloat {
         min(max(value, 0), 1)
+    }
+}
+
+private extension Array {
+    func evenlySampled(maximumCount: Int) -> [Element] {
+        guard maximumCount > 0 else { return [] }
+        guard count > maximumCount else { return self }
+        guard maximumCount > 1 else { return [self[0]] }
+        return (0..<maximumCount).map { sampleIndex in
+            let index = Int(
+                (Double(sampleIndex) * Double(count - 1) / Double(maximumCount - 1)).rounded()
+            )
+            return self[index]
+        }
     }
 }
 

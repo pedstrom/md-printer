@@ -597,6 +597,153 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertTrue(viewport.textAnchors.allSatisfy { 0...1 ~= $0.viewportTopFraction })
     }
 
+    func testViewportFallbackCapturesTheActualPageBoundaryInsteadOfAStaleDestination() throws {
+        let rendered = try makeDocument(markdown: makeBoundaryTableMarkdown(
+            editedRowEight: "PAGE TWO EDIT BASELINE with a same-size cell value."
+        ))
+        XCTAssertEqual(rendered.document.pageCount, 2)
+        let firstPage = try XCTUnwrap(rendered.document.page(at: 0))
+        let secondPage = try XCTUnwrap(rendered.document.page(at: 1))
+        let sourceView = PageAdvancingPDFView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        sourceView.displayInitial(rendered.document)
+        sourceView.layoutSubtreeIfNeeded()
+        sourceView.go(to: PDFDestination(
+            page: firstPage,
+            at: CGPoint(x: 0, y: firstPage.bounds(for: .cropBox).maxY)
+        ))
+        let desiredSecondPageTop = sourceView.bounds.height * 0.58
+        try placePageTop(
+            secondPage,
+            atDistanceFromViewportTop: desiredSecondPageTop,
+            in: sourceView
+        )
+        let boundaryBeforeRefresh = distanceFromViewportTop(toTopOf: secondPage, in: sourceView)
+
+        let captured = try XCTUnwrap(PreviewViewport.capture(from: sourceView))
+        let positionalFallback = PreviewViewport(
+            scaleFactor: captured.scaleFactor,
+            pageIndex: captured.pageIndex,
+            normalizedPagePoint: captured.normalizedPagePoint,
+            documentProgress: captured.documentProgress,
+            textAnchors: []
+        )
+        let replacementView = PageAdvancingPDFView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        replacementView.displayReplacement(rendered.document, viewport: positionalFallback)
+        let boundaryAfterRefresh = distanceFromViewportTop(
+            toTopOf: secondPage,
+            in: replacementView
+        )
+
+        XCTAssertGreaterThan(boundaryBeforeRefresh, sourceView.bounds.height * 0.4)
+        XCTAssertLessThan(boundaryBeforeRefresh, sourceView.bounds.height * 0.7)
+        XCTAssertEqual(boundaryAfterRefresh, boundaryBeforeRefresh, accuracy: 3)
+        XCTAssertGreaterThan(boundaryAfterRefresh, 0)
+        XCTAssertLessThan(boundaryAfterRefresh, replacementView.bounds.height)
+    }
+
+    func testViewportCaptureSamplesAnchorsFromBothSidesOfAPageBoundary() throws {
+        let rendered = try makeDocument(markdown: makeBoundaryTableMarkdown(
+            editedRowEight: "PAGE TWO EDIT BASELINE with a same-size cell value."
+        ))
+        let secondPage = try XCTUnwrap(rendered.document.page(at: 1))
+        let view = PageAdvancingPDFView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        view.displayInitial(rendered.document)
+        view.layoutSubtreeIfNeeded()
+        try placePageTop(
+            secondPage,
+            atDistanceFromViewportTop: view.bounds.height * 0.58,
+            in: view
+        )
+
+        let viewport = try XCTUnwrap(PreviewViewport.capture(from: view))
+
+        XCTAssertTrue(viewport.textAnchors.contains { $0.text.contains("Boundary table row 07") })
+        XCTAssertTrue(viewport.textAnchors.contains { $0.text.contains("PAGE TWO EDIT BASELINE") })
+    }
+
+    func testViewportRejectsAnAnchorThatWouldCollapseACrossPageBoundary() throws {
+        let anchorText = "Boundary table row 14"
+        let rendered = try makeDocument(markdown: makeBoundaryTableMarkdown(
+            editedRowEight: "PAGE TWO EDIT BASELINE with a same-size cell value."
+        ))
+        let selection = try XCTUnwrap(
+            rendered.document.findString(anchorText, withOptions: []).first
+        )
+        let selectionPage = try XCTUnwrap(selection.pages.first)
+        XCTAssertEqual(rendered.document.index(for: selectionPage), 1)
+        let viewport = PreviewViewport(
+            scaleFactor: 0.8,
+            pageIndex: 0,
+            normalizedPagePoint: CGPoint(x: 0, y: 0.2),
+            documentProgress: 0.4,
+            textAnchors: [
+                .init(
+                    text: anchorText,
+                    documentProgress: PreviewViewport.documentProgress(
+                        of: selection,
+                        in: rendered.document
+                    ),
+                    viewportTopFraction: 0.65
+                )
+            ]
+        )
+        let view = PageAdvancingPDFView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+
+        view.displayReplacement(rendered.document, viewport: viewport)
+
+        XCTAssertEqual(
+            rendered.document.index(for: try XCTUnwrap(view.currentDestination?.page)),
+            0
+        )
+    }
+
+    func testBufferedRefreshKeepsAPageBoundaryDuringASameSizeTableEdit() async throws {
+        let original = try makeDocument(markdown: makeBoundaryTableMarkdown(
+            editedRowEight: "PAGE TWO EDIT BASELINE with a same-size cell value."
+        ))
+        let replacement = try makeDocument(markdown: makeBoundaryTableMarkdown(
+            editedRowEight: "PAGE TWO EDIT UPDATED! with a same-size cell value."
+        ))
+        XCTAssertEqual(original.document.pageCount, replacement.document.pageCount)
+        let originalSecondPage = try XCTUnwrap(original.document.page(at: 1))
+        let container = BufferedPDFPreviewView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        container.stagingDelay = 0
+        container.layoutSubtreeIfNeeded()
+        container.display(original.document, data: original.data, revision: 1)
+        try placePageTop(
+            originalSecondPage,
+            atDistanceFromViewportTop: container.activeView.bounds.height * 0.58,
+            in: container.activeView
+        )
+        let boundaryBeforeRefresh = distanceFromViewportTop(
+            toTopOf: originalSecondPage,
+            in: container.activeView
+        )
+
+        container.display(replacement.document, data: replacement.data, revision: 2)
+        await nextMainQueueTurn()
+
+        let replacementSecondPage = try XCTUnwrap(replacement.document.page(at: 1))
+        let boundaryAfterRefresh = distanceFromViewportTop(
+            toTopOf: replacementSecondPage,
+            in: container.activeView
+        )
+        XCTAssertEqual(boundaryAfterRefresh, boundaryBeforeRefresh, accuracy: 3)
+        XCTAssertTrue(
+            container.activeView.document?.string?.contains("PAGE TWO EDIT UPDATED!") == true
+        )
+    }
+
     private func makeMultiPageDocument() throws -> PDFDocument {
         let markdown = (1...100)
             .map { "Paragraph \($0): Enough text to create several pages for preview navigation." }
@@ -610,6 +757,55 @@ final class PDFPreviewViewTests: XCTestCase {
     private func makeDocument(markdown: String) throws -> (data: Data, document: PDFDocument) {
         let data = try PDFExporter().pdfData(from: MarkdownRenderer().render(markdown: markdown))
         return (data, try XCTUnwrap(PDFDocument(data: data)))
+    }
+
+    private func makeBoundaryTableMarkdown(editedRowEight: String) -> String {
+        let openingParagraphs = (1...4).map {
+            "Opening paragraph \($0). Stable prose places the table low enough on page one."
+        }
+        let rows = (1...14).map { index in
+            let description = index == 8
+                ? editedRowEight
+                : "Boundary table row \(String(format: "%02d", index)) has stable text that occupies two lines in the description column."
+            return "| Row \(String(format: "%02d", index)) | \(description) | Ready |"
+        }
+        let table = ([
+            "| Item | Description | Status |",
+            "| --- | --- | --- |"
+        ] + rows).joined(separator: "\n")
+        return ([
+            "# Page Boundary Table Check",
+            "This fixture verifies preservation across a two-page table boundary."
+        ] + openingParagraphs + [table] + [
+            "Following paragraph. Stable prose below the table makes the continuation easy to recognize."
+        ]).joined(separator: "\n\n")
+    }
+
+    private func placePageTop(
+        _ page: PDFPage,
+        atDistanceFromViewportTop desiredDistance: CGFloat,
+        in view: PDFView
+    ) throws {
+        let documentView = try XCTUnwrap(view.documentView)
+        let scrollView = try XCTUnwrap(documentView.enclosingScrollView)
+        let clipView = scrollView.contentView
+        let currentDistance = distanceFromViewportTop(toTopOf: page, in: view)
+        let scrollDelta = currentDistance - desiredDistance
+        let verticalDelta = documentView.isFlipped ? scrollDelta : -scrollDelta
+        clipView.scroll(to: CGPoint(
+            x: clipView.bounds.origin.x,
+            y: clipView.bounds.origin.y + verticalDelta
+        ))
+        scrollView.reflectScrolledClipView(clipView)
+        view.layoutSubtreeIfNeeded()
+    }
+
+    private func distanceFromViewportTop(toTopOf page: PDFPage, in view: PDFView) -> CGFloat {
+        let pageFrame = view.convert(page.bounds(for: .cropBox), from: page)
+        if view.isFlipped {
+            return pageFrame.minY - view.bounds.minY
+        }
+        return view.bounds.maxY - pageFrame.maxY
     }
 
     private func nextMainQueueTurn() async {

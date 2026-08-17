@@ -14,9 +14,10 @@
 - Published each regenerated document, styled text, and PDF as one session snapshot while retaining the last valid preview across read or render failures.
 - Buffered the native PDFKit preview so every replacement is laid out, drawn, and restored in a fresh PDF view behind the visible preview before an animation-free atomic swap; no later refresh reuses a PDFKit surface that has already been displayed and retired.
 - Kept the outgoing PDF continuously painted above staging, retired it only after handoff and a compositor settling delay, and disabled AppKit and Core Animation transitions so every refresh follows the same no-blank path while exposing only the active PDF to accessibility.
-- Preserved zoom and page-offset fallbacks, rejected stale prepared revisions, and corrected initial PDF navigation to the true top of page one instead of its lower edge beside page two.
+- Preserved zoom and the actual visible page-boundary position instead of trusting PDFKit's potentially stale current destination, distributed semantic anchors across the complete viewport, and rejected anchors whose cross-page placement would otherwise clamp to a page top.
+- Preserved page-offset fallbacks, rejected stale prepared revisions, and corrected initial PDF navigation to the true top of page one instead of its lower edge beside page two.
 - Preserved the Markdown H1 as the window title throughout refreshes with one window-attached title authority.
-- Added deterministic coverage for monitoring, atomic snapshots, fresh staging across consecutive updates, stale revisions, viewport anchors and fallbacks, title stability, accessibility handoff, and first-page positioning; verified repeated later-page edits in the native app without a blank redraw.
+- Added deterministic coverage for monitoring, atomic snapshots, fresh staging across consecutive updates, stale revisions, prose and table viewport anchors, two-page boundary fallbacks, impossible cross-page anchors, title stability, accessibility handoff, and first-page positioning; verified repeated later-page edits in the native app without a blank redraw.
 
 ## 2026-08-13 — Version 1.1.0
 
