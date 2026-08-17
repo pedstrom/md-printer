@@ -8,6 +8,7 @@ public struct MarkdownPrinterView: View {
     @ObservedObject private var exportPreferences: ExportPreferences
     private let openFiles: ([URL]) -> Void
     @State private var isDropTargeted = false
+    @StateObject private var searchController = PDFSearchController()
 
     public init(
         session: DocumentSession,
@@ -28,7 +29,9 @@ public struct MarkdownPrinterView: View {
             }
         }
         .frame(minWidth: 680, minHeight: 560)
+        .focusedSceneObject(searchController)
         .background(StableWindowTitleView(title: session.title))
+        .background(PDFSearchPanelPresenter(controller: searchController))
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay {
             if isDropTargeted {
@@ -69,6 +72,7 @@ public struct MarkdownPrinterView: View {
                     revision: snapshot.revision,
                     exportFormat: exportFormat,
                     fileName: session.suggestedFileName(for: exportFormat),
+                    searchController: searchController,
                     exportData: { try session.exportData(as: exportFormat) },
                     openURL: openLink,
                     onDragError: { session.report(error: $0) }
@@ -163,5 +167,223 @@ public struct MarkdownPrinterView: View {
         if let markdown = UTType(filenameExtension: "md") { types.insert(markdown, at: 0) }
         if let markdown = UTType(filenameExtension: "markdown") { types.insert(markdown, at: 0) }
         return types
+    }
+}
+
+private struct PDFSearchPanelView: View {
+    @ObservedObject var controller: PDFSearchController
+    @FocusState private var searchFieldIsFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TextField("Find", text: $controller.query)
+                .textFieldStyle(.roundedBorder)
+                .focused($searchFieldIsFocused)
+                .onSubmit(controller.findNext)
+                .accessibilityLabel("Find text")
+            HStack(spacing: 10) {
+                Text(controller.statusText)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(minWidth: 84, alignment: .leading)
+                Spacer()
+                Button("Previous", action: controller.findPrevious)
+                    .disabled(!controller.canNavigate)
+                Button("Next", action: controller.findNext)
+                    .disabled(!controller.canNavigate)
+                Button("Done", action: controller.dismiss)
+                    .keyboardShortcut(.cancelAction)
+            }
+        }
+        .padding(16)
+        .frame(width: 420)
+        .focusedSceneObject(controller)
+        .onAppear(perform: focusAndSelectQuery)
+        .onChange(of: controller.focusRequest) {
+            focusAndSelectQuery()
+        }
+    }
+
+    private func focusAndSelectQuery() {
+        searchFieldIsFocused = true
+        DispatchQueue.main.async {
+            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+        }
+    }
+}
+
+private struct PDFSearchPanelPresenter: NSViewRepresentable {
+    @ObservedObject var controller: PDFSearchController
+
+    func makeNSView(context: Context) -> PDFSearchPanelHostView {
+        PDFSearchPanelHostView(controller: controller)
+    }
+
+    func updateNSView(_ view: PDFSearchPanelHostView, context: Context) {
+        view.update(controller: controller)
+    }
+
+    static func dismantleNSView(_ view: PDFSearchPanelHostView, coordinator: Void) {
+        view.invalidate()
+    }
+}
+
+@MainActor
+private final class PDFSearchPanelHostView: NSView, NSWindowDelegate {
+    private weak var controller: PDFSearchController?
+    private weak var documentWindow: NSWindow?
+    private var panel: PDFSearchPanel?
+    private var hostingController: NSHostingController<PDFSearchPanelView>?
+    private var lastFocusRequest = UInt64.max
+
+    init(controller: PDFSearchController) {
+        self.controller = controller
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        documentWindow = window
+        synchronizePanel()
+    }
+
+    func update(controller: PDFSearchController) {
+        self.controller = controller
+        synchronizePanel()
+    }
+
+    func invalidate() {
+        if let panel, let parent = panel.parent {
+            parent.removeChildWindow(panel)
+        }
+        panel?.delegate = nil
+        panel?.orderOut(nil)
+        panel?.close()
+        panel = nil
+        hostingController = nil
+        documentWindow = nil
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard notification.object as? NSWindow === panel else { return }
+        controller?.dismiss()
+    }
+
+    private func synchronizePanel() {
+        guard let controller else { return }
+        guard controller.isPresented else {
+            panel?.orderOut(nil)
+            return
+        }
+        guard let documentWindow = window ?? documentWindow else { return }
+
+        let panel = panel ?? makePanel(controller: controller, relativeTo: documentWindow)
+        if panel.parent !== documentWindow {
+            panel.parent?.removeChildWindow(panel)
+            documentWindow.addChildWindow(panel, ordered: .above)
+        }
+        let shouldFocus = !panel.isVisible || lastFocusRequest != controller.focusRequest
+        if !panel.isVisible {
+            panel.orderFront(nil)
+        }
+        if shouldFocus {
+            lastFocusRequest = controller.focusRequest
+            panel.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    private func makePanel(
+        controller: PDFSearchController,
+        relativeTo documentWindow: NSWindow
+    ) -> PDFSearchPanel {
+        let content = PDFSearchPanelView(controller: controller)
+        let hostingController = NSHostingController(rootView: content)
+        let contentSize = hostingController.view.fittingSize
+        let panel = PDFSearchPanel(
+            contentRect: NSRect(origin: .zero, size: contentSize),
+            styleMask: [.titled, .closable, .utilityWindow],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "Find"
+        panel.contentViewController = hostingController
+        panel.delegate = self
+        panel.isReleasedWhenClosed = false
+        panel.isFloatingPanel = true
+        panel.hidesOnDeactivate = false
+        panel.animationBehavior = .none
+        panel.searchController = controller
+        position(panel, relativeTo: documentWindow)
+        self.panel = panel
+        self.hostingController = hostingController
+        return panel
+    }
+
+    private func position(_ panel: NSPanel, relativeTo documentWindow: NSWindow) {
+        let visibleFrame = documentWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+        var origin = NSPoint(
+            x: documentWindow.frame.maxX - panel.frame.width - 24,
+            y: documentWindow.frame.maxY - panel.frame.height - 52
+        )
+        origin.x = min(max(origin.x, visibleFrame.minX), visibleFrame.maxX - panel.frame.width)
+        origin.y = min(max(origin.y, visibleFrame.minY), visibleFrame.maxY - panel.frame.height)
+        panel.setFrameOrigin(origin)
+    }
+}
+
+@MainActor
+private final class PDFSearchPanel: NSPanel {
+    weak var searchController: PDFSearchController?
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        switch (event.charactersIgnoringModifiers?.lowercased(), modifiers) {
+        case ("f", [.command]):
+            searchController?.present()
+            return true
+        case ("g", [.command]):
+            searchController?.findNext()
+            return true
+        case ("g", [.command, .shift]):
+            searchController?.findPrevious()
+            return true
+        default:
+            return super.performKeyEquivalent(with: event)
+        }
+    }
+}
+
+package struct PDFSearchCommands: Commands {
+    @FocusedObject private var controller: PDFSearchController?
+
+    package init() { }
+
+    package var body: some Commands {
+        CommandGroup(after: .pasteboard) {
+            Menu("Find") {
+                Button("Find…") {
+                    controller?.present()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+                .disabled(controller?.canPresent != true)
+
+                Button("Find Next") {
+                    controller?.findNext()
+                }
+                .keyboardShortcut("g", modifiers: .command)
+                .disabled(controller?.canNavigate != true)
+
+                Button("Find Previous") {
+                    controller?.findPrevious()
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(controller?.canNavigate != true)
+            }
+        }
+        CommandGroup(replacing: .textEditing) { }
     }
 }

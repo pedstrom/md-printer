@@ -261,6 +261,123 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertTrue(container.activeView.document?.string?.contains("active preview") == true)
     }
 
+    func testSearchIsCaseInsensitiveStartsAtTheViewportAndPreservesZoom() throws {
+        let markdown = (1...120).map { index in
+            [12, 62, 108].contains(index)
+                ? "Result \(index) contains the distinctive NeEdLeToKeN phrase."
+                : "Search fixture paragraph \(index) keeps the PDF spread across several pages."
+        }.joined(separator: "\n\n")
+        let rendered = try makeDocument(markdown: markdown)
+        let matches = rendered.document.findString("needletoken", withOptions: [.caseInsensitive])
+        XCTAssertEqual(matches.count, 3)
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.layoutSubtreeIfNeeded()
+        container.display(rendered.document, data: rendered.data, revision: 1)
+        container.activeView.scaleFactor = 0.82
+        container.activeView.go(to: matches[1])
+
+        let summary = container.performSearch(for: "NEEDLETOKEN", showingAllMatches: true)
+
+        XCTAssertEqual(summary, PDFSearchSummary(matchCount: 3, selectedMatchIndex: 1))
+        XCTAssertEqual(container.activeView.scaleFactor, 0.82, accuracy: 0.001)
+        XCTAssertTrue(container.activeView.currentSelection?.string?.contains("NeEdLeToKeN") == true)
+        XCTAssertEqual(container.activeView.highlightedSelections?.count, 2)
+    }
+
+    func testSearchNavigationWrapsAndDismissalKeepsOnlyTheCurrentMatch() throws {
+        let rendered = try makeDocument(
+            markdown: "# Search\n\nNeedle one.\n\nNeedle two.\n\nNeedle three."
+        )
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.layoutSubtreeIfNeeded()
+        container.display(rendered.document, data: rendered.data, revision: 1)
+        let initial = container.performSearch(for: "needle", showingAllMatches: true)
+        let initialIndex = try XCTUnwrap(initial.selectedMatchIndex)
+
+        let previous = container.moveSearchSelection(.previous, showingAllMatches: true)
+        XCTAssertEqual(previous.selectedMatchIndex, (initialIndex + 2) % 3)
+
+        let next = container.moveSearchSelection(.next, showingAllMatches: true)
+        XCTAssertEqual(next.selectedMatchIndex, initialIndex)
+
+        container.setShowsAllSearchMatches(false)
+        XCTAssertNil(container.activeView.highlightedSelections)
+        XCTAssertNotNil(container.activeView.currentSelection)
+
+        let empty = container.performSearch(for: " \n ", showingAllMatches: true)
+        XCTAssertEqual(empty, .empty)
+        XCTAssertNil(container.activeView.currentSelection)
+        XCTAssertNil(container.activeView.highlightedSelections)
+    }
+
+    func testSearchStateFollowsBufferedRefreshesAndRecoversWhenMatchesReturn() async throws {
+        let originalParagraphs = (1...120).map { index in
+            [20, 60, 100].contains(index)
+                ? "Repeated refresh needle at paragraph \(index)."
+                : "Original refresh paragraph \(index) provides stable searchable content."
+        }
+        let replacementParagraphs = (1...5).map {
+            "Inserted paragraph \($0) shifts later search matches without removing them."
+        } + originalParagraphs
+        let original = try makeDocument(markdown: originalParagraphs.joined(separator: "\n\n"))
+        let replacement = try makeDocument(markdown: replacementParagraphs.joined(separator: "\n\n"))
+        let missing = try makeDocument(markdown: "# Missing\n\nEvery former result is gone.")
+        let returned = try makeDocument(markdown: "# Returned\n\nOne refresh needle is back.")
+        let controller = PDFSearchController()
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.stagingDelay = 0
+        container.layoutSubtreeIfNeeded()
+        container.searchController = controller
+        container.display(original.document, data: original.data, revision: 1)
+        container.activeView.scaleFactor = 0.84
+        controller.query = "refresh needle"
+        controller.findNext()
+        XCTAssertEqual(controller.selectedMatchIndex, 1)
+
+        container.display(replacement.document, data: replacement.data, revision: 2)
+        await nextMainQueueTurn()
+
+        XCTAssertEqual(controller.matchCount, 3)
+        XCTAssertEqual(controller.selectedMatchIndex, 1)
+        XCTAssertEqual(container.activeView.scaleFactor, 0.84, accuracy: 0.001)
+        XCTAssertTrue(container.activeView.currentSelection?.string?.contains("refresh needle") == true)
+
+        container.display(missing.document, data: missing.data, revision: 3)
+        await nextMainQueueTurn()
+
+        XCTAssertEqual(controller.query, "refresh needle")
+        XCTAssertEqual(controller.matchCount, 0)
+        XCTAssertNil(container.activeView.currentSelection)
+
+        container.display(returned.document, data: returned.data, revision: 4)
+        await nextMainQueueTurn()
+
+        XCTAssertEqual(controller.matchCount, 1)
+        XCTAssertEqual(controller.selectedMatchIndex, 0)
+        XCTAssertTrue(container.activeView.currentSelection?.string?.contains("refresh needle") == true)
+    }
+
+    func testLatestQueryWinsWhenItChangesDuringBufferedStaging() async throws {
+        let original = try makeDocument(markdown: "# Original\n\nAlpha marker.")
+        let replacement = try makeDocument(markdown: "# Replacement\n\nBeta marker.")
+        let controller = PDFSearchController()
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.stagingDelay = 0.05
+        container.layoutSubtreeIfNeeded()
+        container.searchController = controller
+        container.display(original.document, data: original.data, revision: 1)
+        controller.query = "alpha"
+
+        container.display(replacement.document, data: replacement.data, revision: 2)
+        controller.query = "beta"
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertEqual(controller.query, "beta")
+        XCTAssertEqual(controller.matchCount, 1)
+        XCTAssertEqual(controller.selectedMatchIndex, 0)
+        XCTAssertTrue(container.activeView.currentSelection?.string?.contains("Beta") == true)
+    }
+
     func testViewportRestoresTheClosestSurvivingTextAnchor() throws {
         let paragraphs = (1...120).map { index in
             if index == 12 || index == 100 {

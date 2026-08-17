@@ -11,6 +11,7 @@ public struct PDFPreviewView: NSViewRepresentable {
     private let exportData: () throws -> Data
     private let openURL: (URL) -> Void
     private let onDragError: (Error) -> Void
+    private let searchController: PDFSearchController?
 
     public init(
         data: Data,
@@ -21,10 +22,55 @@ public struct PDFPreviewView: NSViewRepresentable {
         openURL: @escaping (URL) -> Void,
         onDragError: @escaping (Error) -> Void = { _ in }
     ) {
+        self.init(
+            data: data,
+            revision: revision,
+            exportFormat: exportFormat,
+            fileName: fileName,
+            searchController: nil,
+            exportData: exportData,
+            openURL: openURL,
+            onDragError: onDragError
+        )
+    }
+
+    init(
+        data: Data,
+        revision: UInt64 = 0,
+        exportFormat: ExportFormat,
+        fileName: String,
+        searchController: PDFSearchController,
+        exportData: @escaping () throws -> Data,
+        openURL: @escaping (URL) -> Void,
+        onDragError: @escaping (Error) -> Void = { _ in }
+    ) {
+        self.init(
+            data: data,
+            revision: revision,
+            exportFormat: exportFormat,
+            fileName: fileName,
+            searchController: Optional(searchController),
+            exportData: exportData,
+            openURL: openURL,
+            onDragError: onDragError
+        )
+    }
+
+    private init(
+        data: Data,
+        revision: UInt64,
+        exportFormat: ExportFormat,
+        fileName: String,
+        searchController: PDFSearchController?,
+        exportData: @escaping () throws -> Data,
+        openURL: @escaping (URL) -> Void,
+        onDragError: @escaping (Error) -> Void
+    ) {
         self.data = data
         self.revision = revision
         self.exportFormat = exportFormat
         self.fileName = fileName
+        self.searchController = searchController
         self.exportData = exportData
         self.openURL = openURL
         self.onDragError = onDragError
@@ -55,6 +101,7 @@ public struct PDFPreviewView: NSViewRepresentable {
     public func makeNSView(context: Context) -> BufferedPDFPreviewView {
         let view = BufferedPDFPreviewView()
         view.delegate = context.coordinator
+        view.searchController = searchController
         return view
     }
 
@@ -62,6 +109,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         context.coordinator.openURL = openURL
         context.coordinator.onDragError = onDragError
         view.delegate = context.coordinator
+        view.searchController = searchController
         view.updateDragPayload(
             format: exportFormat,
             fileName: fileName,
@@ -70,6 +118,13 @@ public struct PDFPreviewView: NSViewRepresentable {
         )
         guard let document = PDFDocument(data: data) else { return }
         view.display(document, data: data, revision: revision)
+    }
+
+    public static func dismantleNSView(
+        _ view: BufferedPDFPreviewView,
+        coordinator: Coordinator
+    ) {
+        view.searchController = nil
     }
 
     @MainActor
@@ -262,7 +317,7 @@ struct PreviewViewport {
         return String(trimmed.prefix(160))
     }
 
-    private static func documentProgress(
+    static func documentProgress(
         of selection: PDFSelection,
         in document: PDFDocument
     ) -> CGFloat {
@@ -285,18 +340,58 @@ struct PreviewViewport {
     }
 }
 
+private struct PDFSearchState {
+    let query: String
+    let matches: [PDFSelection]
+    let selectedMatchIndex: Int?
+
+    static let empty = PDFSearchState(query: "", matches: [], selectedMatchIndex: nil)
+
+    var summary: PDFSearchSummary {
+        PDFSearchSummary(
+            matchCount: matches.count,
+            selectedMatchIndex: selectedMatchIndex
+        )
+    }
+
+    func selectedProgress(in document: PDFDocument) -> CGFloat? {
+        guard let selectedMatchIndex,
+              matches.indices.contains(selectedMatchIndex)
+        else { return nil }
+        return PreviewViewport.documentProgress(
+            of: matches[selectedMatchIndex],
+            in: document
+        )
+    }
+}
+
+private enum PDFSearchStartingPoint {
+    case atOrAfter(CGFloat)
+    case closest(to: CGFloat)
+}
+
 @MainActor
-public final class BufferedPDFPreviewView: NSView {
+public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
     private let firstView: PageAdvancingPDFView
     private let secondView: PageAdvancingPDFView
     private var pendingCommit: DispatchWorkItem?
     private var pendingRetirement: DispatchWorkItem?
     private var requestSequence: UInt64 = 0
+    private var searchState = PDFSearchState.empty
+    private var showsAllSearchMatches = false
     var stagingDelay: TimeInterval = 0.05
     var retirementDelay: TimeInterval = 0.1
     private(set) var activeView: PageAdvancingPDFView
     private(set) var activeRevision: UInt64?
     private(set) var activeData: Data?
+
+    weak var searchController: PDFSearchController? {
+        didSet {
+            guard oldValue !== searchController else { return }
+            oldValue?.detach(from: self)
+            searchController?.attach(to: self)
+        }
+    }
 
     var delegate: PDFViewDelegate? {
         didSet {
@@ -349,16 +444,42 @@ public final class BufferedPDFPreviewView: NSView {
             activeData = data
             activeRevision = revision
             activeView.displayInitial(document)
+            searchState = makeSearchState(
+                query: searchState.query,
+                in: document,
+                startingAt: .atOrAfter(0)
+            )
+            applySearchState(
+                searchState,
+                to: activeView,
+                showingAllMatches: showsAllSearchMatches,
+                scrollSelection: false
+            )
+            notifySearchController()
             return
         }
 
         let viewport = PreviewViewport.capture(from: activeView)
+        let preferredSearchProgress = activeView.document.flatMap {
+            searchState.selectedProgress(in: $0)
+        } ?? viewport?.documentProgress ?? 0
+        let stagedSearchState = makeSearchState(
+            query: searchState.query,
+            in: document,
+            startingAt: .closest(to: preferredSearchProgress)
+        )
         let stagedView = inactiveView
         stagedView.automaticallyTakesFocus = false
         addSubview(stagedView, positioned: .below, relativeTo: activeView)
         stagedView.displayReplacement(document, viewport: viewport)
         stagedView.layoutSubtreeIfNeeded()
         viewport?.restore(in: stagedView)
+        applySearchState(
+            stagedSearchState,
+            to: stagedView,
+            showingAllMatches: showsAllSearchMatches,
+            scrollSelection: false
+        )
         stagedView.displayIfNeededIgnoringOpacity()
 
         let workItem = DispatchWorkItem { [weak self, weak stagedView] in
@@ -369,16 +490,110 @@ public final class BufferedPDFPreviewView: NSView {
             else { return }
             stagedView.layoutSubtreeIfNeeded()
             viewport?.restore(in: stagedView)
+            let latestSearchProgress = self.activeView.document.flatMap {
+                self.searchState.selectedProgress(in: $0)
+            } ?? viewport?.documentProgress ?? 0
+            let committedSearchState = self.makeSearchState(
+                query: self.searchState.query,
+                in: document,
+                startingAt: .closest(to: latestSearchProgress)
+            )
+            self.applySearchState(
+                committedSearchState,
+                to: stagedView,
+                showingAllMatches: self.showsAllSearchMatches,
+                scrollSelection: false
+            )
             stagedView.displayIfNeededIgnoringOpacity()
             self.commitStagedView(
                 stagedView,
                 data: data,
                 revision: revision,
-                requestedSequence: requestedSequence
+                requestedSequence: requestedSequence,
+                searchState: committedSearchState
             )
         }
         pendingCommit = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + stagingDelay, execute: workItem)
+    }
+
+    var isSearchAvailable: Bool {
+        activeView.document != nil
+    }
+
+    func performSearch(
+        for query: String,
+        showingAllMatches: Bool
+    ) -> PDFSearchSummary {
+        showsAllSearchMatches = showingAllMatches
+        let startingProgress = PreviewViewport.capture(from: activeView)?.documentProgress ?? 0
+        guard let document = activeView.document else {
+            searchState = PDFSearchState(
+                query: normalizedSearchQuery(query),
+                matches: [],
+                selectedMatchIndex: nil
+            )
+            return searchState.summary
+        }
+
+        searchState = makeSearchState(
+            query: query,
+            in: document,
+            startingAt: .atOrAfter(startingProgress)
+        )
+        applySearchState(
+            searchState,
+            to: activeView,
+            showingAllMatches: showingAllMatches,
+            scrollSelection: true
+        )
+        return searchState.summary
+    }
+
+    func moveSearchSelection(
+        _ direction: PDFSearchDirection,
+        showingAllMatches: Bool
+    ) -> PDFSearchSummary {
+        showsAllSearchMatches = showingAllMatches
+        guard !searchState.matches.isEmpty else { return searchState.summary }
+
+        let currentIndex = searchState.selectedMatchIndex ?? {
+            switch direction {
+            case .next: return -1
+            case .previous: return 0
+            }
+        }()
+        let selectedIndex: Int
+        switch direction {
+        case .next:
+            selectedIndex = (currentIndex + 1) % searchState.matches.count
+        case .previous:
+            selectedIndex = (
+                currentIndex - 1 + searchState.matches.count
+            ) % searchState.matches.count
+        }
+        searchState = PDFSearchState(
+            query: searchState.query,
+            matches: searchState.matches,
+            selectedMatchIndex: selectedIndex
+        )
+        applySearchState(
+            searchState,
+            to: activeView,
+            showingAllMatches: showingAllMatches,
+            scrollSelection: true
+        )
+        return searchState.summary
+    }
+
+    func setShowsAllSearchMatches(_ showsAllMatches: Bool) {
+        showsAllSearchMatches = showsAllMatches
+        applySearchState(
+            searchState,
+            to: activeView,
+            showingAllMatches: showsAllMatches,
+            scrollSelection: false
+        )
     }
 
     func updateDragPayload(
@@ -405,11 +620,83 @@ public final class BufferedPDFPreviewView: NSView {
         activeView === firstView ? secondView : firstView
     }
 
+    private func makeSearchState(
+        query: String,
+        in document: PDFDocument,
+        startingAt startingPoint: PDFSearchStartingPoint
+    ) -> PDFSearchState {
+        let query = normalizedSearchQuery(query)
+        guard !query.isEmpty else { return .empty }
+        let matches = document.findString(query, withOptions: [.caseInsensitive])
+        guard !matches.isEmpty else {
+            return PDFSearchState(query: query, matches: [], selectedMatchIndex: nil)
+        }
+
+        let matchProgress = matches.map {
+            PreviewViewport.documentProgress(of: $0, in: document)
+        }
+        let selectedIndex: Int
+        switch startingPoint {
+        case let .atOrAfter(progress):
+            selectedIndex = matchProgress.firstIndex { $0 + 0.000_001 >= progress } ?? 0
+        case let .closest(progress):
+            selectedIndex = matchProgress.indices.min {
+                abs(matchProgress[$0] - progress) < abs(matchProgress[$1] - progress)
+            } ?? 0
+        }
+        return PDFSearchState(
+            query: query,
+            matches: matches,
+            selectedMatchIndex: selectedIndex
+        )
+    }
+
+    private func normalizedSearchQuery(_ query: String) -> String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func applySearchState(
+        _ state: PDFSearchState,
+        to view: PDFView,
+        showingAllMatches: Bool,
+        scrollSelection: Bool
+    ) {
+        guard let selectedMatchIndex = state.selectedMatchIndex,
+              state.matches.indices.contains(selectedMatchIndex)
+        else {
+            view.highlightedSelections = nil
+            view.clearSelection()
+            return
+        }
+
+        let selection = state.matches[selectedMatchIndex]
+        view.setCurrentSelection(selection, animate: false)
+        if showingAllMatches {
+            view.highlightedSelections = state.matches.enumerated().compactMap { index, match in
+                guard index != selectedMatchIndex,
+                      let highlightedMatch = match.copy() as? PDFSelection
+                else { return nil }
+                highlightedMatch.color = NSColor.systemYellow.withAlphaComponent(0.32)
+                return highlightedMatch
+            }
+        } else {
+            view.highlightedSelections = nil
+        }
+        if scrollSelection {
+            view.scrollSelectionToVisible(nil)
+        }
+    }
+
+    private func notifySearchController() {
+        searchController?.target(self, didUpdate: searchState.summary)
+    }
+
     private func commitStagedView(
         _ stagedView: PageAdvancingPDFView,
         data: Data,
         revision: UInt64,
-        requestedSequence: UInt64
+        requestedSequence: UInt64,
+        searchState: PDFSearchState
     ) {
         guard requestSequence == requestedSequence else { return }
         let previousView = activeView
@@ -435,7 +722,9 @@ public final class BufferedPDFPreviewView: NSView {
         activeView = stagedView
         activeData = data
         activeRevision = revision
+        self.searchState = searchState
         pendingCommit = nil
+        notifySearchController()
         if shouldTransferFocus {
             window?.makeFirstResponder(stagedView)
         }
@@ -454,6 +743,8 @@ public final class BufferedPDFPreviewView: NSView {
             else { return }
             CATransaction.begin()
             CATransaction.setDisableActions(true)
+            previousView.highlightedSelections = nil
+            previousView.clearSelection()
             previousView.document = nil
             CATransaction.commit()
             self.pendingRetirement = nil

@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-08-17 — Native PDF find
+
+- Added per-document search of the generated PDF with a compact movable floating panel, live result counts, case-insensitive matching, viewport-relative initial selection, and wrapping next/previous navigation.
+- Added the standard Command-F, Command-G, and Shift-Command-G shortcuts plus one Edit > Find submenu, while keeping search chrome off-screen when it is not in use.
+- Preserved each window's query and current match after dismissal, showed secondary match highlights only while searching, and prepared refreshed-PDF search state behind the visible preview before its atomic swap.
+- Added deterministic coverage for controller lifecycle, independent windows, search matching and navigation, buffered refreshes, removed and returning matches, and query changes during staging; verified the complete workflow in the native app.
+
 ## 2026-08-16 — Eliminate live-refresh page and title flashes
 
 - Kept the outgoing PDF continuously painted and above the staged replacement for a short PDFKit paint interval, then reordered the two persistent views with AppKit and Core Animation transitions disabled.

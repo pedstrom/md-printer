@@ -19,6 +19,7 @@ struct MarkdownPrinterApp: App {
                     AboutPanel.show()
                 }
             }
+            PDFSearchCommands()
         }
 
         DocumentGroup(viewing: MarkdownFileDocument.self) { configuration in
