@@ -172,15 +172,16 @@ public struct MarkdownPrinterView: View {
 
 private struct PDFSearchPanelView: View {
     @ObservedObject var controller: PDFSearchController
-    @FocusState private var searchFieldIsFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            TextField("Find", text: $controller.query)
-                .textFieldStyle(.roundedBorder)
-                .focused($searchFieldIsFocused)
-                .onSubmit(controller.findNext)
-                .accessibilityLabel("Find text")
+            PDFSearchField(
+                text: $controller.query,
+                focusRequest: controller.focusRequest,
+                onSubmit: controller.findNext,
+                onCancel: controller.dismiss
+            )
+            .frame(height: 22)
             HStack(spacing: 10) {
                 Text(controller.statusText)
                     .foregroundStyle(.secondary)
@@ -198,16 +199,96 @@ private struct PDFSearchPanelView: View {
         .padding(16)
         .frame(width: 420)
         .focusedSceneObject(controller)
-        .onAppear(perform: focusAndSelectQuery)
-        .onChange(of: controller.focusRequest) {
-            focusAndSelectQuery()
-        }
+    }
+}
+
+private struct PDFSearchField: NSViewRepresentable {
+    @Binding var text: String
+    let focusRequest: UInt64
+    let onSubmit: () -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, onSubmit: onSubmit, onCancel: onCancel)
     }
 
-    private func focusAndSelectQuery() {
-        searchFieldIsFocused = true
-        DispatchQueue.main.async {
-            NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.placeholderString = "Find"
+        field.delegate = context.coordinator
+        field.target = context.coordinator
+        field.action = #selector(Coordinator.submit(_:))
+        field.setAccessibilityLabel("Find text")
+        return field
+    }
+
+    func updateNSView(_ field: NSSearchField, context: Context) {
+        context.coordinator.text = $text
+        context.coordinator.onSubmit = onSubmit
+        context.coordinator.onCancel = onCancel
+        if field.stringValue != text {
+            field.stringValue = text
+        }
+        context.coordinator.focus(
+            field,
+            request: focusRequest,
+            selectQuery: PDFSearchFocusPolicy.shouldSelectQuery(text)
+        )
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var text: Binding<String>
+        var onSubmit: () -> Void
+        var onCancel: () -> Void
+        private var handledFocusRequest: UInt64?
+
+        init(
+            text: Binding<String>,
+            onSubmit: @escaping () -> Void,
+            onCancel: @escaping () -> Void
+        ) {
+            self.text = text
+            self.onSubmit = onSubmit
+            self.onCancel = onCancel
+        }
+
+        func focus(
+            _ field: NSSearchField,
+            request: UInt64,
+            selectQuery: Bool
+        ) {
+            guard handledFocusRequest != request else { return }
+            handledFocusRequest = request
+            DispatchQueue.main.async { [weak field] in
+                guard let field, let window = field.window else { return }
+                window.makeFirstResponder(field)
+                if selectQuery {
+                    field.currentEditor()?.selectAll(nil)
+                }
+            }
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSSearchField else { return }
+            text.wrappedValue = field.stringValue
+        }
+
+        func control(
+            _ control: NSControl,
+            textView: NSTextView,
+            doCommandBy commandSelector: Selector
+        ) -> Bool {
+            guard commandSelector == #selector(NSResponder.cancelOperation(_:)) else {
+                return false
+            }
+            onCancel()
+            return true
+        }
+
+        @objc
+        func submit(_ sender: NSSearchField) {
+            onSubmit()
         }
     }
 }
@@ -341,6 +422,10 @@ private final class PDFSearchPanel: NSPanel {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        if event.keyCode == 53, modifiers.isEmpty {
+            searchController?.dismiss()
+            return true
+        }
         switch (event.charactersIgnoringModifiers?.lowercased(), modifiers) {
         case ("f", [.command]):
             searchController?.present()

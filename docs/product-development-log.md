@@ -4,23 +4,19 @@
 
 - Added per-document search of the generated PDF with a compact movable floating panel, live result counts, case-insensitive matching, viewport-relative initial selection, and wrapping next/previous navigation.
 - Added the standard Command-F, Command-G, and Shift-Command-G shortcuts plus one Edit > Find submenu, while keeping search chrome off-screen when it is not in use.
+- Used a native search field so the first Command-F focuses an empty query without selecting the document, later invocations select only the retained query, and Escape closes the panel without clearing search state.
 - Preserved each window's query and current match after dismissal, showed secondary match highlights only while searching, and prepared refreshed-PDF search state behind the visible preview before its atomic swap.
 - Added deterministic coverage for controller lifecycle, independent windows, search matching and navigation, buffered refreshes, removed and returning matches, and query changes during staging; verified the complete workflow in the native app.
 
-## 2026-08-16 — Eliminate live-refresh page and title flashes
-
-- Kept the outgoing PDF continuously painted and above the staged replacement for a short PDFKit paint interval, then reordered the two persistent views with AppKit and Core Animation transitions disabled.
-- Retired the covered PDF only after the new view had been active long enough to composite, preventing both blank refresh frames and duplicate stale accessibility content.
-- Replaced competing delayed filename/title assignments with one window-attached title authority that synchronously preserves the Markdown H1 throughout file refreshes.
-- Added regressions for covered-view visibility, staging delay, post-swap retirement, accessibility handoff, and stable title enforcement, then repeated a later-page live edit in the native app with an unchanged title and scroll position.
-
-## 2026-08-14 — Seamless live Markdown refresh
+## 2026-08-17 — Seamless live Markdown refresh
 
 - Added per-window local source monitoring with coordinated-file notifications, re-arming file and parent-directory filesystem watchers for both in-place and atomic saves, and a 150 ms trailing debounce so open previews update automatically after external Markdown edits.
 - Published each regenerated document, styled text, and PDF as one session snapshot while retaining the last valid preview across read or render failures.
-- Double-buffered the native PDFKit preview so a replacement PDF is laid out, drawn, and restored to the same semantic text anchor behind the visible preview before an animation-free atomic swap.
+- Double-buffered the native PDFKit preview so a replacement PDF is laid out, drawn, and restored behind the visible preview before an animation-free atomic swap; both reusable buffers now retain their last valid PDF instead of clearing and rebuilding on alternating refreshes.
+- Kept the outgoing PDF continuously painted above staging, hid the inactive warm buffer only after handoff, and disabled AppKit and Core Animation transitions so every refresh follows the same no-blank path while exposing only the active PDF to accessibility.
 - Preserved zoom and page-offset fallbacks, rejected stale prepared revisions, and corrected initial PDF navigation to the true top of page one instead of its lower edge beside page two.
-- Added deterministic coverage for in-place and atomic writes, independent window refreshes, unchanged and invalid files, monitor cleanup, buffered swaps, stale revisions, semantic anchors, page fallbacks, and first-page positioning.
+- Preserved the Markdown H1 as the window title throughout refreshes with one window-attached title authority.
+- Added deterministic coverage for monitoring, atomic snapshots, consecutive warm-buffer swaps, stale revisions, viewport anchors and fallbacks, title stability, accessibility handoff, and first-page positioning; verified five consecutive later-page edits and inspected every frame of the native recording for blank redraws.
 
 ## 2026-08-13 — Version 1.1.0
 

@@ -414,6 +414,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         secondView.setAccessibilityElement(false)
         firstView.setAccessibilityHidden(false)
         secondView.setAccessibilityHidden(true)
+        secondView.isHidden = true
         addSubview(secondView)
         addSubview(firstView, positioned: .above, relativeTo: secondView)
     }
@@ -470,6 +471,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         )
         let stagedView = inactiveView
         stagedView.automaticallyTakesFocus = false
+        stagedView.isHidden = false
         addSubview(stagedView, positioned: .below, relativeTo: activeView)
         stagedView.displayReplacement(document, viewport: viewport)
         stagedView.layoutSubtreeIfNeeded()
@@ -745,7 +747,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
             CATransaction.setDisableActions(true)
             previousView.highlightedSelections = nil
             previousView.clearSelection()
-            previousView.document = nil
+            previousView.isHidden = true
             CATransaction.commit()
             self.pendingRetirement = nil
         }

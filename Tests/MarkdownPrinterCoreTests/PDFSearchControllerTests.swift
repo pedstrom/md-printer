@@ -3,6 +3,11 @@ import XCTest
 
 @MainActor
 final class PDFSearchControllerTests: XCTestCase {
+    func testFocusPolicySelectsOnlyARetainedQuery() {
+        XCTAssertFalse(PDFSearchFocusPolicy.shouldSelectQuery(""))
+        XCTAssertTrue(PDFSearchFocusPolicy.shouldSelectQuery("Needle"))
+    }
+
     func testControllerPresentsSearchMovesMatchesAndRetainsQueryAfterDismissal() {
         let target = TestPDFSearchTarget()
         target.searchSummary = PDFSearchSummary(matchCount: 3, selectedMatchIndex: 1)

@@ -12,6 +12,12 @@ struct PDFSearchSummary: Equatable {
     static let empty = PDFSearchSummary(matchCount: 0, selectedMatchIndex: nil)
 }
 
+enum PDFSearchFocusPolicy {
+    static func shouldSelectQuery(_ query: String) -> Bool {
+        !query.isEmpty
+    }
+}
+
 @MainActor
 protocol PDFSearchTarget: AnyObject {
     var isSearchAvailable: Bool { get }

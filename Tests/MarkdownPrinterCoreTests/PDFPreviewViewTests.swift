@@ -241,7 +241,7 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertTrue(container.subviews.last === container.activeView)
     }
 
-    func testBufferedPreviewRetiresTheCoveredDocumentAfterTheSwap() async throws {
+    func testBufferedPreviewKeepsTheCoveredDocumentWarmForTheNextSwap() async throws {
         let first = try makeDocument(markdown: "# First\n\nThe outgoing preview.")
         let second = try makeDocument(markdown: "# Second\n\nThe active preview.")
         let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
@@ -257,8 +257,55 @@ final class PDFPreviewViewTests: XCTestCase {
 
         try await Task.sleep(nanoseconds: 40_000_000)
 
-        XCTAssertNil(outgoingView.document)
+        XCTAssertTrue(outgoingView.document?.string?.contains("outgoing preview") == true)
+        XCTAssertNil(outgoingView.currentSelection)
+        XCTAssertNil(outgoingView.highlightedSelections)
+        XCTAssertTrue(outgoingView.isHidden)
+        XCTAssertTrue(outgoingView.isAccessibilityHidden())
         XCTAssertTrue(container.activeView.document?.string?.contains("active preview") == true)
+    }
+
+    func testBufferedPreviewKeepsBothViewsPopulatedAcrossConsecutiveRefreshes() async throws {
+        let revisions = try (1...4).map { revision in
+            try makeDocument(
+                markdown: "# Revision \(revision)\n\nConsecutive refresh content \(revision)."
+            )
+        }
+        let container = BufferedPDFPreviewView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        container.stagingDelay = 0
+        container.retirementDelay = 0.01
+        container.layoutSubtreeIfNeeded()
+        container.display(revisions[0].document, data: revisions[0].data, revision: 1)
+
+        for index in revisions.indices.dropFirst() {
+            let visibleView = container.activeView
+            container.display(
+                revisions[index].document,
+                data: revisions[index].data,
+                revision: UInt64(index + 1)
+            )
+
+            XCTAssertTrue(container.activeView === visibleView)
+            XCTAssertTrue(container.subviews.last === visibleView)
+            XCTAssertNotNil(visibleView.document)
+
+            await nextMainQueueTurn()
+            try await Task.sleep(nanoseconds: 20_000_000)
+
+            let buffers = container.subviews.compactMap { $0 as? PageAdvancingPDFView }
+            XCTAssertEqual(buffers.count, 2)
+            XCTAssertEqual(buffers.compactMap(\.document).count, 2)
+            XCTAssertEqual(buffers.filter { !$0.isHidden }.count, 1)
+            XCTAssertTrue(buffers.first { $0 !== container.activeView }?.isHidden == true)
+            XCTAssertTrue(container.subviews.last === container.activeView)
+            XCTAssertTrue(
+                container.activeView.document?.string?.contains(
+                    "Consecutive refresh content \(index + 1)"
+                ) == true
+            )
+        }
     }
 
     func testSearchIsCaseInsensitiveStartsAtTheViewportAndPreservesZoom() throws {
