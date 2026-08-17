@@ -7,7 +7,7 @@
 <p align="center">Turn Markdown files into clean, printable PDFs on your Mac.</p>
 
 <p align="center">
-  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.1.0</strong></a>
+  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.2.0</strong></a>
 </p>
 
 Markdown is suddenly everywhere. AI tools, coding assistants, note apps, and research workflows are producing copious `.md` files, but those files are not always pleasant to print, share, or read away from an editor. Markdown Printer gives them a polished page without sending the document anywhere.
@@ -21,6 +21,8 @@ Drop one file—or a whole batch—onto the app. Each document opens in its own 
 - Produces searchable, US Letter PDFs with page numbers
 - Exports editable Microsoft Word documents with formatting, links, tables, and local images
 - Opens multiple Markdown files at once, each in its own window
+- Refreshes open documents automatically when their Markdown files change while preserving the window, zoom, and reading position
+- Finds text in the rendered PDF with the standard Command-F, Command-G, and Shift-Command-G shortcuts
 - Lets you hold and drag the preferred PDF or Word export directly to the Desktop or another app
 - Keeps your files entirely on your Mac: no account, upload, analytics, or remote rendering
 

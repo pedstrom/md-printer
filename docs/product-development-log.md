@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-17 — Version 1.2.0
+
+- Promoted seamless live Markdown refresh, stable viewport preservation, and native PDF find together as version 1.2.0, build 7.
+- Updated the public download label and release verification metadata for the signed, notarized GitHub release ZIP.
+
 ## 2026-08-17 — Native PDF find
 
 - Added per-document search of the generated PDF with a compact movable floating panel, live result counts, case-insensitive matching, viewport-relative initial selection, and wrapping next/previous navigation.
