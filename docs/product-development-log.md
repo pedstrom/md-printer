@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-08-16 — Eliminate live-refresh page and title flashes
+
+- Kept the outgoing PDF continuously painted and above the staged replacement for a short PDFKit paint interval, then reordered the two persistent views with AppKit and Core Animation transitions disabled.
+- Retired the covered PDF only after the new view had been active long enough to composite, preventing both blank refresh frames and duplicate stale accessibility content.
+- Replaced competing delayed filename/title assignments with one window-attached title authority that synchronously preserves the Markdown H1 throughout file refreshes.
+- Added regressions for covered-view visibility, staging delay, post-swap retirement, accessibility handoff, and stable title enforcement, then repeated a later-page live edit in the native app with an unchanged title and scroll position.
+
 ## 2026-08-14 — Seamless live Markdown refresh
 
 - Added per-window local source monitoring with coordinated-file notifications, re-arming file and parent-directory filesystem watchers for both in-place and atomic saves, and a 150 ms trailing debounce so open previews update automatically after external Markdown edits.

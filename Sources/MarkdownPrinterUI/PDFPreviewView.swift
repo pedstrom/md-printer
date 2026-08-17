@@ -290,7 +290,10 @@ public final class BufferedPDFPreviewView: NSView {
     private let firstView: PageAdvancingPDFView
     private let secondView: PageAdvancingPDFView
     private var pendingCommit: DispatchWorkItem?
+    private var pendingRetirement: DispatchWorkItem?
     private var requestSequence: UInt64 = 0
+    var stagingDelay: TimeInterval = 0.05
+    var retirementDelay: TimeInterval = 0.1
     private(set) var activeView: PageAdvancingPDFView
     private(set) var activeRevision: UInt64?
     private(set) var activeData: Data?
@@ -312,7 +315,10 @@ public final class BufferedPDFPreviewView: NSView {
         wantsLayer = true
         firstView.automaticallyTakesFocus = true
         secondView.automaticallyTakesFocus = false
-        secondView.isHidden = true
+        firstView.setAccessibilityElement(true)
+        secondView.setAccessibilityElement(false)
+        firstView.setAccessibilityHidden(false)
+        secondView.setAccessibilityHidden(true)
         addSubview(secondView)
         addSubview(firstView, positioned: .above, relativeTo: secondView)
     }
@@ -336,6 +342,8 @@ public final class BufferedPDFPreviewView: NSView {
         requestSequence &+= 1
         let requestedSequence = requestSequence
         pendingCommit?.cancel()
+        pendingRetirement?.cancel()
+        pendingRetirement = nil
 
         guard activeView.document != nil else {
             activeData = data
@@ -347,7 +355,6 @@ public final class BufferedPDFPreviewView: NSView {
         let viewport = PreviewViewport.capture(from: activeView)
         let stagedView = inactiveView
         stagedView.automaticallyTakesFocus = false
-        stagedView.isHidden = false
         addSubview(stagedView, positioned: .below, relativeTo: activeView)
         stagedView.displayReplacement(document, viewport: viewport)
         stagedView.layoutSubtreeIfNeeded()
@@ -371,7 +378,7 @@ public final class BufferedPDFPreviewView: NSView {
             )
         }
         pendingCommit = workItem
-        DispatchQueue.main.async(execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + stagingDelay, execute: workItem)
     }
 
     func updateDragPayload(
@@ -415,14 +422,16 @@ public final class BufferedPDFPreviewView: NSView {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0
             context.allowsImplicitAnimation = false
-            stagedView.isHidden = false
             addSubview(stagedView, positioned: .above, relativeTo: previousView)
-            previousView.isHidden = true
         }
         CATransaction.commit()
 
         previousView.automaticallyTakesFocus = false
         stagedView.automaticallyTakesFocus = true
+        previousView.setAccessibilityElement(false)
+        stagedView.setAccessibilityElement(true)
+        previousView.setAccessibilityHidden(true)
+        stagedView.setAccessibilityHidden(false)
         activeView = stagedView
         activeData = data
         activeRevision = revision
@@ -430,6 +439,27 @@ public final class BufferedPDFPreviewView: NSView {
         if shouldTransferFocus {
             window?.makeFirstResponder(stagedView)
         }
+        scheduleRetirement(of: previousView, requestedSequence: requestedSequence)
+    }
+
+    private func scheduleRetirement(
+        of previousView: PageAdvancingPDFView,
+        requestedSequence: UInt64
+    ) {
+        let workItem = DispatchWorkItem { [weak self, weak previousView] in
+            guard let self,
+                  let previousView,
+                  self.requestSequence == requestedSequence,
+                  self.inactiveView === previousView
+            else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            previousView.document = nil
+            CATransaction.commit()
+            self.pendingRetirement = nil
+        }
+        pendingRetirement = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + retirementDelay, execute: workItem)
     }
 }
 

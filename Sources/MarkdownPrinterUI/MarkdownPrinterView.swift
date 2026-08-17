@@ -28,7 +28,7 @@ public struct MarkdownPrinterView: View {
             }
         }
         .frame(minWidth: 680, minHeight: 560)
-        .navigationTitle(session.title)
+        .background(StableWindowTitleView(title: session.title))
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay {
             if isDropTargeted {

@@ -163,12 +163,15 @@ final class PDFPreviewViewTests: XCTestCase {
         let first = try makeDocument(markdown: "# First\n\nThe original visible document.")
         let second = try makeDocument(markdown: "# Second\n\nThe replacement visible document.")
         let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.stagingDelay = 0
         container.layoutSubtreeIfNeeded()
 
         container.display(first.document, data: first.data, revision: 1)
         let originalView = container.activeView
         XCTAssertEqual(container.activeData, first.data)
         XCTAssertFalse(originalView.isHidden)
+        XCTAssertTrue(originalView.isAccessibilityElement())
+        XCTAssertFalse(originalView.isAccessibilityHidden())
 
         container.display(second.document, data: second.data, revision: 2)
 
@@ -185,8 +188,13 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertFalse(container.activeView === originalView)
         XCTAssertEqual(container.activeData, second.data)
         XCTAssertEqual(container.activeRevision, 2)
-        XCTAssertTrue(originalView.isHidden)
+        XCTAssertFalse(originalView.isHidden)
         XCTAssertFalse(container.activeView.isHidden)
+        XCTAssertFalse(originalView.isAccessibilityElement())
+        XCTAssertTrue(container.activeView.isAccessibilityElement())
+        XCTAssertTrue(originalView.isAccessibilityHidden())
+        XCTAssertFalse(container.activeView.isAccessibilityHidden())
+        XCTAssertTrue(container.subviews.last === container.activeView)
         XCTAssertTrue(container.activeView.document?.string?.contains("replacement visible") == true)
     }
 
@@ -195,6 +203,7 @@ final class PDFPreviewViewTests: XCTestCase {
         let stale = try makeDocument(markdown: "# Stale\n\nNever show this revision.")
         let latest = try makeDocument(markdown: "# Latest\n\nOnly show this revision.")
         let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.stagingDelay = 0
         container.layoutSubtreeIfNeeded()
         container.display(first.document, data: first.data, revision: 1)
 
@@ -206,6 +215,50 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertEqual(container.activeRevision, 3)
         XCTAssertTrue(container.activeView.document?.string?.contains("Only show this revision") == true)
         XCTAssertFalse(container.activeView.document?.string?.contains("Never show") == true)
+    }
+
+    func testBufferedPreviewKeepsOutgoingViewOnTopDuringPaintDelay() async throws {
+        let first = try makeDocument(markdown: "# First\n\nThe currently painted preview.")
+        let second = try makeDocument(markdown: "# Second\n\nThe staged replacement preview.")
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.stagingDelay = 0.05
+        container.layoutSubtreeIfNeeded()
+        container.display(first.document, data: first.data, revision: 1)
+        let outgoingView = container.activeView
+
+        container.display(second.document, data: second.data, revision: 2)
+        await nextMainQueueTurn()
+
+        XCTAssertTrue(container.activeView === outgoingView)
+        XCTAssertFalse(outgoingView.isHidden)
+        XCTAssertTrue(container.subviews.last === outgoingView)
+
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertFalse(container.activeView === outgoingView)
+        XCTAssertFalse(outgoingView.isHidden)
+        XCTAssertFalse(container.activeView.isHidden)
+        XCTAssertTrue(container.subviews.last === container.activeView)
+    }
+
+    func testBufferedPreviewRetiresTheCoveredDocumentAfterTheSwap() async throws {
+        let first = try makeDocument(markdown: "# First\n\nThe outgoing preview.")
+        let second = try makeDocument(markdown: "# Second\n\nThe active preview.")
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.stagingDelay = 0
+        container.retirementDelay = 0.02
+        container.layoutSubtreeIfNeeded()
+        container.display(first.document, data: first.data, revision: 1)
+        let outgoingView = container.activeView
+
+        container.display(second.document, data: second.data, revision: 2)
+        await nextMainQueueTurn()
+        XCTAssertNotNil(outgoingView.document)
+
+        try await Task.sleep(nanoseconds: 40_000_000)
+
+        XCTAssertNil(outgoingView.document)
+        XCTAssertTrue(container.activeView.document?.string?.contains("active preview") == true)
     }
 
     func testViewportRestoresTheClosestSurvivingTextAnchor() throws {

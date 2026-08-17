@@ -99,15 +99,11 @@ private struct MarkdownDocumentWindow: View {
         )
             .onAppear {
                 synchronizeFileDocument()
-                applyMarkdownWindowTitle()
                 session.startMonitoringSourceChanges()
             }
             .onChange(of: fileDocument.markdownDocument(sourceURL: sourceURL).markdown) {
                 synchronizeFileDocument()
                 session.startMonitoringSourceChanges()
-            }
-            .onChange(of: session.renderedSnapshot?.revision) {
-                applyMarkdownWindowTitle()
             }
     }
 
@@ -144,20 +140,4 @@ private struct MarkdownDocumentWindow: View {
         }
     }
 
-    private func applyMarkdownWindowTitle() {
-        guard let sourceURL else { return }
-        let fileName = sourceURL.lastPathComponent
-        let fileStem = sourceURL.deletingPathExtension().lastPathComponent
-
-        for delay in [0.0, 0.1, 0.5, 1.0] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                guard let window = NSApplication.shared.windows.first(where: { window in
-                    window.representedURL?.standardizedFileURL == sourceURL.standardizedFileURL
-                        || window.title == fileName
-                        || window.title == fileStem
-                }) else { return }
-                window.title = session.title
-            }
-        }
-    }
 }
