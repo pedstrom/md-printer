@@ -705,6 +705,54 @@ final class PDFPreviewViewTests: XCTestCase {
         )
     }
 
+    func testViewportDoesNotUseADistantDuplicateWhenTheClosestMatchCannotPreserveBoundary() throws {
+        let rendered = try makeDocument(markdown: makeLaterBoundaryTableMarkdown(
+            rowThirteenVerb: "revised"
+        ))
+        XCTAssertEqual(rendered.document.pageCount, 5)
+        let matchesOnFourthPage = rendered.document
+            .findString("candidates.", withOptions: [])
+            .filter { selection in
+                guard let page = selection.pages.first else { return false }
+                return rendered.document.index(for: page) == 3
+            }
+        XCTAssertGreaterThan(matchesOnFourthPage.count, 3)
+        let closestOriginalMatch = try XCTUnwrap(matchesOnFourthPage.max { lhs, rhs in
+            guard let lhsPage = lhs.pages.first, let rhsPage = rhs.pages.first else { return false }
+            return lhs.bounds(for: lhsPage).maxY < rhs.bounds(for: rhsPage).maxY
+        })
+        let viewport = PreviewViewport(
+            scaleFactor: 1.13,
+            pageIndex: 2,
+            normalizedPagePoint: CGPoint(x: 0, y: 0.49),
+            documentProgress: 0.5,
+            textAnchors: [
+                .init(
+                    text: "candidates.",
+                    documentProgress: PreviewViewport.documentProgress(
+                        of: closestOriginalMatch,
+                        in: rendered.document
+                    ),
+                    viewportTopFraction: 0.8
+                )
+            ]
+        )
+        let view = PageAdvancingPDFView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 928)
+        )
+
+        view.displayReplacement(rendered.document, viewport: viewport)
+
+        let destination = try XCTUnwrap(view.currentDestination)
+        XCTAssertEqual(rendered.document.index(for: try XCTUnwrap(destination.page)), 2)
+        let fallbackPage = try XCTUnwrap(rendered.document.page(at: 2))
+        XCTAssertEqual(
+            destination.point.y,
+            fallbackPage.bounds(for: .cropBox).height * 0.49,
+            accuracy: 1
+        )
+    }
+
     func testBufferedRefreshKeepsAPageBoundaryDuringASameSizeTableEdit() async throws {
         let original = try makeDocument(markdown: makeBoundaryTableMarkdown(
             editedRowEight: "PAGE TWO EDIT BASELINE with a same-size cell value."
@@ -720,6 +768,8 @@ final class PDFPreviewViewTests: XCTestCase {
         container.stagingDelay = 0
         container.layoutSubtreeIfNeeded()
         container.display(original.document, data: original.data, revision: 1)
+        await nextMainQueueTurn()
+        await nextMainQueueTurn()
         try placePageTop(
             originalSecondPage,
             atDistanceFromViewportTop: container.activeView.bounds.height * 0.58,
@@ -741,6 +791,50 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertEqual(boundaryAfterRefresh, boundaryBeforeRefresh, accuracy: 3)
         XCTAssertTrue(
             container.activeView.document?.string?.contains("PAGE TWO EDIT UPDATED!") == true
+        )
+    }
+
+    func testBufferedRefreshKeepsALaterPageBoundaryDuringATableEdit() async throws {
+        let original = try makeDocument(markdown: makeLaterBoundaryTableMarkdown(
+            rowThirteenVerb: "revised"
+        ))
+        let replacement = try makeDocument(markdown: makeLaterBoundaryTableMarkdown(
+            rowThirteenVerb: "changed"
+        ))
+        XCTAssertEqual(original.document.pageCount, 5)
+        XCTAssertEqual(replacement.document.pageCount, original.document.pageCount)
+        let originalFourthPage = try XCTUnwrap(original.document.page(at: 3))
+        let container = BufferedPDFPreviewView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 934)
+        )
+        container.stagingDelay = 0
+        container.layoutSubtreeIfNeeded()
+        container.display(original.document, data: original.data, revision: 1)
+        await nextMainQueueTurn()
+        await nextMainQueueTurn()
+        try placePageTop(
+            originalFourthPage,
+            atDistanceFromViewportTop: container.activeView.bounds.height * 0.49,
+            in: container.activeView
+        )
+        let boundaryBeforeRefresh = distanceFromViewportTop(
+            toTopOf: originalFourthPage,
+            in: container.activeView
+        )
+        XCTAssertGreaterThan(boundaryBeforeRefresh, 0)
+        XCTAssertLessThan(boundaryBeforeRefresh, container.activeView.bounds.height)
+
+        container.display(replacement.document, data: replacement.data, revision: 2)
+        await nextMainQueueTurn()
+
+        let replacementFourthPage = try XCTUnwrap(replacement.document.page(at: 3))
+        let boundaryAfterRefresh = distanceFromViewportTop(
+            toTopOf: replacementFourthPage,
+            in: container.activeView
+        )
+        XCTAssertEqual(boundaryAfterRefresh, boundaryBeforeRefresh, accuracy: 3)
+        XCTAssertTrue(
+            container.activeView.document?.string?.contains("Table row 13 changed neighbor") == true
         )
     }
 
@@ -779,6 +873,43 @@ final class PDFPreviewViewTests: XCTestCase {
         ] + openingParagraphs + [table] + [
             "Following paragraph. Stable prose below the table makes the continuation easy to recognize."
         ]).joined(separator: "\n\n")
+    }
+
+    private func makeLaterBoundaryTableMarkdown(rowThirteenVerb: String) -> String {
+        let openingParagraphs = (1...16).map { index in
+            "Prose anchor \(String(format: "%02d", index)). Stable opening text keeps the early pages representative and provides a unique line for viewport restoration."
+        }
+        let tableRows = (1...14).map { index -> String in
+            switch index {
+            case 8:
+                return "| Row 08 | TABLE WRAP EXPANDED EIGHT. This row grows substantially and forces additional wrapped lines inside the table. The added explanation is intentionally long enough to create several new visual lines while the stable rows immediately above and below remain unchanged. | Ready |"
+            case 12:
+                return "| Row 12 | TABLE INSERTION TARGET TWELVE remains unchanged while a new table row is inserted above it. | Ready |"
+            case 13:
+                return "| Row 13 | Table row 13 \(rowThirteenVerb) neighbor immediately below the insertion target and suitable as a semantic anchor. | Ready |"
+            default:
+                return "| Row \(String(format: "%02d", index)) | Table row \(String(format: "%02d", index)) stable description with enough prose to wrap naturally inside the description column. | Ready |"
+            }
+        }
+        let table = ([
+            "| Item | Description | Status |",
+            "| --- | --- | --- |"
+        ] + tableRows.prefix(11) + [
+            "| Row 11A | Newly inserted table row above the visible target, with enough description text to occupy two wrapped lines and shift every following row downward. | New |"
+        ] + tableRows.suffix(3)).joined(separator: "\n")
+        let followingParagraphs = (1...16).map { index in
+            "Following anchor \(String(format: "%02d", index)). Stable prose after the table provides additional pages and unique restoration candidates."
+        }
+        return ([
+            "# Live Refresh Scroll Scenarios",
+            "This fixture exercises viewport preservation across a later-page table boundary.",
+            "## Plain prose before the table"
+        ] + openingParagraphs + [
+            "## Table editing scenarios",
+            "The following table contains unique row text so an edited row can use its neighbors as semantic anchors.",
+            table,
+            "## Repeated and following content"
+        ] + followingParagraphs).joined(separator: "\n\n")
     }
 
     private func placePageTop(

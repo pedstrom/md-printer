@@ -234,15 +234,25 @@ struct PreviewViewport {
         in document: PDFDocument
     ) -> [(anchor: TextAnchor, selection: PDFSelection)] {
         var resolved: [(anchor: TextAnchor, selection: PDFSelection, distance: CGFloat)] = []
-        for anchor in textAnchors {
+        for anchor in textAnchors where anchor.viewportTopFraction.isFinite {
             let matches = document.findString(
                 anchor.text,
                 withOptions: [.caseInsensitive, .diacriticInsensitive]
             )
+            var closestMatch: (selection: PDFSelection, distance: CGFloat)?
             for selection in matches {
                 let progress = Self.documentProgress(of: selection, in: document)
                 let distance = abs(progress - anchor.documentProgress)
-                resolved.append((anchor, selection, distance))
+                if let currentMatch = closestMatch {
+                    if distance < currentMatch.distance {
+                        closestMatch = (selection, distance)
+                    }
+                } else {
+                    closestMatch = (selection, distance)
+                }
+            }
+            if let closestMatch {
+                resolved.append((anchor, closestMatch.selection, closestMatch.distance))
             }
         }
         return resolved
@@ -300,12 +310,14 @@ struct PreviewViewport {
                 let text = anchorText(from: lineSelection.string)
                 guard text.count >= 8, seenText.insert(text).inserted else { continue }
                 let lineBounds = view.convert(lineSelection.bounds(for: page), from: page)
+                guard lineBounds.minY.isFinite, lineBounds.maxY.isFinite else { continue }
                 let fractionFromTop: CGFloat
                 if view.isFlipped {
                     fractionFromTop = (lineBounds.minY - visibleBounds.minY) / visibleBounds.height
                 } else {
                     fractionFromTop = (visibleBounds.maxY - lineBounds.maxY) / visibleBounds.height
                 }
+                guard fractionFromTop.isFinite else { continue }
                 anchors.append(TextAnchor(
                     text: text,
                     documentProgress: documentProgress(of: lineSelection, in: document),
