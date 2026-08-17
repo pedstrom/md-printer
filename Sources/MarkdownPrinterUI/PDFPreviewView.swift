@@ -372,13 +372,15 @@ private enum PDFSearchStartingPoint {
 
 @MainActor
 public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
-    private let firstView: PageAdvancingPDFView
-    private let secondView: PageAdvancingPDFView
     private var pendingCommit: DispatchWorkItem?
-    private var pendingRetirement: DispatchWorkItem?
+    private var stagedView: PageAdvancingPDFView?
     private var requestSequence: UInt64 = 0
     private var searchState = PDFSearchState.empty
     private var showsAllSearchMatches = false
+    private var dragDataProvider: (() throws -> Data)?
+    private var dragFormat = ExportFormat.pdf
+    private var dragFileName = "Untitled.pdf"
+    private var dragErrorHandler: ((Error) -> Void)?
     var stagingDelay: TimeInterval = 0.05
     var retirementDelay: TimeInterval = 0.1
     private(set) var activeView: PageAdvancingPDFView
@@ -395,28 +397,19 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
 
     var delegate: PDFViewDelegate? {
         didSet {
-            firstView.delegate = delegate
-            secondView.delegate = delegate
+            previewViews.forEach { $0.delegate = delegate }
         }
     }
 
     public override init(frame frameRect: NSRect) {
-        let firstView = PageAdvancingPDFView(frame: frameRect)
-        let secondView = PageAdvancingPDFView(frame: frameRect)
-        self.firstView = firstView
-        self.secondView = secondView
-        self.activeView = firstView
+        let initialView = PageAdvancingPDFView(frame: frameRect)
+        self.activeView = initialView
         super.init(frame: frameRect)
         wantsLayer = true
-        firstView.automaticallyTakesFocus = true
-        secondView.automaticallyTakesFocus = false
-        firstView.setAccessibilityElement(true)
-        secondView.setAccessibilityElement(false)
-        firstView.setAccessibilityHidden(false)
-        secondView.setAccessibilityHidden(true)
-        secondView.isHidden = true
-        addSubview(secondView)
-        addSubview(firstView, positioned: .above, relativeTo: secondView)
+        initialView.automaticallyTakesFocus = true
+        initialView.setAccessibilityElement(true)
+        initialView.setAccessibilityHidden(false)
+        addSubview(initialView)
     }
 
     required init?(coder: NSCoder) {
@@ -425,8 +418,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
 
     public override func layout() {
         super.layout()
-        firstView.frame = bounds
-        secondView.frame = bounds
+        previewViews.forEach { $0.frame = bounds }
     }
 
     func display(_ document: PDFDocument, data: Data, revision: UInt64) {
@@ -438,8 +430,8 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         requestSequence &+= 1
         let requestedSequence = requestSequence
         pendingCommit?.cancel()
-        pendingRetirement?.cancel()
-        pendingRetirement = nil
+        pendingCommit = nil
+        discardStagedView()
 
         guard activeView.document != nil else {
             activeData = data
@@ -469,9 +461,8 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
             in: document,
             startingAt: .closest(to: preferredSearchProgress)
         )
-        let stagedView = inactiveView
-        stagedView.automaticallyTakesFocus = false
-        stagedView.isHidden = false
+        let stagedView = makeStagedView()
+        self.stagedView = stagedView
         addSubview(stagedView, positioned: .below, relativeTo: activeView)
         stagedView.displayReplacement(document, viewport: viewport)
         stagedView.layoutSubtreeIfNeeded()
@@ -488,7 +479,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
             guard let self,
                   let stagedView,
                   self.requestSequence == requestedSequence,
-                  self.inactiveView === stagedView
+                  self.stagedView === stagedView
             else { return }
             stagedView.layoutSubtreeIfNeeded()
             viewport?.restore(in: stagedView)
@@ -604,22 +595,47 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         dataProvider: @escaping () throws -> Data,
         onError: @escaping (Error) -> Void
     ) {
-        firstView.updateDragPayload(
-            format: format,
-            fileName: fileName,
-            dataProvider: dataProvider,
-            onError: onError
-        )
-        secondView.updateDragPayload(
-            format: format,
-            fileName: fileName,
-            dataProvider: dataProvider,
-            onError: onError
-        )
+        dragFormat = format
+        dragFileName = fileName
+        dragDataProvider = dataProvider
+        dragErrorHandler = onError
+        previewViews.forEach {
+            $0.updateDragPayload(
+                format: format,
+                fileName: fileName,
+                dataProvider: dataProvider,
+                onError: onError
+            )
+        }
     }
 
-    private var inactiveView: PageAdvancingPDFView {
-        activeView === firstView ? secondView : firstView
+    private var previewViews: [PageAdvancingPDFView] {
+        subviews.compactMap { $0 as? PageAdvancingPDFView }
+    }
+
+    private func makeStagedView() -> PageAdvancingPDFView {
+        let view = PageAdvancingPDFView(frame: bounds)
+        view.automaticallyTakesFocus = false
+        view.delegate = delegate
+        view.setAccessibilityElement(false)
+        view.setAccessibilityHidden(true)
+        if let dragDataProvider, let dragErrorHandler {
+            view.updateDragPayload(
+                format: dragFormat,
+                fileName: dragFileName,
+                dataProvider: dragDataProvider,
+                onError: dragErrorHandler
+            )
+        }
+        return view
+    }
+
+    private func discardStagedView() {
+        guard let stagedView else { return }
+        stagedView.isHidden = true
+        stagedView.removeFromSuperview()
+        stagedView.document = nil
+        self.stagedView = nil
     }
 
     private func makeSearchState(
@@ -700,7 +716,9 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         requestedSequence: UInt64,
         searchState: PDFSearchState
     ) {
-        guard requestSequence == requestedSequence else { return }
+        guard requestSequence == requestedSequence,
+              self.stagedView === stagedView
+        else { return }
         let previousView = activeView
         let focusedView = window?.firstResponder as? NSView
         let shouldTransferFocus = focusedView === previousView
@@ -725,33 +743,31 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         activeData = data
         activeRevision = revision
         self.searchState = searchState
+        self.stagedView = nil
         pendingCommit = nil
         notifySearchController()
         if shouldTransferFocus {
             window?.makeFirstResponder(stagedView)
         }
-        scheduleRetirement(of: previousView, requestedSequence: requestedSequence)
+        scheduleRetirement(of: previousView)
     }
 
-    private func scheduleRetirement(
-        of previousView: PageAdvancingPDFView,
-        requestedSequence: UInt64
-    ) {
+    private func scheduleRetirement(of previousView: PageAdvancingPDFView) {
         let workItem = DispatchWorkItem { [weak self, weak previousView] in
             guard let self,
                   let previousView,
-                  self.requestSequence == requestedSequence,
-                  self.inactiveView === previousView
+                  previousView !== self.activeView,
+                  previousView.superview === self
             else { return }
             CATransaction.begin()
             CATransaction.setDisableActions(true)
+            previousView.isHidden = true
+            previousView.removeFromSuperview()
             previousView.highlightedSelections = nil
             previousView.clearSelection()
-            previousView.isHidden = true
+            previousView.document = nil
             CATransaction.commit()
-            self.pendingRetirement = nil
         }
-        pendingRetirement = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + retirementDelay, execute: workItem)
     }
 }

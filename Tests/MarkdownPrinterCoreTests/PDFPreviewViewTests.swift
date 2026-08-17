@@ -215,6 +215,8 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertEqual(container.activeRevision, 3)
         XCTAssertTrue(container.activeView.document?.string?.contains("Only show this revision") == true)
         XCTAssertFalse(container.activeView.document?.string?.contains("Never show") == true)
+        XCTAssertFalse(container.subviews.compactMap { ($0 as? PageAdvancingPDFView)?.document }
+            .contains { $0.string?.contains("Never show") == true })
     }
 
     func testBufferedPreviewKeepsOutgoingViewOnTopDuringPaintDelay() async throws {
@@ -241,7 +243,7 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertTrue(container.subviews.last === container.activeView)
     }
 
-    func testBufferedPreviewKeepsTheCoveredDocumentWarmForTheNextSwap() async throws {
+    func testBufferedPreviewRetiresTheCoveredDocumentAfterTheNewViewIsStable() async throws {
         let first = try makeDocument(markdown: "# First\n\nThe outgoing preview.")
         let second = try makeDocument(markdown: "# Second\n\nThe active preview.")
         let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
@@ -257,15 +259,16 @@ final class PDFPreviewViewTests: XCTestCase {
 
         try await Task.sleep(nanoseconds: 40_000_000)
 
-        XCTAssertTrue(outgoingView.document?.string?.contains("outgoing preview") == true)
+        XCTAssertNil(outgoingView.document)
         XCTAssertNil(outgoingView.currentSelection)
         XCTAssertNil(outgoingView.highlightedSelections)
         XCTAssertTrue(outgoingView.isHidden)
         XCTAssertTrue(outgoingView.isAccessibilityHidden())
+        XCTAssertNil(outgoingView.superview)
         XCTAssertTrue(container.activeView.document?.string?.contains("active preview") == true)
     }
 
-    func testBufferedPreviewKeepsBothViewsPopulatedAcrossConsecutiveRefreshes() async throws {
+    func testBufferedPreviewUsesAFreshStagingViewForEveryConsecutiveRefresh() async throws {
         let revisions = try (1...4).map { revision in
             try makeDocument(
                 markdown: "# Revision \(revision)\n\nConsecutive refresh content \(revision)."
@@ -278,6 +281,7 @@ final class PDFPreviewViewTests: XCTestCase {
         container.retirementDelay = 0.01
         container.layoutSubtreeIfNeeded()
         container.display(revisions[0].document, data: revisions[0].data, revision: 1)
+        var displayedViews = [container.activeView]
 
         for index in revisions.indices.dropFirst() {
             let visibleView = container.activeView
@@ -290,15 +294,20 @@ final class PDFPreviewViewTests: XCTestCase {
             XCTAssertTrue(container.activeView === visibleView)
             XCTAssertTrue(container.subviews.last === visibleView)
             XCTAssertNotNil(visibleView.document)
+            let stagedView = try XCTUnwrap(
+                container.subviews.compactMap { $0 as? PageAdvancingPDFView }
+                    .first { $0 !== visibleView }
+            )
+            XCTAssertFalse(displayedViews.contains { $0 === stagedView })
 
             await nextMainQueueTurn()
             try await Task.sleep(nanoseconds: 20_000_000)
 
             let buffers = container.subviews.compactMap { $0 as? PageAdvancingPDFView }
-            XCTAssertEqual(buffers.count, 2)
-            XCTAssertEqual(buffers.compactMap(\.document).count, 2)
+            XCTAssertEqual(buffers.count, 1)
+            XCTAssertTrue(container.activeView === stagedView)
+            displayedViews.append(container.activeView)
             XCTAssertEqual(buffers.filter { !$0.isHidden }.count, 1)
-            XCTAssertTrue(buffers.first { $0 !== container.activeView }?.isHidden == true)
             XCTAssertTrue(container.subviews.last === container.activeView)
             XCTAssertTrue(
                 container.activeView.document?.string?.contains(
