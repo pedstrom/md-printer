@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TAG="${1:-}"
 
 if [[ -z "$TAG" ]]; then
-  echo "Usage: $0 <stable-tag, for example v1.4.0>" >&2
+  echo "Usage: $0 <stable-tag, for example v1.4.1>" >&2
   exit 2
 fi
 

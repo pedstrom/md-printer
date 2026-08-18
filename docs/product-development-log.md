@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-18 — Version 1.4.1
+
+- Promoted the crash-free PDF search attachment and document-window teardown fix as version 1.4.1, build 10.
+- Updated the public download label, release notes, host and extension metadata, and release verification assertions for the signed, notarized bug-fix update.
+
 ## 2026-08-18 — Crash-free document-window teardown
 
 - Prevented PDF search-state publication from re-entering SwiftUI while a document window's native PDF preview is being attached or dismantled, eliminating an exclusivity abort seen when closing or quitting with a document open and the corresponding undefined-behavior warning during window creation.
