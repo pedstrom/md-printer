@@ -20,6 +20,13 @@ required_files=(
   Resources/MarkdownPrinterIcon.png
   Resources/Assets.xcassets/AppIcon.appiconset/Contents.json
   docs/product-development-log.md
+  release-notes/1.0.md
+  release-notes/1.0.1.md
+  release-notes/1.0.2.md
+  release-notes/1.0.3.md
+  release-notes/1.0.4.md
+  release-notes/1.1.0.md
+  release-notes/1.2.0.md
   release-notes/1.3.0.md
   scripts/build-and-run/prepare_update_release.sh
   scripts/build-and-run/sign_sparkle.sh

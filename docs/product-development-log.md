@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-18 — Historical release-notes backfill
+
+- Added durable Markdown release notes for every previously published version from 1.0 through 1.2.0, reconstructed from the matching GitHub Release descriptions and repository tag history.
+- Preserved the historical distribution boundary: versions 1.0 through 1.0.2 were ad-hoc signed, while Developer ID signing and Apple notarization began with 1.0.3.
+
 ## 2026-08-17 — Codified updater release operations
 
 - Expanded the Markdown Printer change-gate skill so requests to prepare or publish a GitHub/Sparkle release trigger the complete version, signing, notarization, three-asset appcast, authorization, stable-publication, and public-verification workflow.
