@@ -92,7 +92,8 @@ mkdir -p "$(dirname "$ARCHIVE_PATH")"
 rm -f "$ARCHIVE_PATH"
 ditto -c -k --keepParent --norsrc --noextattr "$STAGED_APP_PATH" "$ARCHIVE_PATH"
 unzip -tq "$ARCHIVE_PATH" >/dev/null
-if unzip -Z1 "$ARCHIVE_PATH" | grep -q '^__MACOSX/'; then
+ARCHIVE_ENTRIES="$(unzip -Z1 "$ARCHIVE_PATH")"
+if grep -q '^__MACOSX/' <<< "$ARCHIVE_ENTRIES"; then
   echo "Release archive contains macOS metadata entries." >&2
   exit 1
 fi
@@ -121,13 +122,16 @@ for executable_path in "${ARCHITECTURE_TARGETS[@]}"; do
   fi
 done
 
-if ! otool -L "$VALIDATED_APP_PATH/Contents/MacOS/MarkdownPrinter" \
-  | grep -q '@rpath/Sparkle.framework/Versions/B/Sparkle'; then
+VALIDATED_LINKED_LIBRARIES="$(otool -L \
+  "$VALIDATED_APP_PATH/Contents/MacOS/MarkdownPrinter")"
+if ! grep -Fq '@rpath/Sparkle.framework/Versions/B/Sparkle' \
+  <<< "$VALIDATED_LINKED_LIBRARIES"; then
   echo "Markdown Printer is not linked to the embedded Sparkle framework." >&2
   exit 1
 fi
-if ! otool -l "$VALIDATED_APP_PATH/Contents/MacOS/MarkdownPrinter" \
-  | grep -q '@executable_path/../Frameworks'; then
+VALIDATED_LOAD_COMMANDS="$(otool -l \
+  "$VALIDATED_APP_PATH/Contents/MacOS/MarkdownPrinter")"
+if ! grep -Fq '@executable_path/../Frameworks' <<< "$VALIDATED_LOAD_COMMANDS"; then
   echo "Markdown Printer does not contain the Sparkle runtime search path." >&2
   exit 1
 fi

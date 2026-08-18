@@ -1,5 +1,9 @@
 # Product Development Log
 
+## 2026-08-18 — Reliable release linkage validation
+
+- Made the ZIP-metadata and Sparkle runtime-linkage gates inspect captured command output, preventing `pipefail` from mistaking an early successful `grep` match for a missing runtime search path when the producer receives `SIGPIPE`.
+
 ## 2026-08-18 — Historical release-notes backfill
 
 - Added durable Markdown release notes for every previously published version from 1.0 through 1.2.0, reconstructed from the matching GitHub Release descriptions and repository tag history.

@@ -138,10 +138,12 @@ for executable_path in "${ARCHITECTURE_TARGETS[@]}"; do
   [[ "$EXECUTABLE_ARCHITECTURES" == *"arm64"* ]]
   [[ "$EXECUTABLE_ARCHITECTURES" == *"x86_64"* ]]
 done
-otool -L "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter" \
-  | grep -q '@rpath/Sparkle.framework/Versions/B/Sparkle'
-otool -l "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter" \
-  | grep -q '@executable_path/../Frameworks'
+APP_LINKED_LIBRARIES="$(otool -L \
+  "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter")"
+grep -Fq '@rpath/Sparkle.framework/Versions/B/Sparkle' <<< "$APP_LINKED_LIBRARIES"
+APP_LOAD_COMMANDS="$(otool -l \
+  "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter")"
+grep -Fq '@executable_path/../Frameworks' <<< "$APP_LOAD_COMMANDS"
 
 DEVELOPMENT_SIGNING_INFORMATION="$(codesign --display --verbose=4 \
   "build/Markdown Printer.app" 2>&1)"
