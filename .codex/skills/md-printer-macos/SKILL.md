@@ -19,6 +19,9 @@ Use this skill for product or implementation work in this repository.
 - Support headings 1–6, paragraphs, bold, emphasis, `<u>` underline, strikethrough, inline/fenced code, links, linked footnotes, quotes, ordered/unordered/task lists, horizontal rules, tables, and local embedded images. Render footnote references as numbered superscripts and collect their definitions in a compact end-note section. Render quotations with a native continuous left border that spans every wrapped line in the quoted block.
 - Keep remote images offline and visible as placeholders. Resolve local relative images against the Markdown file's folder and preserve aspect ratio within the printable area.
 - Use US Letter pages with print-safe margins unless a later product decision adds configurable paper sizes.
+- Bundle one full-size Finder Quick Look preview extension inside the host app. Keep it continuous and screen-optimized, reuse the native parser and attributed renderer before PDF pagination, and keep the app's PDF preview/save/print path unchanged.
+- Keep Quick Look sandboxed and offline, with read-only selected-file access, adaptive system colors, selectable text, internal footnote navigation, and readable placeholders when sibling-image access is unavailable. Preserve a stable provider identity and nested path across updates so deleting the app also removes the provider.
+- Never force Quick Look activation or a default file handler. Settings may guide activation and offer an explicit, verified public-API request to make Markdown Printer the default for supported Markdown content types.
 
 ## Native Architecture
 

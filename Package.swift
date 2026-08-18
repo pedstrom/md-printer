@@ -9,6 +9,10 @@ let package = Package(
     ],
     products: [
         .library(name: "MarkdownPrinterCore", targets: ["MarkdownPrinterCore"]),
+        .library(
+            name: "MarkdownPrinterQuickLookSupport",
+            targets: ["MarkdownPrinterQuickLookSupport"]
+        ),
         .library(name: "MarkdownPrinterUI", targets: ["MarkdownPrinterUI"]),
         .executable(name: "MarkdownPrinter", targets: ["MarkdownPrinter"]),
         .executable(name: "MarkdownPrinterCLI", targets: ["MarkdownPrinterCLI"])
@@ -21,6 +25,10 @@ let package = Package(
     ],
     targets: [
         .target(name: "MarkdownPrinterCore"),
+        .target(
+            name: "MarkdownPrinterQuickLookSupport",
+            dependencies: ["MarkdownPrinterCore"]
+        ),
         .target(
             name: "MarkdownPrinterUI",
             dependencies: [
@@ -38,7 +46,11 @@ let package = Package(
         ),
         .testTarget(
             name: "MarkdownPrinterCoreTests",
-            dependencies: ["MarkdownPrinterCore", "MarkdownPrinterUI"]
+            dependencies: [
+                "MarkdownPrinterCore",
+                "MarkdownPrinterQuickLookSupport",
+                "MarkdownPrinterUI"
+            ]
         )
     ],
     swiftLanguageModes: [.v5]

@@ -1,5 +1,21 @@
 # Product Development Log
 
+## 2026-08-18 — Manual update check in Settings
+
+- Added a **Check for Updates…** button beside the automatic-update-check preference, reusing the same Sparkle availability state and manual-check action as the application menu.
+
+## 2026-08-18 — Bundled continuous Finder Quick Look
+
+- Added a sandboxed, network-free Finder Quick Look preview extension inside the app bundle, backed by a testable SwiftPM support library and the existing native Markdown parser and attributed-text renderer before PDF pagination.
+- Added continuous, selectable, screen-optimized Avenir Next rendering with adaptive colors, a responsive 680-point reading column, full Markdown structure, links, bidirectional footnote navigation, offline image behavior, and path-free error presentation while leaving the full app's PDF preview, save, print, and export bytes unchanged.
+- Added a Finder Quick Look Settings section with Space and Command-Y instructions, app-removal behavior, the durable activation path, a normal System Settings button, and an opt-in, verified default-Markdown-app request using public `NSWorkspace` APIs.
+- Added a dedicated transparent Markdown document icon, reused it on the app's open screen, and bundled multi-resolution `.icns` registration so Finder can display the same document-and-mountains artwork when Markdown Printer becomes the default, without changing the app icon.
+- Stabilized the provider identity, path, executable, content-type declarations, matching host version/build metadata, universal architecture, read-only sandbox entitlements, nested signing order, hardened release validation, and notarized ZIP checks so in-place updates replace the same provider.
+- Added focused rendering, loader, resizing, selection, footnote, invalid-input, Settings-copy, System Settings navigation, default-handler state/error, and bundle-contract tests plus native Quick Look and update-path QA instructions.
+- Verified the real Finder provider with both Space and Command-Y, continuous scrolling, full-screen resizing, selection/copying, links, bidirectional footnotes, tables, code, offline placeholders, and light/dark appearance; confirmed the Settings controls and macOS's enabled provider state, with screenshots kept outside the repository.
+- Consolidated the opt-in default-app action to one request for Markdown Printer's declared Markdown content type, which covers all four supported extensions and avoids repeated macOS consent prompts.
+- Exercised Sparkle's actual download, replacement, and relaunch flow with disposable Developer ID- and EdDSA-signed QA builds: build 800 had no provider, build 801 introduced it, and build 802 replaced it at the same path and identity while System Settings retained the enabled state. Removing the disposable host removed its provider registration, and no QA files or registration remained.
+
 ## 2026-08-18 — Reliable release linkage validation
 
 - Made the ZIP-metadata and Sparkle runtime-linkage gates inspect captured command output, preventing `pipefail` from mistaking an early successful `grep` match for a missing runtime search path when the producer receives `SIGPIPE`.

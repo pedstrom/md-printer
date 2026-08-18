@@ -548,8 +548,12 @@ private extension Array where Element == InlineNode {
 }
 
 extension NSAttributedString.Key {
-    static let markdownFootnoteReference = NSAttributedString.Key("MarkdownPrinterFootnoteReference")
-    static let markdownFootnoteDefinition = NSAttributedString.Key("MarkdownPrinterFootnoteDefinition")
+    public static let markdownFootnoteReference = NSAttributedString.Key(
+        "MarkdownPrinterFootnoteReference"
+    )
+    public static let markdownFootnoteDefinition = NSAttributedString.Key(
+        "MarkdownPrinterFootnoteDefinition"
+    )
 }
 
 private extension NSMutableAttributedString {

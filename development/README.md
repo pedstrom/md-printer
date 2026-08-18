@@ -1,6 +1,8 @@
 # Developing Markdown Printer
 
-Markdown Printer is a native SwiftUI/AppKit macOS app. The parser, attributed-text renderer, PDF generator, preview, save path, and print path are all local and dependency-free. Sparkle 2 supplies the isolated update client; it does not participate in document rendering.
+Markdown Printer is a native SwiftUI/AppKit macOS app. The parser, attributed-text renderer, PDF generator, preview, save path, print path, and Finder Quick Look renderer are all local and dependency-free. Sparkle 2 supplies the isolated update client; it does not participate in document rendering.
+
+The full app uses the generated PDF as the single source of truth for preview, save, and print. The embedded `MarkdownPrinterQuickLook.appex` is a separate continuous reading surface that shares `MarkdownPrinterCore` before PDF pagination. Its testable behavior lives in the `MarkdownPrinterQuickLookSupport` SwiftPM library; the Xcode app-extension target under `QuickLookExtension/` is only the `QLPreviewingController` bridge required by macOS.
 
 ## Requirements
 
@@ -15,7 +17,7 @@ All build and run utilities live in `scripts/build-and-run/`.
 scripts/build-and-run/run_app.sh
 ```
 
-This builds a universal Apple Silicon and Intel app at `build/Markdown Printer.app` and opens it. To build without launching:
+This builds a universal Apple Silicon and Intel app at `build/Markdown Printer.app` and opens it. The same build embeds a universal Quick Look extension at `Contents/PlugIns/MarkdownPrinterQuickLook.appex`, gives it the host's display version and build number, applies its read-only sandbox entitlements, signs it before the outer app, and validates the nested bundle. To build without launching:
 
 ```sh
 scripts/build-and-run/build_app.sh
@@ -42,7 +44,7 @@ MARKDOWN_PRINTER_NOTARY_PROFILE="MarkdownPrinterNotary" \
 scripts/build-and-run/package_release.sh
 ```
 
-The packager embeds Sparkle with its framework symlinks intact, signs every helper and framework from the inside out, enables the hardened runtime, adds secure timestamps, waits for Apple to accept the submission, staples the ticket to the app, and validates the final archive with `codesign`, `stapler`, Gatekeeper, runtime-linkage, and universal-architecture checks. Notarization credentials stay in the macOS Keychain and are never stored in the repository.
+The packager embeds Sparkle with its framework symlinks intact, signs every helper, framework, and the Quick Look extension from the inside out, enables the hardened runtime, adds secure timestamps, waits for Apple to accept the submission, staples the ticket to the app, and validates the final archive with `codesign`, `stapler`, Gatekeeper, runtime-linkage, entitlements, matching nested versions, and universal-architecture checks. Notarization credentials stay in the macOS Keychain and are never stored in the repository.
 
 ## Secure update releases
 
@@ -80,6 +82,10 @@ Drafts and prereleases are not update channels. A release intended for the app m
 scripts/verify.sh
 ```
 
-The release gate runs all XCTest coverage, enforces at least 95% testable-production line coverage, builds the release app, validates its bundle metadata, icon, Sparkle configuration, embedded helpers, runtime linkage, and universal architectures, checks every shell script, and rejects common repository-hygiene problems.
+The release gate runs all XCTest coverage, enforces at least 95% testable-production line coverage, builds the release app, validates its bundle metadata, icon, Sparkle configuration, embedded helpers, Quick Look principal class and supported content types, sandbox entitlements, runtime linkage, nested versions and signatures, and universal architectures, checks every shell script, and rejects common repository-hygiene problems.
+
+For native Quick Look QA, first build and open a disposable app copy so Launch Services discovers the embedded provider. Use `qlmanage -p Examples/showcase.md` for a direct provider smoke test, then verify Finder's Space and Command-Y previews, vertical scrolling, resizing, selection/copying, links, footnote jumps, tables, code, long documents, and both appearances. Keep screenshots and disposable app copies outside the repository. Extension activation is a macOS setting; production code does not call `pluginkit`, reset Quick Look, or use private registration APIs.
+
+Update QA must preserve the extension bundle ID `com.peteedstrom.markdown-printer.quicklook`, executable name `MarkdownPrinterQuickLook`, and nested `Contents/PlugIns/MarkdownPrinterQuickLook.appex` path. Exercise an app without the extension updating through Sparkle to the first Quick Look build, then exercise one more in-place Sparkle update. Confirm the provider remains registered and retains its enabled state after the second replacement, and that deleting the disposable host app removes that copy of the provider.
 
 See [AGENTS.md](../AGENTS.md) and the repo-local skills under `.codex/skills/` for the project's working conventions.

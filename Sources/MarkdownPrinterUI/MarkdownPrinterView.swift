@@ -94,9 +94,7 @@ public struct MarkdownPrinterView: View {
 
     private var welcome: some View {
         VStack(spacing: 18) {
-            Image(systemName: "doc.richtext.fill")
-                .font(.system(size: 58, weight: .light))
-                .foregroundStyle(.tint)
+            welcomeIcon
             Text("Markdown Printer")
                 .font(.system(size: 30, weight: .semibold, design: .rounded))
             Text("Drop Markdown files here to turn them into polished, printable PDFs.")
@@ -112,6 +110,21 @@ public struct MarkdownPrinterView: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(48)
+    }
+
+    @ViewBuilder
+    private var welcomeIcon: some View {
+        if let image = MarkdownPrinterWelcomeArtwork.image() {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 64, height: 70)
+        } else {
+            Image(systemName: "doc.richtext.fill")
+                .font(.system(size: 58, weight: .light))
+                .foregroundStyle(.tint)
+                .frame(width: 64, height: 70)
+        }
     }
 
     private var errorPresented: Binding<Bool> {
@@ -174,6 +187,25 @@ public struct MarkdownPrinterView: View {
         if let markdown = UTType(filenameExtension: "md") { types.insert(markdown, at: 0) }
         if let markdown = UTType(filenameExtension: "markdown") { types.insert(markdown, at: 0) }
         return types
+    }
+}
+
+package enum MarkdownPrinterWelcomeArtwork {
+    package static let resourceName = "MarkdownDocumentIcon"
+    package static let resourceExtension = "icns"
+
+    package static func image(in bundle: Bundle = .main) -> NSImage? {
+        guard let url = bundle.url(
+            forResource: resourceName,
+            withExtension: resourceExtension
+        ) else {
+            return nil
+        }
+        return image(at: url)
+    }
+
+    package static func image(at url: URL) -> NSImage? {
+        NSImage(contentsOf: url)
     }
 }
 

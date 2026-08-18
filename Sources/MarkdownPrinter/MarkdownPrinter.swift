@@ -9,6 +9,8 @@ struct MarkdownPrinterApp: App {
     @StateObject private var activityCoordinator: ApplicationActivityCoordinator
     @StateObject private var documentRestoration: OpenDocumentRestorationController
     @StateObject private var updateController: UpdateController
+    @StateObject private var defaultApplicationController: DefaultApplicationController
+    private let quickLookNavigator: FinderQuickLookSettingsNavigator
 
     init() {
         let exportPreferences = ExportPreferences()
@@ -22,6 +24,10 @@ struct MarkdownPrinterApp: App {
         _activityCoordinator = StateObject(wrappedValue: activityCoordinator)
         _documentRestoration = StateObject(wrappedValue: documentRestoration)
         _updateController = StateObject(wrappedValue: updateController)
+        _defaultApplicationController = StateObject(
+            wrappedValue: DefaultApplicationController()
+        )
+        quickLookNavigator = FinderQuickLookSettingsNavigator()
     }
 
     var body: some Scene {
@@ -62,7 +68,9 @@ struct MarkdownPrinterApp: App {
         Settings {
             ExportSettingsView(
                 preferences: exportPreferences,
-                updateController: updateController
+                updateController: updateController,
+                defaultApplicationController: defaultApplicationController,
+                quickLookNavigator: quickLookNavigator
             )
         }
     }

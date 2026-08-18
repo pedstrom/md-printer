@@ -17,9 +17,17 @@ required_files=(
   Package.swift
   Package.resolved
   Resources/Info.plist
+  Resources/MarkdownDocumentIcon.png
   Resources/MarkdownPrinterIcon.png
   Resources/Assets.xcassets/AppIcon.appiconset/Contents.json
   docs/product-development-log.md
+  docs/quick-look-product-contract.md
+  QuickLookExtension/MarkdownPrinterQuickLook.xcodeproj/project.pbxproj
+  QuickLookExtension/MarkdownPrinterQuickLook.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+  QuickLookExtension/MarkdownPrinterQuickLook.xcodeproj/xcshareddata/xcschemes/MarkdownPrinterQuickLook.xcscheme
+  QuickLookExtension/MarkdownPrinterQuickLook/Info.plist
+  QuickLookExtension/MarkdownPrinterQuickLook/MarkdownPrinterQuickLook.entitlements
+  QuickLookExtension/MarkdownPrinterQuickLook/PreviewViewController.swift
   release-notes/1.0.md
   release-notes/1.0.1.md
   release-notes/1.0.2.md
@@ -29,6 +37,7 @@ required_files=(
   release-notes/1.2.0.md
   release-notes/1.3.0.md
   scripts/build-and-run/prepare_update_release.sh
+  scripts/build-and-run/validate_quicklook_bundle.sh
   scripts/build-and-run/sign_sparkle.sh
   scripts/build-and-run/verify_published_release.sh
   scripts/build-and-run/verify_update_assets.sh
@@ -61,9 +70,28 @@ while IFS= read -r script; do
   bash -n "$script"
 done < <(find scripts -type f -name '*.sh' -print | sort)
 plutil -lint Resources/Info.plist >/dev/null
+plutil -lint QuickLookExtension/MarkdownPrinterQuickLook/Info.plist >/dev/null
+plutil -lint \
+  QuickLookExtension/MarkdownPrinterQuickLook/MarkdownPrinterQuickLook.entitlements \
+  >/dev/null
 [[ "$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)" == "1.3.0" ]]
 [[ "$(plutil -extract CFBundleVersion raw Resources/Info.plist)" == "8" ]]
 [[ "$(plutil -extract NSHumanReadableCopyright raw Resources/Info.plist)" == *"Peter Edstrom"* ]]
+[[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeRole raw Resources/Info.plist)" \
+  == "Viewer" ]]
+[[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeIconFile raw Resources/Info.plist)" \
+  == "MarkdownDocumentIcon" ]]
+[[ "$(plutil -extract CFBundleDocumentTypes.0.LSHandlerRank raw Resources/Info.plist)" \
+  == "Default" ]]
+[[ "$(plutil -extract CFBundleDocumentTypes.0.LSItemContentTypes.0 raw \
+  Resources/Info.plist)" == "net.daringfireball.markdown" ]]
+[[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeExtensions json -o - \
+  Resources/Info.plist)" == '["md","markdown","mdown","mkd"]' ]]
+[[ "$(plutil -extract UTImportedTypeDeclarations.0.UTTypeIdentifier raw \
+  Resources/Info.plist)" == "net.daringfireball.markdown" ]]
+[[ "$(plutil -extract \
+  'UTImportedTypeDeclarations.0.UTTypeTagSpecification.public\.filename-extension' \
+  json -o - Resources/Info.plist)" == '["md","markdown","mdown","mkd"]' ]]
 [[ "$(plutil -extract SUFeedURL raw Resources/Info.plist)" == "https://github.com/pedstrom/md-printer/releases/latest/download/appcast.xml" ]]
 [[ "$(plutil -extract SUPublicEDKey raw Resources/Info.plist)" == "uJG4sJlofZdkVBe09QbsziY979haWLKCmCidGssas3k=" ]]
 [[ "$(plutil -extract SUEnableAutomaticChecks raw Resources/Info.plist)" == "true" ]]
@@ -110,12 +138,16 @@ APP_ARCHITECTURES="$(lipo -archs "build/Markdown Printer.app/Contents/MacOS/Mark
 [[ "$APP_ARCHITECTURES" == *"x86_64"* ]]
 test -s "build/Markdown Printer.app/Contents/Resources/Assets.car"
 test -s "build/Markdown Printer.app/Contents/Resources/AppIcon.icns"
+test -s "build/Markdown Printer.app/Contents/Resources/MarkdownDocumentIcon.icns"
 plutil -lint "build/Markdown Printer.app/Contents/Info.plist" >/dev/null
 [[ "$(plutil -extract CFBundleIconFile raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
 [[ "$(plutil -extract CFBundleIconName raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
+[[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeIconFile raw \
+  "build/Markdown Printer.app/Contents/Info.plist")" == "MarkdownDocumentIcon" ]]
 [[ "$(plutil -extract CFBundleShortVersionString raw "build/Markdown Printer.app/Contents/Info.plist")" == "1.3.0" ]]
 [[ "$(plutil -extract CFBundleVersion raw "build/Markdown Printer.app/Contents/Info.plist")" == "8" ]]
 [[ "$(plutil -extract NSHumanReadableCopyright raw "build/Markdown Printer.app/Contents/Info.plist")" == *"Peter Edstrom"* ]]
+scripts/build-and-run/validate_quicklook_bundle.sh "build/Markdown Printer.app"
 
 SPARKLE_FRAMEWORK="build/Markdown Printer.app/Contents/Frameworks/Sparkle.framework"
 test -L "$SPARKLE_FRAMEWORK/Versions/Current"
@@ -127,6 +159,7 @@ test -x "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/
 
 ARCHITECTURE_TARGETS=(
   "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter"
+  "build/Markdown Printer.app/Contents/PlugIns/MarkdownPrinterQuickLook.appex/Contents/MacOS/MarkdownPrinterQuickLook"
   "$SPARKLE_FRAMEWORK/Versions/B/Sparkle"
   "$SPARKLE_FRAMEWORK/Versions/B/Autoupdate"
   "$SPARKLE_FRAMEWORK/Versions/B/Updater.app/Contents/MacOS/Updater"
