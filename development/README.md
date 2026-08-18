@@ -71,7 +71,7 @@ The appcast and both linked assets are EdDSA-signed. Its enclosure and release-n
 Create the matching GitHub Release as a draft and upload all three generated assets before publication. Do not publish, push the tag, or alter an existing public release without Pete's separate authorization. Once publication is authorized and complete, verify the stable release, the `latest` redirect, all signatures, notarization, Gatekeeper, and the public ZIP digest:
 
 ```sh
-scripts/build-and-run/verify_published_release.sh v1.3.0
+scripts/build-and-run/verify_published_release.sh v1.4.0
 ```
 
 Drafts and prereleases are not update channels. A release intended for the app must be stable, and the release tag must match the display version exactly.

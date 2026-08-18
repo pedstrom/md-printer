@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-18 — Version 1.4.0
+
+- Promoted bundled continuous Finder Quick Look, the opt-in default-Markdown-app action, Finder document artwork, and the consolidated Settings controls together as version 1.4.0, build 9.
+- Updated the public download label, release notes, host and extension metadata, and release verification assertions for the signed, notarized update.
+
 ## 2026-08-18 — Manual update check in Settings
 
 - Added a **Check for Updates…** button beside the automatic-update-check preference, reusing the same Sparkle availability state and manual-check action as the application menu.
