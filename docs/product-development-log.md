@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-17 — Codified updater release operations
+
+- Expanded the Markdown Printer change-gate skill so requests to prepare or publish a GitHub/Sparkle release trigger the complete version, signing, notarization, three-asset appcast, authorization, stable-publication, and public-verification workflow.
+- Made the pre-publication stopping point and Pete's separate publication authorization explicit, and documented the three generated assets as one immutable signed set.
+
 ## 2026-08-17 — Version 1.3.0 and secure self-updates
 
 - Added a native Sparkle 2.9.2 update experience with manual **Check for Updates…**, daily checks enabled by default, a directly bound Settings preference, standard install/remind/skip choices, and quiet scheduled-network failures.
