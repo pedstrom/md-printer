@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-18 — Crash-free document-window teardown
+
+- Prevented PDF search-state publication from re-entering SwiftUI while a document window's native PDF preview is being attached or dismantled, eliminating an exclusivity abort seen when closing or quitting with a document open and the corresponding undefined-behavior warning during window creation.
+- Kept search-target disconnection and highlight cleanup immediate, deferred observable attachment and command-state resets past SwiftUI's representable update boundary, and added focused lifecycle coverage for both publication boundaries.
+
 ## 2026-08-18 — Version 1.4.0
 
 - Promoted bundled continuous Finder Quick Look, the opt-in default-Markdown-app action, Finder document artwork, and the consolidated Settings controls together as version 1.4.0, build 9.

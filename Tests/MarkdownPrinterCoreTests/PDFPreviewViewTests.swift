@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import PDFKit
 import XCTest
 @testable import MarkdownPrinterCore
@@ -29,6 +30,65 @@ final class PDFPreviewViewTests: XCTestCase {
         coordinator.reportDragError(PreviewTestError.example)
 
         XCTAssertEqual(reportedError, .example)
+    }
+
+    func testDismantlingDefersSearchStatePublicationUntilAfterSwiftUITeardown() async throws {
+        let rendered = try makeDocument(markdown: "# Search\n\nA teardown needle.")
+        let controller = PDFSearchController()
+        let container = BufferedPDFPreviewView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        container.searchController = controller
+        container.display(rendered.document, data: rendered.data, revision: 1)
+        controller.query = "needle"
+        XCTAssertEqual(controller.matchCount, 1)
+
+        var publicationCount = 0
+        let publication = controller.objectWillChange.sink {
+            publicationCount += 1
+        }
+        let coordinator = PDFPreviewView.Coordinator(
+            openURL: { _ in },
+            onDragError: { _ in }
+        )
+
+        PDFPreviewView.dismantleNSView(container, coordinator: coordinator)
+
+        XCTAssertNil(container.searchController)
+        XCTAssertEqual(publicationCount, 0)
+
+        await nextMainQueueTurn()
+
+        XCTAssertGreaterThan(publicationCount, 0)
+        XCTAssertFalse(controller.canPresent)
+        XCTAssertFalse(controller.canNavigate)
+        XCTAssertEqual(controller.matchCount, 0)
+        withExtendedLifetime(publication) { }
+    }
+
+    func testSwiftUIUpdateDefersSearchControllerAttachmentAndPublication() async throws {
+        let rendered = try makeDocument(markdown: "# Search\n\nAn attachment needle.")
+        let controller = PDFSearchController()
+        let container = BufferedPDFPreviewView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        container.display(rendered.document, data: rendered.data, revision: 1)
+        var publicationCount = 0
+        let publication = controller.objectWillChange.sink {
+            publicationCount += 1
+        }
+
+        container.deferSearchControllerUpdate(controller)
+
+        XCTAssertNil(container.searchController)
+        XCTAssertEqual(publicationCount, 0)
+
+        await nextMainQueueTurn()
+
+        XCTAssertTrue(container.searchController === controller)
+        XCTAssertTrue(controller.canPresent)
+        XCTAssertGreaterThan(publicationCount, 0)
+        withExtendedLifetime(publication) { }
     }
 
     func testMarkdownLinkTargetRecognizesSupportedLocalFilesAndRemovesFragments() throws {

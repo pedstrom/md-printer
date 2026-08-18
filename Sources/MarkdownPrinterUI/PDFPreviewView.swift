@@ -101,7 +101,6 @@ public struct PDFPreviewView: NSViewRepresentable {
     public func makeNSView(context: Context) -> BufferedPDFPreviewView {
         let view = BufferedPDFPreviewView()
         view.delegate = context.coordinator
-        view.searchController = searchController
         return view
     }
 
@@ -109,7 +108,6 @@ public struct PDFPreviewView: NSViewRepresentable {
         context.coordinator.openURL = openURL
         context.coordinator.onDragError = onDragError
         view.delegate = context.coordinator
-        view.searchController = searchController
         view.updateDragPayload(
             format: exportFormat,
             fileName: fileName,
@@ -118,13 +116,14 @@ public struct PDFPreviewView: NSViewRepresentable {
         )
         guard let document = PDFDocument(data: data) else { return }
         view.display(document, data: data, revision: revision)
+        view.deferSearchControllerUpdate(searchController)
     }
 
     public static func dismantleNSView(
         _ view: BufferedPDFPreviewView,
         coordinator: Coordinator
     ) {
-        view.searchController = nil
+        view.prepareForDismantling()
     }
 
     @MainActor
@@ -431,6 +430,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
     private var pendingCommit: DispatchWorkItem?
     private var stagedView: PageAdvancingPDFView?
     private var requestSequence: UInt64 = 0
+    private var searchControllerUpdateSequence: UInt64 = 0
     private var searchState = PDFSearchState.empty
     private var showsAllSearchMatches = false
     private var dragDataProvider: (() throws -> Data)?
@@ -449,6 +449,23 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
             oldValue?.detach(from: self)
             searchController?.attach(to: self)
         }
+    }
+
+    func deferSearchControllerUpdate(_ searchController: PDFSearchController?) {
+        searchControllerUpdateSequence &+= 1
+        let requestedSequence = searchControllerUpdateSequence
+        Task { @MainActor [weak self] in
+            guard let self,
+                  self.searchControllerUpdateSequence == requestedSequence
+            else { return }
+            self.searchController = searchController
+        }
+    }
+
+    func prepareForDismantling() {
+        searchControllerUpdateSequence &+= 1
+        searchController?.detachForDismantling(from: self)
+        searchController = nil
     }
 
     var delegate: PDFViewDelegate? {

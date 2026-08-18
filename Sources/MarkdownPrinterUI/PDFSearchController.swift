@@ -77,9 +77,26 @@ final class PDFSearchController: ObservableObject {
     }
 
     func detach(from target: any PDFSearchTarget) {
-        guard self.target === target else { return }
+        guard disconnect(from: target) else { return }
+        resetDetachedState()
+    }
+
+    func detachForDismantling(from target: any PDFSearchTarget) {
+        guard disconnect(from: target) else { return }
+        Task { @MainActor [weak self] in
+            guard let self, self.target == nil else { return }
+            self.resetDetachedState()
+        }
+    }
+
+    private func disconnect(from target: any PDFSearchTarget) -> Bool {
+        guard self.target === target else { return false }
         target.setShowsAllSearchMatches(false)
         self.target = nil
+        return true
+    }
+
+    private func resetDetachedState() {
         canPresent = false
         updateSummary(.empty)
         isPresented = false
