@@ -1,5 +1,15 @@
 # Product Development Log
 
+## 2026-08-17 — Version 1.3.0 and secure self-updates
+
+- Added a native Sparkle 2.9.2 update experience with manual **Check for Updates…**, daily checks enabled by default, a directly bound Settings preference, standard install/remind/skip choices, and quiet scheduled-network failures.
+- Required EdDSA-signed feeds, release notes, and ZIP archives; disabled system profiling and automatic downloads; and required validation before archive extraction.
+- Preserved open Markdown document URLs across the one successful update relaunch and postponed installation relaunch while a Save or Print sheet is active.
+- Embedded Sparkle in the custom universal SwiftPM app bundle with preserved framework symlinks, an explicit runtime search path, inside-out signing for every helper, and architecture/signature validation.
+- Kept local ad-hoc builds launchable without same-team library validation while reserving the hardened runtime for the production bundle, where the app and every Sparkle component receive the same Developer ID identity.
+- Extended the notarized release workflow to generate and locally verify the three GitHub Release assets with immutable tag URLs, plus a post-publication verifier for the stable release, `latest` feed, notarization, Gatekeeper, and ZIP digest.
+- Added focused updater, document-restoration, and relaunch-deferral regressions; updated privacy and developer documentation; and promoted the updater-enabled baseline as version 1.3.0, build 8.
+
 ## 2026-08-17 — Version 1.2.0
 
 - Promoted seamless live Markdown refresh, stable viewport preservation, and native PDF find together as version 1.2.0, build 7.

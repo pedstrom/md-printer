@@ -7,7 +7,7 @@
 <p align="center">Turn Markdown files into clean, printable PDFs on your Mac.</p>
 
 <p align="center">
-  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.2.0</strong></a>
+  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.3.0</strong></a>
 </p>
 
 Markdown is suddenly everywhere. AI tools, coding assistants, note apps, and research workflows are producing copious `.md` files, but those files are not always pleasant to print, share, or read away from an editor. Markdown Printer gives them a polished page without sending the document anywhere.
@@ -23,6 +23,7 @@ Drop one file—or a whole batch—onto the app. Each document opens in its own 
 - Opens multiple Markdown files at once, each in its own window
 - Refreshes open documents automatically when their Markdown files change while preserving the window, zoom, and reading position
 - Finds text in the rendered PDF with the standard Command-F, Command-G, and Shift-Command-G shortcuts
+- Checks GitHub for signed stable updates and installs them only after you approve
 - Lets you hold and drag the preferred PDF or Word export directly to the Desktop or another app
 - Keeps your files entirely on your Mac: no account, upload, analytics, or remote rendering
 
@@ -37,6 +38,12 @@ Markdown Printer requires macOS 14 Sonoma or newer.
 3. Open the app, then drop Markdown files onto it or use Finder's **Open With** command.
 
 The release is signed with a Developer ID certificate and notarized by Apple, so it opens through the normal macOS security flow.
+
+Version 1.3.0 is the first release that includes the updater. If you have an older version, install 1.3.0 manually once; future stable releases can be installed with **Markdown Printer > Check for Updates…**.
+
+## Privacy and update checks
+
+Document rendering remains entirely local. By default, Markdown Printer makes an ordinary HTTPS request to GitHub at most once per day to see whether a signed stable release is newer. It does not send system-profile information, analytics, or document content. Automatic checks can be disabled in **Markdown Printer > Settings**, and an update is downloaded only after you choose **Install Update**.
 
 ## About this project
 

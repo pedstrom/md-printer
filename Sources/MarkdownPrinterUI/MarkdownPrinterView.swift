@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 public struct MarkdownPrinterView: View {
     @ObservedObject private var session: DocumentSession
     @ObservedObject private var exportPreferences: ExportPreferences
+    private let activityCoordinator: ApplicationActivityCoordinator
     private let openFiles: ([URL]) -> Void
     @State private var isDropTargeted = false
     @StateObject private var searchController = PDFSearchController()
@@ -13,10 +14,12 @@ public struct MarkdownPrinterView: View {
     public init(
         session: DocumentSession,
         exportPreferences: ExportPreferences,
+        activityCoordinator: ApplicationActivityCoordinator,
         openFiles: @escaping ([URL]) -> Void
     ) {
         self.session = session
         self.exportPreferences = exportPreferences
+        self.activityCoordinator = activityCoordinator
         self.openFiles = openFiles
     }
 
@@ -130,24 +133,28 @@ public struct MarkdownPrinterView: View {
     }
 
     private func saveDocument() {
-        let defaultFormat = exportPreferences.defaultFormat
-        let controller = ExportSavePanelController(
-            defaultFormat: defaultFormat,
-            suggestedFileName: session.suggestedFileName(for: defaultFormat)
-        )
-        guard let selection = controller.runModal() else { return }
-        do {
-            try session.save(to: selection.url, as: selection.format)
-        } catch {
-            session.report(error: error)
+        activityCoordinator.performBlockingOperation {
+            let defaultFormat = exportPreferences.defaultFormat
+            let controller = ExportSavePanelController(
+                defaultFormat: defaultFormat,
+                suggestedFileName: session.suggestedFileName(for: defaultFormat)
+            )
+            guard let selection = controller.runModal() else { return }
+            do {
+                try session.save(to: selection.url, as: selection.format)
+            } catch {
+                session.report(error: error)
+            }
         }
     }
 
     private func printDocument() {
-        do {
-            try session.printOperation().run()
-        } catch {
-            session.report(error: error)
+        activityCoordinator.performBlockingOperation {
+            do {
+                try session.printOperation().run()
+            } catch {
+                session.report(error: error)
+            }
         }
     }
 

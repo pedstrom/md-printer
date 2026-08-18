@@ -24,6 +24,10 @@ fi
 "$ROOT/scripts/build-and-run/build_app.sh" >/dev/null
 ditto "$APP_PATH" "$STAGED_APP_PATH"
 xattr -cr "$STAGED_APP_PATH"
+"$ROOT/scripts/build-and-run/sign_sparkle.sh" \
+  "$STAGED_APP_PATH" \
+  "$SIGNING_IDENTITY" \
+  --timestamp
 codesign \
   --force \
   --options runtime \
@@ -31,6 +35,27 @@ codesign \
   --sign "$SIGNING_IDENTITY" \
   "$STAGED_APP_PATH"
 codesign --verify --deep --strict --verbose=2 "$STAGED_APP_PATH"
+
+SPARKLE_VERSION="$STAGED_APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
+EMBEDDED_CODE=(
+  "$SPARKLE_VERSION/XPCServices/Downloader.xpc"
+  "$SPARKLE_VERSION/XPCServices/Installer.xpc"
+  "$SPARKLE_VERSION/Updater.app"
+  "$SPARKLE_VERSION/Autoupdate"
+  "$STAGED_APP_PATH/Contents/Frameworks/Sparkle.framework"
+)
+for code_path in "${EMBEDDED_CODE[@]}"; do
+  codesign --verify --strict --verbose=2 "$code_path"
+  EMBEDDED_SIGNING_INFORMATION="$(codesign --display --verbose=4 "$code_path" 2>&1)"
+  if ! grep -q '^Authority=Developer ID Application:' <<< "$EMBEDDED_SIGNING_INFORMATION"; then
+    echo "Embedded Sparkle code is not Developer ID signed: $code_path" >&2
+    exit 1
+  fi
+  if ! grep -q 'flags=.*runtime' <<< "$EMBEDDED_SIGNING_INFORMATION"; then
+    echo "Embedded Sparkle code does not have hardened runtime enabled: $code_path" >&2
+    exit 1
+  fi
+done
 
 SIGNING_INFORMATION="$(codesign --display --verbose=4 "$STAGED_APP_PATH" 2>&1)"
 if ! grep -q '^Authority=Developer ID Application:' <<< "$SIGNING_INFORMATION"; then
@@ -78,5 +103,35 @@ codesign --verify --deep --strict --verbose=2 "$VALIDATED_APP_PATH"
 xcrun stapler validate --verbose "$VALIDATED_APP_PATH"
 spctl --assess --type execute --verbose=4 "$VALIDATED_APP_PATH"
 
+ARCHITECTURE_TARGETS=(
+  "$VALIDATED_APP_PATH/Contents/MacOS/MarkdownPrinter"
+  "$VALIDATED_APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"
+  "$VALIDATED_APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
+  "$VALIDATED_APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app/Contents/MacOS/Updater"
+  "$VALIDATED_APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"
+  "$VALIDATED_APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer"
+)
+for executable_path in "${ARCHITECTURE_TARGETS[@]}"; do
+  ARCHITECTURES="$(lipo -archs "$executable_path")"
+  if [[ "$ARCHITECTURES" != *"arm64"* \
+      || "$ARCHITECTURES" != *"x86_64"* \
+      || "$(wc -w <<< "$ARCHITECTURES" | tr -d ' ')" != "2" ]]; then
+    echo "Unexpected architectures for $executable_path: $ARCHITECTURES" >&2
+    exit 1
+  fi
+done
+
+if ! otool -L "$VALIDATED_APP_PATH/Contents/MacOS/MarkdownPrinter" \
+  | grep -q '@rpath/Sparkle.framework/Versions/B/Sparkle'; then
+  echo "Markdown Printer is not linked to the embedded Sparkle framework." >&2
+  exit 1
+fi
+if ! otool -l "$VALIDATED_APP_PATH/Contents/MacOS/MarkdownPrinter" \
+  | grep -q '@executable_path/../Frameworks'; then
+  echo "Markdown Printer does not contain the Sparkle runtime search path." >&2
+  exit 1
+fi
+
 echo "$ARCHIVE_PATH"
 shasum -a 256 "$ARCHIVE_PATH"
+"$ROOT/scripts/build-and-run/prepare_update_release.sh" "$ARCHIVE_PATH"

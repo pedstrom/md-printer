@@ -13,11 +13,20 @@ let package = Package(
         .executable(name: "MarkdownPrinter", targets: ["MarkdownPrinter"]),
         .executable(name: "MarkdownPrinterCLI", targets: ["MarkdownPrinterCLI"])
     ],
+    dependencies: [
+        .package(
+            url: "https://github.com/sparkle-project/Sparkle",
+            exact: "2.9.2"
+        )
+    ],
     targets: [
         .target(name: "MarkdownPrinterCore"),
         .target(
             name: "MarkdownPrinterUI",
-            dependencies: ["MarkdownPrinterCore"]
+            dependencies: [
+                "MarkdownPrinterCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ]
         ),
         .executableTarget(
             name: "MarkdownPrinter",

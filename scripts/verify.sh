@@ -15,10 +15,16 @@ required_files=(
   README.md
   AGENTS.md
   Package.swift
+  Package.resolved
   Resources/Info.plist
   Resources/MarkdownPrinterIcon.png
   Resources/Assets.xcassets/AppIcon.appiconset/Contents.json
   docs/product-development-log.md
+  release-notes/1.3.0.md
+  scripts/build-and-run/prepare_update_release.sh
+  scripts/build-and-run/sign_sparkle.sh
+  scripts/build-and-run/verify_published_release.sh
+  scripts/build-and-run/verify_update_assets.sh
   .codex/skills/md-printer-macos/SKILL.md
   .codex/skills/md-printer-change-gate/SKILL.md
 )
@@ -48,9 +54,25 @@ while IFS= read -r script; do
   bash -n "$script"
 done < <(find scripts -type f -name '*.sh' -print | sort)
 plutil -lint Resources/Info.plist >/dev/null
-[[ "$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)" == "1.2.0" ]]
-[[ "$(plutil -extract CFBundleVersion raw Resources/Info.plist)" == "7" ]]
+[[ "$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)" == "1.3.0" ]]
+[[ "$(plutil -extract CFBundleVersion raw Resources/Info.plist)" == "8" ]]
 [[ "$(plutil -extract NSHumanReadableCopyright raw Resources/Info.plist)" == *"Peter Edstrom"* ]]
+[[ "$(plutil -extract SUFeedURL raw Resources/Info.plist)" == "https://github.com/pedstrom/md-printer/releases/latest/download/appcast.xml" ]]
+[[ "$(plutil -extract SUPublicEDKey raw Resources/Info.plist)" == "uJG4sJlofZdkVBe09QbsziY979haWLKCmCidGssas3k=" ]]
+[[ "$(plutil -extract SUEnableAutomaticChecks raw Resources/Info.plist)" == "true" ]]
+[[ "$(plutil -extract SUScheduledCheckInterval raw Resources/Info.plist)" == "86400" ]]
+[[ "$(plutil -extract SUAutomaticallyUpdate raw Resources/Info.plist)" == "false" ]]
+[[ "$(plutil -extract SUAllowsAutomaticUpdates raw Resources/Info.plist)" == "false" ]]
+[[ "$(plutil -extract SUEnableSystemProfiling raw Resources/Info.plist)" == "false" ]]
+[[ "$(plutil -extract SURequireSignedFeed raw Resources/Info.plist)" == "true" ]]
+[[ "$(plutil -extract SUVerifyUpdateBeforeExtraction raw Resources/Info.plist)" == "true" ]]
+[[ "$(plutil -extract SUShowReleaseNotes raw Resources/Info.plist)" == "true" ]]
+if plutil -extract SUSendProfileInfo raw Resources/Info.plist >/dev/null 2>&1; then
+  echo "SUSendProfileInfo must not be configured." >&2
+  exit 1
+fi
+grep -q '"identity" : "sparkle"' Package.resolved
+grep -q '"version" : "2.9.2"' Package.resolved
 
 mkdir -p .build/module-cache .build/swiftpm-cache
 export CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache"
@@ -84,9 +106,42 @@ test -s "build/Markdown Printer.app/Contents/Resources/AppIcon.icns"
 plutil -lint "build/Markdown Printer.app/Contents/Info.plist" >/dev/null
 [[ "$(plutil -extract CFBundleIconFile raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
 [[ "$(plutil -extract CFBundleIconName raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
-[[ "$(plutil -extract CFBundleShortVersionString raw "build/Markdown Printer.app/Contents/Info.plist")" == "1.2.0" ]]
-[[ "$(plutil -extract CFBundleVersion raw "build/Markdown Printer.app/Contents/Info.plist")" == "7" ]]
+[[ "$(plutil -extract CFBundleShortVersionString raw "build/Markdown Printer.app/Contents/Info.plist")" == "1.3.0" ]]
+[[ "$(plutil -extract CFBundleVersion raw "build/Markdown Printer.app/Contents/Info.plist")" == "8" ]]
 [[ "$(plutil -extract NSHumanReadableCopyright raw "build/Markdown Printer.app/Contents/Info.plist")" == *"Peter Edstrom"* ]]
+
+SPARKLE_FRAMEWORK="build/Markdown Printer.app/Contents/Frameworks/Sparkle.framework"
+test -L "$SPARKLE_FRAMEWORK/Versions/Current"
+test -x "$SPARKLE_FRAMEWORK/Versions/B/Sparkle"
+test -x "$SPARKLE_FRAMEWORK/Versions/B/Autoupdate"
+test -x "$SPARKLE_FRAMEWORK/Versions/B/Updater.app/Contents/MacOS/Updater"
+test -x "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"
+test -x "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer"
+
+ARCHITECTURE_TARGETS=(
+  "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter"
+  "$SPARKLE_FRAMEWORK/Versions/B/Sparkle"
+  "$SPARKLE_FRAMEWORK/Versions/B/Autoupdate"
+  "$SPARKLE_FRAMEWORK/Versions/B/Updater.app/Contents/MacOS/Updater"
+  "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS/Downloader"
+  "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer"
+)
+for executable_path in "${ARCHITECTURE_TARGETS[@]}"; do
+  EXECUTABLE_ARCHITECTURES="$(lipo -archs "$executable_path")"
+  [[ "$EXECUTABLE_ARCHITECTURES" == *"arm64"* ]]
+  [[ "$EXECUTABLE_ARCHITECTURES" == *"x86_64"* ]]
+done
+otool -L "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter" \
+  | grep -q '@rpath/Sparkle.framework/Versions/B/Sparkle'
+otool -l "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter" \
+  | grep -q '@executable_path/../Frameworks'
+
+DEVELOPMENT_SIGNING_INFORMATION="$(codesign --display --verbose=4 \
+  "build/Markdown Printer.app" 2>&1)"
+if grep -q 'flags=.*runtime' <<< "$DEVELOPMENT_SIGNING_INFORMATION"; then
+  echo "Ad-hoc development app must not enable same-team library validation." >&2
+  exit 1
+fi
 
 if git ls-files --error-unmatch .DS_Store >/dev/null 2>&1; then
   echo ".DS_Store is tracked; remove it from the repository." >&2
