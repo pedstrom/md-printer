@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-08-19 — Update relaunch window restoration
+
+- Extended the existing successful-update relaunch path to preserve each open document window's size, screen position, PDF zoom, page, and normalized scroll location immediately before Sparkle installs the update.
+- Restored window geometry through the same document-window lifecycle used by normal opens, clamping saved frames to the currently available screens before restoring the PDF viewport after native layout settles.
+- Kept persisted viewport state local, numeric, build-specific, and single-use; no Markdown text or PDF text anchors are written to preferences, and older path-only relaunch records remain compatible.
+- Added focused round-trip coverage for multipage scrolling, zoom, window geometry, invalid stored state, legacy records, and changed screen arrangements.
+
 ## 2026-08-19 — Native File Open command
 
 - Restored SwiftUI's native **File → Open…** command with Command-O plus **Open Recent** and **Clear Menu** by removing the welcome scene's empty new-item command override.

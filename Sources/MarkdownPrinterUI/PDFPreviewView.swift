@@ -4,6 +4,8 @@ import QuartzCore
 import SwiftUI
 
 public struct PDFPreviewView: NSViewRepresentable {
+    @Environment(\.documentWindowRestorationCoordinator) private var windowRestorationCoordinator
+
     public let data: Data
     public let revision: UInt64
     public let exportFormat: ExportFormat
@@ -101,6 +103,7 @@ public struct PDFPreviewView: NSViewRepresentable {
     public func makeNSView(context: Context) -> BufferedPDFPreviewView {
         let view = BufferedPDFPreviewView()
         view.delegate = context.coordinator
+        windowRestorationCoordinator?.attach(preview: view)
         return view
     }
 
@@ -108,6 +111,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         context.coordinator.openURL = openURL
         context.coordinator.onDragError = onDragError
         view.delegate = context.coordinator
+        windowRestorationCoordinator?.attach(preview: view)
         view.updateDragPayload(
             format: exportFormat,
             fileName: fileName,
@@ -116,6 +120,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         )
         guard let document = PDFDocument(data: data) else { return }
         view.display(document, data: data, revision: revision)
+        windowRestorationCoordinator?.previewDidDisplayDocument()
         view.deferSearchControllerUpdate(searchController)
     }
 
@@ -381,6 +386,31 @@ struct PreviewViewport {
     }
 }
 
+extension PersistedPreviewViewport {
+    init(viewport: PreviewViewport) {
+        self.init(
+            scaleFactor: Double(viewport.scaleFactor),
+            pageIndex: viewport.pageIndex,
+            normalizedPageX: Double(viewport.normalizedPagePoint.x),
+            normalizedPageY: Double(viewport.normalizedPagePoint.y),
+            documentProgress: Double(viewport.documentProgress)
+        )
+    }
+
+    var previewViewport: PreviewViewport {
+        PreviewViewport(
+            scaleFactor: CGFloat(scaleFactor),
+            pageIndex: pageIndex,
+            normalizedPagePoint: CGPoint(
+                x: CGFloat(normalizedPageX),
+                y: CGFloat(normalizedPageY)
+            ),
+            documentProgress: CGFloat(documentProgress),
+            textAnchors: []
+        )
+    }
+}
+
 private extension Array {
     func evenlySampled(maximumCount: Int) -> [Element] {
         guard maximumCount > 0 else { return [] }
@@ -466,6 +496,14 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         searchControllerUpdateSequence &+= 1
         searchController?.detachForDismantling(from: self)
         searchController = nil
+    }
+
+    package func capturePersistedViewport() -> PersistedPreviewViewport? {
+        PreviewViewport.capture(from: activeView).map(PersistedPreviewViewport.init(viewport:))
+    }
+
+    package func restorePersistedViewport(_ viewport: PersistedPreviewViewport) {
+        activeView.restoreRelaunchViewport(viewport.previewViewport)
     }
 
     var delegate: PDFViewDelegate? {
@@ -899,6 +937,24 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         needsLayout = true
         layoutSubtreeIfNeeded()
         viewport?.restore(in: self)
+    }
+
+    func restoreRelaunchViewport(_ viewport: PreviewViewport) {
+        displayRevision += 1
+        let restorationRevision = displayRevision
+        needsInitialPageFit = false
+        fittedViewWidth = bounds.width
+        layoutSubtreeIfNeeded()
+        viewport.restore(in: self)
+        DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.displayRevision == restorationRevision else { return }
+                self.needsInitialPageFit = false
+                self.fittedViewWidth = self.bounds.width
+                self.layoutSubtreeIfNeeded()
+                viewport.restore(in: self)
+            }
+        }
     }
 
     func updateDragPayload(

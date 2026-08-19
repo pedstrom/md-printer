@@ -137,11 +137,11 @@ private struct WelcomeMarkdownWindow: View {
 private struct MarkdownDocumentWindow: View {
     @Environment(\.openDocument) private var openDocument
     @StateObject private var session: DocumentSession
+    @StateObject private var windowRestoration: DocumentWindowRestorationCoordinator
     private let fileDocument: MarkdownFileDocument
     private let sourceURL: URL?
     @ObservedObject var exportPreferences: ExportPreferences
     let activityCoordinator: ApplicationActivityCoordinator
-    let documentRestoration: OpenDocumentRestorationController
 
     init(
         fileDocument: MarkdownFileDocument,
@@ -154,9 +154,14 @@ private struct MarkdownDocumentWindow: View {
         self.sourceURL = sourceURL
         self.exportPreferences = exportPreferences
         self.activityCoordinator = activityCoordinator
-        self.documentRestoration = documentRestoration
         _session = StateObject(
             wrappedValue: Self.makeSession(fileDocument: fileDocument, sourceURL: sourceURL)
+        )
+        _windowRestoration = StateObject(
+            wrappedValue: DocumentWindowRestorationCoordinator(
+                sourceURL: sourceURL,
+                restorationController: documentRestoration
+            )
         )
     }
 
@@ -167,13 +172,15 @@ private struct MarkdownDocumentWindow: View {
             activityCoordinator: activityCoordinator,
             openFiles: openFiles
         )
+            .environment(\.documentWindowRestorationCoordinator, windowRestoration)
+            .background(DocumentWindowRestorationAttachmentView(coordinator: windowRestoration))
             .onAppear {
-                documentRestoration.documentDidOpen(at: sourceURL)
+                windowRestoration.activate()
                 synchronizeFileDocument()
                 session.startMonitoringSourceChanges()
             }
             .onDisappear {
-                documentRestoration.documentDidClose(at: sourceURL)
+                windowRestoration.deactivate()
             }
             .onChange(of: fileDocument.markdownDocument(sourceURL: sourceURL).markdown) {
                 synchronizeFileDocument()
