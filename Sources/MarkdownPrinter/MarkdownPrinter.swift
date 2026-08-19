@@ -40,7 +40,6 @@ struct MarkdownPrinterApp: App {
         }
         .defaultSize(width: 760, height: 980)
         .commands {
-            CommandGroup(replacing: .newItem) { }
             CommandGroup(replacing: .appInfo) {
                 Button("About Markdown Printer") {
                     AboutPanel.show()

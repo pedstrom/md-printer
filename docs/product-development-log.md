@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-19 — Native File Open command
+
+- Restored SwiftUI's native **File → Open…** command with Command-O plus **Open Recent** and **Clear Menu** by removing the welcome scene's empty new-item command override.
+- Kept all three commands on the existing `DocumentGroup` path so system-maintained recents, Finder events, drag-and-drop, Markdown links, and the welcome chooser continue to open the same document windows.
+
 ## 2026-08-18 — Version 1.4.1
 
 - Promoted the crash-free PDF search attachment and document-window teardown fix as version 1.4.1, build 10.
