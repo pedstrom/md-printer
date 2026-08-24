@@ -58,23 +58,44 @@ final class PDFSearchControllerTests: XCTestCase {
     func testUnavailableAndDetachedTargetsDisableCommands() {
         let target = TestPDFSearchTarget()
         target.isSearchAvailable = false
+        target.isFitPageAvailable = false
         let controller = PDFSearchController()
 
         controller.attach(to: target)
         controller.present()
 
         XCTAssertFalse(controller.canPresent)
+        XCTAssertFalse(controller.canFitPage)
         XCTAssertFalse(controller.isPresented)
 
         target.isSearchAvailable = true
+        target.isFitPageAvailable = true
         controller.attach(to: target)
         XCTAssertTrue(controller.canPresent)
+        XCTAssertTrue(controller.canFitPage)
 
         controller.detach(from: target)
 
         XCTAssertFalse(controller.canPresent)
+        XCTAssertFalse(controller.canFitPage)
         XCTAssertFalse(controller.canNavigate)
         XCTAssertEqual(controller.matchCount, 0)
+    }
+
+    func testControllerRoutesFitPageOnlyToAnAvailableTarget() {
+        let target = TestPDFSearchTarget()
+        target.isFitPageAvailable = false
+        let controller = PDFSearchController()
+        controller.attach(to: target)
+
+        controller.fitPage()
+        XCTAssertEqual(target.fitPageCallCount, 0)
+
+        target.isFitPageAvailable = true
+        controller.attach(to: target)
+        controller.fitPage()
+
+        XCTAssertEqual(target.fitPageCallCount, 1)
     }
 
     func testSearchControllersKeepIndependentWindowState() {
@@ -107,11 +128,13 @@ private final class TestPDFSearchTarget: PDFSearchTarget {
     }
 
     var isSearchAvailable = true
+    var isFitPageAvailable = true
     var searchSummary = PDFSearchSummary.empty
     var moveSummary = PDFSearchSummary.empty
     private(set) var searchCalls: [SearchCall] = []
     private(set) var moveCalls: [PDFSearchDirection] = []
     private(set) var showAllCalls: [Bool] = []
+    private(set) var fitPageCallCount = 0
 
     func performSearch(
         for query: String,
@@ -131,5 +154,9 @@ private final class TestPDFSearchTarget: PDFSearchTarget {
 
     func setShowsAllSearchMatches(_ showsAllMatches: Bool) {
         showAllCalls.append(showsAllMatches)
+    }
+
+    func fitCurrentPage() {
+        fitPageCallCount += 1
     }
 }

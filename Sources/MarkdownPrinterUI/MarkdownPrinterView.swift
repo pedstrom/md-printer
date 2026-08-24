@@ -511,3 +511,19 @@ package struct PDFSearchCommands: Commands {
         CommandGroup(replacing: .textEditing) { }
     }
 }
+
+package struct PDFFitPageCommands: Commands {
+    @FocusedObject private var controller: PDFSearchController?
+
+    package init() { }
+
+    package var body: some Commands {
+        CommandGroup(after: .toolbar) {
+            Button("Fit Page") {
+                controller?.fitPage()
+            }
+            .keyboardShortcut("0", modifiers: .command)
+            .disabled(controller?.canFitPage != true)
+        }
+    }
+}

@@ -51,6 +51,7 @@ struct MarkdownPrinterApp: App {
                 .disabled(!updateController.canCheckForUpdates)
             }
             PDFSearchCommands()
+            PDFFitPageCommands()
         }
 
         DocumentGroup(viewing: MarkdownFileDocument.self) { configuration in

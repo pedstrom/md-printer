@@ -173,6 +173,41 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertEqual(view.scaleFactor, initialScale, accuracy: 0.001)
     }
 
+    func testCommandZeroFitsTheCompleteCurrentPage() throws {
+        let document = try makeMultiPageDocument()
+        let secondPage = try XCTUnwrap(document.page(at: 1))
+        let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        view.display(document)
+        view.layoutSubtreeIfNeeded()
+        view.go(to: secondPage)
+        view.scaleFactor = 1.5
+        let commandZero = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .command,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "0",
+            charactersIgnoringModifiers: "0",
+            isARepeat: false,
+            keyCode: 29
+        ))
+
+        XCTAssertTrue(view.performKeyEquivalent(with: commandZero))
+
+        let pageRect = view.convert(secondPage.bounds(for: .cropBox), from: secondPage)
+        XCTAssertTrue(view.currentPage === secondPage)
+        XCTAssertLessThan(pageRect.width, view.bounds.width)
+        XCTAssertLessThan(pageRect.height, view.bounds.height)
+        XCTAssertGreaterThanOrEqual(pageRect.minX, view.bounds.minX - 1)
+        XCTAssertGreaterThanOrEqual(pageRect.minY, view.bounds.minY - 1)
+        XCTAssertLessThanOrEqual(pageRect.maxX, view.bounds.maxX + 1)
+        XCTAssertLessThanOrEqual(pageRect.maxY, view.bounds.maxY + 1)
+        XCTAssertEqual(view.displayMode, .singlePageContinuous)
+        XCTAssertFalse(view.autoScales)
+    }
+
     func testPlainSpaceAdvancesExactlyOnePage() throws {
         let document = try makeMultiPageDocument()
         let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))

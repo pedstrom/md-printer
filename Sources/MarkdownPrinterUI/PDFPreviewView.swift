@@ -506,6 +506,14 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         activeView.restoreRelaunchViewport(viewport.previewViewport)
     }
 
+    var isFitPageAvailable: Bool {
+        activeView.document?.pageCount ?? 0 > 0
+    }
+
+    func fitCurrentPage() {
+        activeView.fitCurrentPage()
+    }
+
     var delegate: PDFViewDelegate? {
         didSet {
             previewViews.forEach { $0.delegate = delegate }
@@ -1000,6 +1008,24 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         goToNextPage(nil)
     }
 
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        guard event.charactersIgnoringModifiers == "0",
+              modifiers == .command,
+              document != nil
+        else {
+            return super.performKeyEquivalent(with: event)
+        }
+        fitCurrentPage()
+        return true
+    }
+
+    func fitCurrentPage() {
+        guard let page = currentPage ?? document?.page(at: 0) else { return }
+        fit(page)
+        fittedViewWidth = bounds.width
+    }
+
     func draggingSession(
         _ session: NSDraggingSession,
         sourceOperationMaskFor context: NSDraggingContext
@@ -1085,13 +1111,17 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
 
     private func fitFirstPage() {
         guard let firstPage = document?.page(at: 0) else { return }
+        fit(firstPage)
+    }
+
+    private func fit(_ page: PDFPage) {
         displayMode = .singlePage
         let fittedScale = scaleFactorForSizeToFit * 0.99
         displayMode = .singlePageContinuous
         scaleFactor = fittedScale
-        let bounds = firstPage.bounds(for: .cropBox)
+        let bounds = page.bounds(for: .cropBox)
         let destination = PDFDestination(
-            page: firstPage,
+            page: page,
             at: CGPoint(x: bounds.minX, y: bounds.maxY)
         )
         destination.zoom = fittedScale

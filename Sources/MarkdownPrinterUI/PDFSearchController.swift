@@ -21,6 +21,7 @@ enum PDFSearchFocusPolicy {
 @MainActor
 protocol PDFSearchTarget: AnyObject {
     var isSearchAvailable: Bool { get }
+    var isFitPageAvailable: Bool { get }
 
     func performSearch(
         for query: String,
@@ -31,6 +32,7 @@ protocol PDFSearchTarget: AnyObject {
         showingAllMatches: Bool
     ) -> PDFSearchSummary
     func setShowsAllSearchMatches(_ showsAllMatches: Bool)
+    func fitCurrentPage()
 }
 
 @MainActor
@@ -48,6 +50,7 @@ final class PDFSearchController: ObservableObject {
     @Published private(set) var isPresented = false
     @Published private(set) var focusRequest = UInt64(0)
     @Published private(set) var canPresent = false
+    @Published private(set) var canFitPage = false
 
     private weak var target: (any PDFSearchTarget)?
 
@@ -68,11 +71,13 @@ final class PDFSearchController: ObservableObject {
     func attach(to target: any PDFSearchTarget) {
         if self.target === target {
             canPresent = target.isSearchAvailable
+            canFitPage = target.isFitPageAvailable
             return
         }
         self.target?.setShowsAllSearchMatches(false)
         self.target = target
         canPresent = target.isSearchAvailable
+        canFitPage = target.isFitPageAvailable
         updateSummary(target.performSearch(for: query, showingAllMatches: isPresented))
     }
 
@@ -98,6 +103,7 @@ final class PDFSearchController: ObservableObject {
 
     private func resetDetachedState() {
         canPresent = false
+        canFitPage = false
         updateSummary(.empty)
         isPresented = false
     }
@@ -122,9 +128,15 @@ final class PDFSearchController: ObservableObject {
         move(.previous)
     }
 
+    func fitPage() {
+        guard canFitPage else { return }
+        target?.fitCurrentPage()
+    }
+
     func target(_ target: any PDFSearchTarget, didUpdate summary: PDFSearchSummary) {
         guard self.target === target else { return }
         canPresent = target.isSearchAvailable
+        canFitPage = target.isFitPageAvailable
         updateSummary(summary)
     }
 

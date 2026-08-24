@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-08-24 — Current-page Fit Page command
+
+- Added **View → Fit Page** with Command-0, fitting the complete current PDF page inside the document window while retaining continuous vertical scrolling.
+- Kept the command scoped to the focused document window and disabled it when no PDF is available.
+- Added deterministic coverage for command routing, current-page retention, and complete viewport containment.
+
 ## 2026-08-19 — Update relaunch window restoration
 
 - Extended the existing successful-update relaunch path to preserve each open document window's size, screen position, PDF zoom, page, and normalized scroll location immediately before Sparkle installs the update.
