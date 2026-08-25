@@ -118,12 +118,18 @@ public struct MarkdownPrinterView: View {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 64, height: 70)
+                .frame(
+                    width: MarkdownPrinterWelcomeArtwork.displaySize.width,
+                    height: MarkdownPrinterWelcomeArtwork.displaySize.height
+                )
         } else {
             Image(systemName: "doc.richtext.fill")
-                .font(.system(size: 58, weight: .light))
+                .font(.system(size: 116, weight: .light))
                 .foregroundStyle(.tint)
-                .frame(width: 64, height: 70)
+                .frame(
+                    width: MarkdownPrinterWelcomeArtwork.displaySize.width,
+                    height: MarkdownPrinterWelcomeArtwork.displaySize.height
+                )
         }
     }
 
@@ -193,6 +199,7 @@ public struct MarkdownPrinterView: View {
 package enum MarkdownPrinterWelcomeArtwork {
     package static let resourceName = "MarkdownDocumentIcon"
     package static let resourceExtension = "icns"
+    package static let displaySize = NSSize(width: 128, height: 140)
 
     package static func image(in bundle: Bundle = .main) -> NSImage? {
         guard let url = bundle.url(

@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-08-25 — Larger welcome artwork
+
+- Doubled the welcome screen's document artwork from 64×70 to 128×140 points so it reads as a deliberate focal element in the empty window.
+- Kept the Finder document icon, app icon, preview drag thumbnail, and underlying artwork asset unchanged.
+- Added deterministic coverage for the welcome-only display dimensions.
+
 ## 2026-08-25 — Visible hold-to-drag readiness
 
 - Made the preview thumbnail appear as soon as the PDF or Word hold gesture becomes ready, before the pointer starts moving.

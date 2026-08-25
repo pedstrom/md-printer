@@ -3,6 +3,13 @@ import XCTest
 @testable import MarkdownPrinterUI
 
 final class MarkdownPrinterViewTests: XCTestCase {
+    func testWelcomeArtworkUsesTheDoubledDisplaySize() {
+        XCTAssertEqual(
+            MarkdownPrinterWelcomeArtwork.displaySize,
+            NSSize(width: 128, height: 140)
+        )
+    }
+
     func testWelcomeArtworkLoadsTheApprovedDocumentIconSource() throws {
         let sourceURL = repositoryRoot
             .appendingPathComponent("Resources/MarkdownDocumentIcon.png")
