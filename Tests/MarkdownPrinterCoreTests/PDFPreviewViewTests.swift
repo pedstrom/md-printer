@@ -254,6 +254,57 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertTrue(view.gestureRecognizers.contains { $0 === recognizer })
     }
 
+    func testOutboundExportDragShowsReadinessThumbnailBeforeMouseMovement() throws {
+        let rendered = try makeDocument(markdown: "# Ready to drag\n\nA preview page.")
+        let view = PageAdvancingPDFView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        view.displayInitial(rendered.document)
+        view.updateDragPayload(
+            format: .pdf,
+            fileName: "ready.pdf",
+            dataProvider: { rendered.data },
+            onError: { _ in XCTFail("Readiness feedback should not export the file.") }
+        )
+        let pressLocation = NSPoint(x: 320, y: 410)
+
+        view.handleOutboundExportDrag(
+            state: .began,
+            event: nil,
+            location: pressLocation
+        )
+
+        let feedback = view.outboundExportDragFeedbackView
+        XCTAssertTrue(feedback.superview === view)
+        let feedbackImage = try XCTUnwrap(feedback.image)
+        XCTAssertEqual(feedback.frame.size, feedbackImage.size)
+        XCTAssertEqual(feedback.frame.height, 142, accuracy: 0.001)
+        XCTAssertEqual(feedback.frame.midX, pressLocation.x, accuracy: 0.001)
+        XCTAssertEqual(feedback.frame.midY, pressLocation.y, accuracy: 0.001)
+
+        view.handleOutboundExportDrag(
+            state: .ended,
+            event: nil,
+            location: pressLocation
+        )
+
+        XCTAssertNil(feedback.superview)
+        XCTAssertNil(feedback.image)
+    }
+
+    func testOutboundExportDragDoesNotShowReadinessWithoutAnExportPayload() {
+        let view = PageAdvancingPDFView()
+
+        view.handleOutboundExportDrag(
+            state: .began,
+            event: nil,
+            location: NSPoint(x: 20, y: 20)
+        )
+
+        XCTAssertNil(view.outboundExportDragFeedbackView.superview)
+        XCTAssertNil(view.outboundExportDragFeedbackView.image)
+    }
+
     func testBufferedPreviewKeepsTheOldDocumentVisibleUntilThePreparedSwapCommits() async throws {
         let first = try makeDocument(markdown: "# First\n\nThe original visible document.")
         let second = try makeDocument(markdown: "# Second\n\nThe replacement visible document.")

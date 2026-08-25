@@ -903,9 +903,23 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     private var activeDragArtifact: ExportDragArtifact?
     private var isDraggingExport = false
     var automaticallyTakesFocus = true
+    private(set) lazy var outboundExportDragFeedbackView: NSImageView = {
+        let imageView = NSImageView()
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.alphaValue = 0.86
+        imageView.wantsLayer = true
+        imageView.layer?.shadowColor = NSColor.black.cgColor
+        imageView.layer?.shadowOpacity = 0.24
+        imageView.layer?.shadowRadius = 5
+        imageView.layer?.shadowOffset = CGSize(width: 0, height: -2)
+        imageView.setAccessibilityElement(false)
+        imageView.setAccessibilityHidden(true)
+        return imageView
+    }()
     private(set) lazy var outboundExportDragRecognizer: NSPressGestureRecognizer = {
         let recognizer = NSPressGestureRecognizer(target: self, action: #selector(handleOutboundPDFDrag(_:)))
         recognizer.buttonMask = 0x1
+        recognizer.minimumPressDuration = NSEvent.doubleClickInterval
         return recognizer
     }()
 
@@ -1043,6 +1057,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
             self.activeDragArtifact = nil
         }
         isDraggingExport = false
+        hideOutboundExportDragFeedback()
     }
 
     private func configure() {
@@ -1056,42 +1071,94 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
 
     @objc
     private func handleOutboundPDFDrag(_ recognizer: NSPressGestureRecognizer) {
-        guard recognizer.state == .changed,
-              !isDraggingExport,
-              let dragDataProvider,
-              let event = NSApp.currentEvent,
-              event.type == .leftMouseDragged
-        else {
-            return
-        }
+        handleOutboundExportDrag(
+            state: recognizer.state,
+            event: NSApp.currentEvent,
+            location: recognizer.location(in: self)
+        )
+    }
 
+    func handleOutboundExportDrag(
+        state: NSGestureRecognizer.State,
+        event: NSEvent?,
+        location: NSPoint
+    ) {
+        switch state {
+        case .began:
+            guard !isDraggingExport, dragDataProvider != nil else { return }
+            showOutboundExportDragFeedback(at: location)
+        case .changed:
+            guard !isDraggingExport,
+                  let dragDataProvider,
+                  let event,
+                  event.type == .leftMouseDragged
+            else { return }
+            beginOutboundExportDrag(
+                dataProvider: dragDataProvider,
+                event: event,
+                location: location
+            )
+        case .ended, .cancelled, .failed:
+            hideOutboundExportDragFeedback()
+        default:
+            break
+        }
+    }
+
+    private func beginOutboundExportDrag(
+        dataProvider: () throws -> Data,
+        event: NSEvent,
+        location: NSPoint
+    ) {
         let artifact: ExportDragArtifact
         do {
             artifact = try dragFileStore.materialize(
-                data: dragDataProvider(),
+                data: dataProvider(),
                 fileName: dragFileName
             )
         } catch {
+            hideOutboundExportDragFeedback()
             dragErrorHandler?(error)
             return
         }
 
         let draggingItem = NSDraggingItem(pasteboardWriter: artifact.fileURL as NSURL)
         let image = dragThumbnail()
-        let location = recognizer.location(in: self)
         draggingItem.setDraggingFrame(
-            NSRect(
-                x: location.x - image.size.width / 2,
-                y: location.y - image.size.height / 2,
-                width: image.size.width,
-                height: image.size.height
-            ),
+            outboundExportDragFrame(for: image, centeredAt: location),
             contents: image
         )
 
         activeDragArtifact = artifact
         isDraggingExport = true
+        hideOutboundExportDragFeedback()
         beginDraggingSession(with: [draggingItem], event: event, source: self)
+    }
+
+    private func showOutboundExportDragFeedback(at location: NSPoint) {
+        let image = dragThumbnail()
+        outboundExportDragFeedbackView.image = image
+        outboundExportDragFeedbackView.frame = outboundExportDragFrame(
+            for: image,
+            centeredAt: location
+        )
+        if outboundExportDragFeedbackView.superview !== self {
+            addSubview(outboundExportDragFeedbackView, positioned: .above, relativeTo: nil)
+        }
+    }
+
+    private func hideOutboundExportDragFeedback() {
+        outboundExportDragFeedbackView.removeFromSuperview()
+        outboundExportDragFeedbackView.image = nil
+    }
+
+    private func outboundExportDragFrame(for image: NSImage, centeredAt location: NSPoint) -> NSRect {
+        NSRect(
+            x: location.x - image.size.width / 2,
+            y: location.y - image.size.height / 2,
+            width: image.size.width,
+            height: image.size.height
+        )
     }
 
     private func dragThumbnail() -> NSImage {

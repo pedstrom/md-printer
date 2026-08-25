@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-08-25 — Visible hold-to-drag readiness
+
+- Made the preview thumbnail appear as soon as the PDF or Word hold gesture becomes ready, before the pointer starts moving.
+- Kept file materialization deferred until actual dragging begins, and removed the readiness thumbnail on release or cancellation.
+- Added deterministic native-view coverage for configured and unavailable export payloads.
+
 ## 2026-08-24 — Current-page Fit Page command
 
 - Added **View → Fit Page** with Command-0, fitting the complete current PDF page inside the document window while retaining continuous vertical scrolling.
