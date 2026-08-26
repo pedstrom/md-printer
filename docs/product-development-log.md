@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-26 — Version 1.4.2
+
+- Promoted the native File-menu bug fix, update-relaunch window restoration, Fit Page command, drag-readiness feedback, and larger welcome artwork together as version 1.4.2, build 11.
+- Updated the public download label, release notes, host and extension metadata, and release verification assertions for the signed, notarized polish update.
+
 ## 2026-08-25 — Larger welcome artwork
 
 - Doubled the welcome screen's document artwork from 64×70 to 128×140 points so it reads as a deliberate focal element in the empty window.
