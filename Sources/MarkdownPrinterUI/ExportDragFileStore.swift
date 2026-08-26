@@ -12,7 +12,7 @@ enum ExportDragFileStoreError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidFileName:
-            return "The document could not be prepared for dragging because its filename is invalid."
+            return "The document could not be prepared because its filename is invalid."
         }
     }
 }

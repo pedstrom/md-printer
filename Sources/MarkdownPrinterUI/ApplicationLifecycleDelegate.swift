@@ -45,7 +45,15 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
             fileMenuDelegateProxy.originalDelegate = fileMenu.delegate
             fileMenu.delegate = fileMenuDelegateProxy
         }
+        hideGeneratedFileItems(in: mainMenu)
+    }
+
+    package func hideGeneratedFileItems(in mainMenu: NSMenu?) {
         hideGeneratedNewSubmenu(in: mainMenu)
+        guard let fileMenu = Self.fileMenu(in: mainMenu) else { return }
+        fileMenu.items
+            .filter { $0.title == "Duplicate" }
+            .forEach { $0.isHidden = true }
     }
 
     public func applicationDidUpdate(_ notification: Notification) {
@@ -73,12 +81,12 @@ private final class FileMenuDelegateProxy: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         originalDelegate?.menuNeedsUpdate?(menu)
-        owner?.hideGeneratedNewSubmenu(in: mainMenu)
+        owner?.hideGeneratedFileItems(in: mainMenu)
     }
 
     func menuWillOpen(_ menu: NSMenu) {
         originalDelegate?.menuWillOpen?(menu)
-        owner?.hideGeneratedNewSubmenu(in: mainMenu)
+        owner?.hideGeneratedFileItems(in: mainMenu)
     }
 
     override func responds(to selector: Selector!) -> Bool {

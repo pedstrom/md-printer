@@ -127,7 +127,7 @@ final class ExportDragFileStoreTests: XCTestCase {
             XCTAssertEqual(error as? ExportDragFileStoreError, .invalidFileName)
             XCTAssertEqual(
                 error.localizedDescription,
-                "The document could not be prepared for dragging because its filename is invalid."
+                "The document could not be prepared because its filename is invalid."
             )
         }
 

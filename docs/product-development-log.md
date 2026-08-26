@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-08-26 — Native thumbnails, sharing, and Finder actions
+
+- Added an off-by-default, resizable PDFKit thumbnail sidebar with a leading title-bar toggle and a focused **View → Show/Hide Thumbnails** command; thumbnails scale with the 120–260 point sidebar, the divider disappears completely when closed, and the persistent sidebar follows page selection and rebinds across buffered PDF refreshes without replacing the visible preview.
+- Added **File → Show in Finder** for source-backed documents and removed only macOS's generated **Duplicate** item while preserving the rest of the standard File menu.
+- Added a standard Share toolbar item and dynamic **File → Share PDF… / Share Microsoft Word…** command that anchors the picker to the toolbar control, shares the selected export format as an exact, private temporary file, and participates in updater activity deferral until the picker completes or is cancelled.
+- Added deterministic coverage for sidebar visibility, sizing, rebinding, Finder routing, share bytes, filenames, cleanup, cancellation, activity deferral, errors, and targeted File-menu filtering.
+
 ## 2026-08-26 — Entirely missing CommonMark families
 
 - Added two-phase block and inline parsing for Setext headings, indented code blocks, forward and backward reference links and images with titles, core angle-bracket autolinks, HTML5 named and numeric entities, and all seven CommonMark HTML-block forms plus inline raw HTML.

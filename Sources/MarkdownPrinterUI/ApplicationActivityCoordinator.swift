@@ -11,9 +11,17 @@ public final class ApplicationActivityCoordinator: ObservableObject {
     public func performBlockingOperation<Result>(
         _ operation: () throws -> Result
     ) rethrows -> Result {
-        activeBlockingOperationCount += 1
+        beginBlockingOperation()
         defer { finishBlockingOperation() }
         return try operation()
+    }
+
+    public func beginBlockingOperation() {
+        activeBlockingOperationCount += 1
+    }
+
+    public func endBlockingOperation() {
+        finishBlockingOperation()
     }
 
     package var hasActiveBlockingOperation: Bool {

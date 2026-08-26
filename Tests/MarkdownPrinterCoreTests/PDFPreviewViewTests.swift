@@ -35,11 +35,12 @@ final class PDFPreviewViewTests: XCTestCase {
     func testDismantlingDefersSearchStatePublicationUntilAfterSwiftUITeardown() async throws {
         let rendered = try makeDocument(markdown: "# Search\n\nA teardown needle.")
         let controller = PDFSearchController()
-        let container = BufferedPDFPreviewView(
+        let container = PDFPreviewContainerView(
             frame: NSRect(x: 0, y: 0, width: 760, height: 890)
         )
-        container.searchController = controller
-        container.display(rendered.document, data: rendered.data, revision: 1)
+        let preview = container.previewView
+        preview.searchController = controller
+        preview.display(rendered.document, data: rendered.data, revision: 1)
         controller.query = "needle"
         XCTAssertEqual(controller.matchCount, 1)
 
@@ -54,7 +55,7 @@ final class PDFPreviewViewTests: XCTestCase {
 
         PDFPreviewView.dismantleNSView(container, coordinator: coordinator)
 
-        XCTAssertNil(container.searchController)
+        XCTAssertNil(preview.searchController)
         XCTAssertEqual(publicationCount, 0)
 
         await nextMainQueueTurn()

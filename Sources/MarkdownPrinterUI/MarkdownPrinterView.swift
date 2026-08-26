@@ -10,6 +10,8 @@ public struct MarkdownPrinterView: View {
     private let openFiles: ([URL]) -> Void
     @State private var isDropTargeted = false
     @StateObject private var searchController = PDFSearchController()
+    @StateObject private var sidebarController: PDFThumbnailSidebarController
+    @StateObject private var documentActions: DocumentActionController
 
     public init(
         session: DocumentSession,
@@ -21,6 +23,12 @@ public struct MarkdownPrinterView: View {
         self.exportPreferences = exportPreferences
         self.activityCoordinator = activityCoordinator
         self.openFiles = openFiles
+        _sidebarController = StateObject(wrappedValue: PDFThumbnailSidebarController())
+        _documentActions = StateObject(wrappedValue: DocumentActionController(
+            session: session,
+            exportPreferences: exportPreferences,
+            activityCoordinator: activityCoordinator
+        ))
     }
 
     public var body: some View {
@@ -33,6 +41,8 @@ public struct MarkdownPrinterView: View {
         }
         .frame(minWidth: 680, minHeight: 560)
         .focusedSceneObject(searchController)
+        .focusedSceneObject(sidebarController)
+        .focusedSceneObject(documentActions)
         .background(StableWindowTitleView(title: session.title))
         .background(PDFSearchPanelPresenter(controller: searchController))
         .background(Color(nsColor: .windowBackgroundColor))
@@ -46,12 +56,24 @@ public struct MarkdownPrinterView: View {
         }
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: acceptDrop)
         .toolbar {
+            if session.hasDocument {
+                ToolbarItem(placement: .navigation) {
+                    Button(action: sidebarController.toggle) {
+                        Label(sidebarController.commandTitle, systemImage: "sidebar.left")
+                    }
+                    .help(sidebarController.commandTitle)
+                    .disabled(!sidebarController.canToggle)
+                }
+            }
             ToolbarItemGroup {
                 Button(action: saveDocument) {
                     Label("Save…", systemImage: "square.and.arrow.down")
                 }
                 .keyboardShortcut("s", modifiers: .command)
                 .disabled(!session.hasDocument)
+                if session.hasDocument {
+                    ShareToolbarButton(controller: documentActions)
+                }
                 Button(action: printDocument) {
                     Label("Print", systemImage: "printer")
                 }
@@ -76,6 +98,7 @@ public struct MarkdownPrinterView: View {
                     exportFormat: exportFormat,
                     fileName: session.suggestedFileName(for: exportFormat),
                     searchController: searchController,
+                    sidebarController: sidebarController,
                     exportData: { try session.exportData(as: exportFormat) },
                     openURL: openLink,
                     onDragError: { session.report(error: $0) }

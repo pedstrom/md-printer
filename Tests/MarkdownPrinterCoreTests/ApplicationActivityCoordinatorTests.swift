@@ -3,6 +3,19 @@ import XCTest
 
 @MainActor
 final class ApplicationActivityCoordinatorTests: XCTestCase {
+    func testExplicitBlockingLifetimeDefersThenResumesRelaunch() {
+        let coordinator = ApplicationActivityCoordinator()
+        var didRelaunch = false
+
+        coordinator.beginBlockingOperation()
+        XCTAssertTrue(coordinator.hasActiveBlockingOperation)
+        XCTAssertTrue(coordinator.postponeRelaunch { didRelaunch = true })
+        coordinator.endBlockingOperation()
+
+        XCTAssertFalse(coordinator.hasActiveBlockingOperation)
+        XCTAssertTrue(didRelaunch)
+    }
+
     func testRelaunchDoesNotPostponeWithoutBlockingOperation() {
         let coordinator = ApplicationActivityCoordinator()
         var didRelaunch = false

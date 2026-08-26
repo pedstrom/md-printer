@@ -14,6 +14,7 @@ public struct PDFPreviewView: NSViewRepresentable {
     private let openURL: (URL) -> Void
     private let onDragError: (Error) -> Void
     private let searchController: PDFSearchController?
+    private let sidebarController: PDFThumbnailSidebarController?
 
     public init(
         data: Data,
@@ -30,6 +31,7 @@ public struct PDFPreviewView: NSViewRepresentable {
             exportFormat: exportFormat,
             fileName: fileName,
             searchController: nil,
+            sidebarController: nil,
             exportData: exportData,
             openURL: openURL,
             onDragError: onDragError
@@ -42,6 +44,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         exportFormat: ExportFormat,
         fileName: String,
         searchController: PDFSearchController,
+        sidebarController: PDFThumbnailSidebarController,
         exportData: @escaping () throws -> Data,
         openURL: @escaping (URL) -> Void,
         onDragError: @escaping (Error) -> Void = { _ in }
@@ -52,6 +55,7 @@ public struct PDFPreviewView: NSViewRepresentable {
             exportFormat: exportFormat,
             fileName: fileName,
             searchController: Optional(searchController),
+            sidebarController: Optional(sidebarController),
             exportData: exportData,
             openURL: openURL,
             onDragError: onDragError
@@ -64,6 +68,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         exportFormat: ExportFormat,
         fileName: String,
         searchController: PDFSearchController?,
+        sidebarController: PDFThumbnailSidebarController?,
         exportData: @escaping () throws -> Data,
         openURL: @escaping (URL) -> Void,
         onDragError: @escaping (Error) -> Void
@@ -73,6 +78,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         self.exportFormat = exportFormat
         self.fileName = fileName
         self.searchController = searchController
+        self.sidebarController = sidebarController
         self.exportData = exportData
         self.openURL = openURL
         self.onDragError = onDragError
@@ -100,17 +106,20 @@ public struct PDFPreviewView: NSViewRepresentable {
         Coordinator(openURL: openURL, onDragError: onDragError)
     }
 
-    public func makeNSView(context: Context) -> BufferedPDFPreviewView {
-        let view = BufferedPDFPreviewView()
-        view.delegate = context.coordinator
-        windowRestorationCoordinator?.attach(preview: view)
-        return view
+    public func makeNSView(context: Context) -> PDFPreviewContainerView {
+        let container = PDFPreviewContainerView()
+        container.previewView.delegate = context.coordinator
+        container.attach(sidebarController: sidebarController)
+        windowRestorationCoordinator?.attach(preview: container.previewView)
+        return container
     }
 
-    public func updateNSView(_ view: BufferedPDFPreviewView, context: Context) {
+    public func updateNSView(_ container: PDFPreviewContainerView, context: Context) {
+        let view = container.previewView
         context.coordinator.openURL = openURL
         context.coordinator.onDragError = onDragError
         view.delegate = context.coordinator
+        container.attach(sidebarController: sidebarController)
         windowRestorationCoordinator?.attach(preview: view)
         view.updateDragPayload(
             format: exportFormat,
@@ -125,7 +134,7 @@ public struct PDFPreviewView: NSViewRepresentable {
     }
 
     public static func dismantleNSView(
-        _ view: BufferedPDFPreviewView,
+        _ view: PDFPreviewContainerView,
         coordinator: Coordinator
     ) {
         view.prepareForDismantling()
@@ -472,6 +481,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
     private(set) var activeView: PageAdvancingPDFView
     private(set) var activeRevision: UInt64?
     private(set) var activeData: Data?
+    var activeViewDidChange: ((PageAdvancingPDFView) -> Void)?
 
     weak var searchController: PDFSearchController? {
         didSet {
@@ -556,6 +566,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
             activeData = data
             activeRevision = revision
             activeView.displayInitial(document)
+            activeViewDidChange?(activeView)
             searchState = makeSearchState(
                 query: searchState.query,
                 in: document,
@@ -859,6 +870,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         previousView.setAccessibilityHidden(true)
         stagedView.setAccessibilityHidden(false)
         activeView = stagedView
+        activeViewDidChange?(stagedView)
         activeData = data
         activeRevision = revision
         self.searchState = searchState

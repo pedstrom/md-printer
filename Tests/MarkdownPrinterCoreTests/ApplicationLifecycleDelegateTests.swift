@@ -47,6 +47,27 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         XCTAssertFalse(fileMenu.item(withTitle: "Open…")?.isHidden == true)
     }
 
+    func testGeneratedDuplicateIsHiddenWithoutChangingOtherFileItems() {
+        let delegate = ApplicationLifecycleDelegate()
+        let mainMenu = NSMenu()
+        let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
+        let fileMenu = NSMenu(title: "File")
+        let duplicate = NSMenuItem(title: "Duplicate", action: nil, keyEquivalent: "")
+        let save = NSMenuItem(title: "Save…", action: nil, keyEquivalent: "s")
+        let open = NSMenuItem(title: "Open…", action: nil, keyEquivalent: "o")
+        fileMenu.addItem(open)
+        fileMenu.addItem(duplicate)
+        fileMenu.addItem(save)
+        fileItem.submenu = fileMenu
+        mainMenu.addItem(fileItem)
+
+        delegate.hideGeneratedFileItems(in: mainMenu)
+
+        XCTAssertTrue(duplicate.isHidden)
+        XCTAssertFalse(open.isHidden)
+        XCTAssertFalse(save.isHidden)
+    }
+
     func testMenuCleanupIgnoresUnrelatedNewSubmenusAndMissingMenus() {
         let delegate = ApplicationLifecycleDelegate()
         let mainMenu = NSMenu()

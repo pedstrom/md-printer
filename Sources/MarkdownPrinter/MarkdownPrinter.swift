@@ -59,6 +59,8 @@ struct MarkdownPrinterApp: App {
             }
             PDFSearchCommands()
             PDFFitPageCommands()
+            PDFThumbnailCommands()
+            DocumentFileCommands()
             WindowTabCommands(coordinator: windowTabCoordinator)
         }
 
