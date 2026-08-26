@@ -9,6 +9,7 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
         "com.peteedstrom.markdown-printer.reopen-last-session"
     )
     private lazy var fileMenuDelegateProxy = FileMenuDelegateProxy(owner: self)
+    private lazy var editMenuDelegateProxy = EditMenuDelegateProxy(owner: self)
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NotificationCenter.default.addObserver(
@@ -62,6 +63,8 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
     }
 
     package func configureFileMenu(in mainMenu: NSMenu?) {
+        configureEditMenu(in: mainMenu)
+        hideIrrelevantReadOnlyEditItems(in: mainMenu)
         guard let fileMenu = Self.fileMenu(in: mainMenu) else { return }
         fileMenuDelegateProxy.mainMenu = mainMenu
         if fileMenu.delegate !== fileMenuDelegateProxy {
@@ -72,13 +75,34 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
         installReopenLastSessionItem(in: fileMenu)
     }
 
+    private func configureEditMenu(in mainMenu: NSMenu?) {
+        guard let editMenu = Self.editMenu(in: mainMenu) else { return }
+        editMenuDelegateProxy.mainMenu = mainMenu
+        if editMenu.delegate !== editMenuDelegateProxy {
+            editMenuDelegateProxy.originalDelegate = editMenu.delegate
+            editMenu.delegate = editMenuDelegateProxy
+        }
+    }
+
     package func hideGeneratedFileItems(in mainMenu: NSMenu?) {
         hideGeneratedNewSubmenu(in: mainMenu)
         guard let fileMenu = Self.fileMenu(in: mainMenu) else { return }
         fileMenu.items
-            .filter { $0.title == "Duplicate" }
+            .filter { item in
+                item.title == "Duplicate"
+                    || (item.title == "Share" && item.submenu != nil)
+            }
             .forEach { fileMenu.removeItem($0) }
+        Self.removeRedundantSeparators(in: fileMenu)
         updateReopenLastSessionItem(in: fileMenu)
+    }
+
+    package func hideIrrelevantReadOnlyEditItems(in mainMenu: NSMenu?) {
+        guard let editMenu = Self.editMenu(in: mainMenu) else { return }
+        editMenu.items
+            .filter { Self.isIrrelevantReadOnlyEditItem($0) }
+            .forEach { editMenu.removeItem($0) }
+        Self.removeRedundantSeparators(in: editMenu)
     }
 
     @IBAction package func reopenWindowsFromLastSession(_ sender: Any?) {
@@ -129,6 +153,43 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
             }
         })
     }
+
+    private static func editMenu(in mainMenu: NSMenu?) -> NSMenu? {
+        mainMenu?.items.compactMap(\.submenu).first(where: { menu in
+            menu.title == "Edit" || menu.items.contains { item in
+                item.keyEquivalent.lowercased() == "c" && item.title == "Copy"
+            }
+        })
+    }
+
+    private static func isIrrelevantReadOnlyEditItem(_ item: NSMenuItem) -> Bool {
+        let title = item.title.replacingOccurrences(of: "…", with: "")
+        if title.hasPrefix("Undo") || title.hasPrefix("Redo") {
+            return true
+        }
+        return [
+            "Cut", "Paste", "Delete", "Writing Tools", "Spelling and Grammar",
+            "Substitutions", "Transformations", "Speech", "AutoFill", "Start Dictation",
+            "Emoji & Symbols"
+        ].contains(title)
+    }
+
+    private static func removeRedundantSeparators(in menu: NSMenu) {
+        while menu.items.first?.isSeparatorItem == true {
+            menu.removeItem(at: 0)
+        }
+        while menu.items.last?.isSeparatorItem == true {
+            menu.removeItem(at: menu.items.count - 1)
+        }
+        var index = menu.items.count - 1
+        while index > 0 {
+            if menu.items[index].isSeparatorItem,
+               menu.items[index - 1].isSeparatorItem {
+                menu.removeItem(at: index)
+            }
+            index -= 1
+        }
+    }
 }
 
 @MainActor
@@ -143,12 +204,44 @@ private final class FileMenuDelegateProxy: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         originalDelegate?.menuNeedsUpdate?(menu)
-        owner?.hideGeneratedFileItems(in: mainMenu)
+        owner?.configureFileMenu(in: mainMenu)
     }
 
     func menuWillOpen(_ menu: NSMenu) {
         originalDelegate?.menuWillOpen?(menu)
-        owner?.hideGeneratedFileItems(in: mainMenu)
+        owner?.configureFileMenu(in: mainMenu)
+    }
+
+    override func responds(to selector: Selector!) -> Bool {
+        super.responds(to: selector) || originalDelegate?.responds(to: selector) == true
+    }
+
+    override func forwardingTarget(for selector: Selector!) -> Any? {
+        if originalDelegate?.responds(to: selector) == true {
+            return originalDelegate
+        }
+        return super.forwardingTarget(for: selector)
+    }
+}
+
+@MainActor
+private final class EditMenuDelegateProxy: NSObject, NSMenuDelegate {
+    weak var owner: ApplicationLifecycleDelegate?
+    weak var mainMenu: NSMenu?
+    var originalDelegate: NSMenuDelegate?
+
+    init(owner: ApplicationLifecycleDelegate) {
+        self.owner = owner
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        originalDelegate?.menuNeedsUpdate?(menu)
+        owner?.hideIrrelevantReadOnlyEditItems(in: mainMenu)
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        originalDelegate?.menuWillOpen?(menu)
+        owner?.hideIrrelevantReadOnlyEditItems(in: mainMenu)
     }
 
     override func responds(to selector: Selector!) -> Bool {

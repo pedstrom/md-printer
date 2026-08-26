@@ -82,20 +82,40 @@ final class PDFSearchControllerTests: XCTestCase {
         XCTAssertEqual(controller.matchCount, 0)
     }
 
-    func testControllerRoutesFitPageOnlyToAnAvailableTarget() {
+    func testControllerRoutesViewingActionsOnlyToAnAvailableTarget() {
         let target = TestPDFSearchTarget()
         target.isFitPageAvailable = false
         let controller = PDFSearchController()
         controller.attach(to: target)
 
+        controller.actualSize()
         controller.fitPage()
+        controller.zoomIn()
+        controller.zoomOut()
+        controller.previousPage()
+        controller.nextPage()
+        XCTAssertEqual(target.actualSizeCallCount, 0)
         XCTAssertEqual(target.fitPageCallCount, 0)
+        XCTAssertEqual(target.zoomInCallCount, 0)
+        XCTAssertEqual(target.zoomOutCallCount, 0)
+        XCTAssertEqual(target.previousPageCallCount, 0)
+        XCTAssertEqual(target.nextPageCallCount, 0)
 
         target.isFitPageAvailable = true
         controller.attach(to: target)
+        controller.actualSize()
         controller.fitPage()
+        controller.zoomIn()
+        controller.zoomOut()
+        controller.previousPage()
+        controller.nextPage()
 
+        XCTAssertEqual(target.actualSizeCallCount, 1)
         XCTAssertEqual(target.fitPageCallCount, 1)
+        XCTAssertEqual(target.zoomInCallCount, 1)
+        XCTAssertEqual(target.zoomOutCallCount, 1)
+        XCTAssertEqual(target.previousPageCallCount, 1)
+        XCTAssertEqual(target.nextPageCallCount, 1)
     }
 
     func testSearchControllersKeepIndependentWindowState() {
@@ -134,7 +154,12 @@ private final class TestPDFSearchTarget: PDFSearchTarget {
     private(set) var searchCalls: [SearchCall] = []
     private(set) var moveCalls: [PDFSearchDirection] = []
     private(set) var showAllCalls: [Bool] = []
+    private(set) var actualSizeCallCount = 0
     private(set) var fitPageCallCount = 0
+    private(set) var zoomInCallCount = 0
+    private(set) var zoomOutCallCount = 0
+    private(set) var previousPageCallCount = 0
+    private(set) var nextPageCallCount = 0
 
     func performSearch(
         for query: String,
@@ -156,7 +181,27 @@ private final class TestPDFSearchTarget: PDFSearchTarget {
         showAllCalls.append(showsAllMatches)
     }
 
+    func showActualSize() {
+        actualSizeCallCount += 1
+    }
+
     func fitCurrentPage() {
         fitPageCallCount += 1
+    }
+
+    func zoomIn() {
+        zoomInCallCount += 1
+    }
+
+    func zoomOut() {
+        zoomOutCallCount += 1
+    }
+
+    func goToPreviousPage() {
+        previousPageCallCount += 1
+    }
+
+    func goToNextPage() {
+        nextPageCallCount += 1
     }
 }

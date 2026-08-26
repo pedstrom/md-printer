@@ -32,7 +32,12 @@ protocol PDFSearchTarget: AnyObject {
         showingAllMatches: Bool
     ) -> PDFSearchSummary
     func setShowsAllSearchMatches(_ showsAllMatches: Bool)
+    func showActualSize()
     func fitCurrentPage()
+    func zoomIn()
+    func zoomOut()
+    func goToPreviousPage()
+    func goToNextPage()
 }
 
 @MainActor
@@ -131,6 +136,31 @@ final class PDFSearchController: ObservableObject {
     func fitPage() {
         guard canFitPage else { return }
         target?.fitCurrentPage()
+    }
+
+    func actualSize() {
+        guard canFitPage else { return }
+        target?.showActualSize()
+    }
+
+    func zoomIn() {
+        guard canFitPage else { return }
+        target?.zoomIn()
+    }
+
+    func zoomOut() {
+        guard canFitPage else { return }
+        target?.zoomOut()
+    }
+
+    func previousPage() {
+        guard canFitPage else { return }
+        target?.goToPreviousPage()
+    }
+
+    func nextPage() {
+        guard canFitPage else { return }
+        target?.goToNextPage()
     }
 
     func target(_ target: any PDFSearchTarget, didUpdate summary: PDFSearchSummary) {

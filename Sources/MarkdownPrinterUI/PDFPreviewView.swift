@@ -520,8 +520,28 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         activeView.document?.pageCount ?? 0 > 0
     }
 
+    func showActualSize() {
+        activeView.showActualSize()
+    }
+
     func fitCurrentPage() {
         activeView.fitCurrentPage()
+    }
+
+    func zoomIn() {
+        activeView.zoomInByStep()
+    }
+
+    func zoomOut() {
+        activeView.zoomOutByStep()
+    }
+
+    func goToPreviousPage() {
+        activeView.moveToPreviousPage()
+    }
+
+    func goToNextPage() {
+        activeView.moveToNextPage()
     }
 
     var delegate: PDFViewDelegate? {
@@ -1027,29 +1047,90 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
 
     override func keyDown(with event: NSEvent) {
         let navigationModifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        guard event.charactersIgnoringModifiers == " ", navigationModifiers.isEmpty else {
+        guard event.charactersIgnoringModifiers == " " else {
             super.keyDown(with: event)
             return
         }
-        goToNextPage(nil)
+        switch navigationModifiers {
+        case []:
+            moveToNextPage()
+        case [.shift]:
+            moveToPreviousPage()
+        default:
+            super.keyDown(with: event)
+        }
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        guard event.charactersIgnoringModifiers == "0",
-              modifiers == .command,
-              document != nil
-        else {
+        guard document != nil else {
             return super.performKeyEquivalent(with: event)
         }
-        fitCurrentPage()
+        if modifiers == .option {
+            switch event.keyCode {
+            case 126:
+                moveToPreviousPage()
+                return true
+            case 125:
+                moveToNextPage()
+                return true
+            default:
+                break
+            }
+        }
+        guard modifiers == .command else {
+            return super.performKeyEquivalent(with: event)
+        }
+        switch event.charactersIgnoringModifiers {
+        case "0":
+            showActualSize()
+        case "9":
+            fitCurrentPage()
+        case "+", "=":
+            zoomInByStep()
+        case "-":
+            zoomOutByStep()
+        default:
+            return super.performKeyEquivalent(with: event)
+        }
         return true
+    }
+
+    func showActualSize() {
+        guard document != nil else { return }
+        autoScales = false
+        scaleFactor = 1
+        fittedViewWidth = nil
     }
 
     func fitCurrentPage() {
         guard let page = currentPage ?? document?.page(at: 0) else { return }
         fit(page)
         fittedViewWidth = bounds.width
+    }
+
+    func zoomInByStep() {
+        guard document != nil else { return }
+        autoScales = false
+        zoomIn(nil)
+        fittedViewWidth = nil
+    }
+
+    func zoomOutByStep() {
+        guard document != nil else { return }
+        autoScales = false
+        zoomOut(nil)
+        fittedViewWidth = nil
+    }
+
+    func moveToPreviousPage() {
+        guard document != nil else { return }
+        goToPreviousPage(nil)
+    }
+
+    func moveToNextPage() {
+        guard document != nil else { return }
+        goToNextPage(nil)
     }
 
     func draggingSession(

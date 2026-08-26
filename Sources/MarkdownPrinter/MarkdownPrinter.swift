@@ -88,8 +88,8 @@ struct MarkdownPrinterApp: App {
         .defaultSize(width: 760, height: 980)
         .commands {
             PDFSearchCommands()
-            PDFFitPageCommands()
             PDFThumbnailCommands()
+            PDFViewingCommands()
             DocumentFileCommands()
             WindowTabCommands(coordinator: windowTabCoordinator)
         }

@@ -538,17 +538,49 @@ package struct PDFSearchCommands: Commands {
     }
 }
 
-package struct PDFFitPageCommands: Commands {
+package struct PDFViewingCommands: Commands {
     @FocusedObject private var controller: PDFSearchController?
 
     package init() { }
 
     package var body: some Commands {
         CommandGroup(after: .toolbar) {
-            Button("Fit Page") {
-                controller?.fitPage()
+            Button("Actual Size") {
+                controller?.actualSize()
             }
             .keyboardShortcut("0", modifiers: .command)
+            .disabled(controller?.canFitPage != true)
+
+            Button("Zoom to Fit") {
+                controller?.fitPage()
+            }
+            .keyboardShortcut("9", modifiers: .command)
+            .disabled(controller?.canFitPage != true)
+
+            Button("Zoom In") {
+                controller?.zoomIn()
+            }
+            .keyboardShortcut("+", modifiers: .command)
+            .disabled(controller?.canFitPage != true)
+
+            Button("Zoom Out") {
+                controller?.zoomOut()
+            }
+            .keyboardShortcut("-", modifiers: .command)
+            .disabled(controller?.canFitPage != true)
+
+            Divider()
+
+            Button("Previous Page") {
+                controller?.previousPage()
+            }
+            .keyboardShortcut(.upArrow, modifiers: .option)
+            .disabled(controller?.canFitPage != true)
+
+            Button("Next Page") {
+                controller?.nextPage()
+            }
+            .keyboardShortcut(.downArrow, modifiers: .option)
             .disabled(controller?.canFitPage != true)
         }
     }
@@ -606,12 +638,5 @@ package struct WindowTabCommands: Commands {
             .keyboardShortcut("t", modifiers: .command)
         }
 
-        CommandGroup(after: .windowArrangement) {
-            Button(coordinator.tabBarCommandTitle) {
-                coordinator.toggleTabBar(for: NSApp.keyWindow ?? NSApp.mainWindow)
-            }
-            .keyboardShortcut("t", modifiers: [.command, .shift])
-            .disabled(!coordinator.canToggleTabBar)
-        }
     }
 }

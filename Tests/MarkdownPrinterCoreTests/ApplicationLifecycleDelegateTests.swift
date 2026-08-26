@@ -58,25 +58,97 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         XCTAssertFalse(fileMenu.item(withTitle: "Open…")?.isHidden == true)
     }
 
-    func testGeneratedDuplicateIsRemovedWithoutChangingOtherFileItems() {
+    func testGeneratedDuplicateAndShareMenuAreRemovedWithoutChangingOtherFileItems() {
         let delegate = ApplicationLifecycleDelegate()
         let mainMenu = NSMenu()
         let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
         let fileMenu = NSMenu(title: "File")
         let duplicate = NSMenuItem(title: "Duplicate", action: nil, keyEquivalent: "")
+        let genericShare = NSMenuItem(title: "Share", action: nil, keyEquivalent: "")
+        genericShare.submenu = NSMenu(title: "Share")
         let save = NSMenuItem(title: "Save…", action: nil, keyEquivalent: "s")
+        let preferredShare = NSMenuItem(title: "Share PDF…", action: nil, keyEquivalent: "")
         let open = NSMenuItem(title: "Open…", action: nil, keyEquivalent: "o")
         fileMenu.addItem(open)
         fileMenu.addItem(duplicate)
+        fileMenu.addItem(genericShare)
         fileMenu.addItem(save)
+        fileMenu.addItem(preferredShare)
         fileItem.submenu = fileMenu
         mainMenu.addItem(fileItem)
 
         delegate.hideGeneratedFileItems(in: mainMenu)
 
         XCTAssertFalse(fileMenu.items.contains(duplicate))
+        XCTAssertFalse(fileMenu.items.contains(genericShare))
         XCTAssertFalse(open.isHidden)
         XCTAssertFalse(save.isHidden)
+        XCTAssertTrue(fileMenu.items.contains(preferredShare))
+    }
+
+    func testIrrelevantReadOnlyEditItemsAreRemovedAndSeparatorsAreNormalized() {
+        let delegate = ApplicationLifecycleDelegate()
+        let mainMenu = NSMenu()
+        let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: nil, keyEquivalent: "z")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Cut", action: nil, keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: nil, keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: nil, keyEquivalent: "v")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Writing Tools", action: nil, keyEquivalent: "")
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "Select All", action: nil, keyEquivalent: "a")
+        let find = NSMenuItem(title: "Find", action: nil, keyEquivalent: "")
+        find.submenu = NSMenu(title: "Find")
+        editMenu.addItem(find)
+        editMenu.addItem(withTitle: "Emoji & Symbols", action: nil, keyEquivalent: "")
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+
+        delegate.hideIrrelevantReadOnlyEditItems(in: mainMenu)
+
+        XCTAssertEqual(
+            editMenu.items.filter { !$0.isSeparatorItem }.map(\.title),
+            ["Copy", "Select All", "Find"]
+        )
+        XCTAssertFalse(editMenu.items.first?.isSeparatorItem == true)
+        XCTAssertFalse(editMenu.items.last?.isSeparatorItem == true)
+        XCTAssertFalse(zip(editMenu.items, editMenu.items.dropFirst()).contains { pair in
+            pair.0.isSeparatorItem && pair.1.isSeparatorItem
+        })
+
+        delegate.configureFileMenu(in: mainMenu)
+        editMenu.addItem(withTitle: "Writing Tools", action: nil, keyEquivalent: "")
+        editMenu.delegate?.menuWillOpen?(editMenu)
+
+        XCTAssertNil(editMenu.item(withTitle: "Writing Tools"))
+    }
+
+    func testEditMenuProxyForwardsSwiftUIUpdatesBeforeCleaningRepopulatedItems() throws {
+        let delegate = ApplicationLifecycleDelegate()
+        let mainMenu = NSMenu()
+        let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Copy", action: nil, keyEquivalent: "c")
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+        let originalDelegate = TestMenuDelegate()
+        editMenu.delegate = originalDelegate
+
+        delegate.configureFileMenu(in: mainMenu)
+        let proxy = try XCTUnwrap(editMenu.delegate)
+
+        editMenu.addItem(withTitle: "Writing Tools", action: nil, keyEquivalent: "")
+        proxy.menuNeedsUpdate?(editMenu)
+        XCTAssertEqual(originalDelegate.needsUpdateCount, 1)
+        XCTAssertNil(editMenu.item(withTitle: "Writing Tools"))
+
+        editMenu.addItem(withTitle: "AutoFill", action: nil, keyEquivalent: "")
+        proxy.menuWillOpen?(editMenu)
+        XCTAssertEqual(originalDelegate.willOpenCount, 1)
+        XCTAssertNil(editMenu.item(withTitle: "AutoFill"))
     }
 
     func testGeneratedNewWindowAndTabDuplicatesAreRemoved() {
@@ -143,6 +215,32 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         try XCTUnwrap(fileMenu.delegate).menuNeedsUpdate?(fileMenu)
 
         XCTAssertTrue(newItem.isHidden)
+    }
+
+    func testConfiguredFileMenuReinstallsReopenItemBeforeOpening() throws {
+        let delegate = ApplicationLifecycleDelegate()
+        let mainMenu = NSMenu()
+        let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(withTitle: "Open…", action: nil, keyEquivalent: "o")
+        let recent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        recent.submenu = NSMenu(title: "Open Recent")
+        fileMenu.addItem(recent)
+        fileMenu.addItem(withTitle: "Close", action: nil, keyEquivalent: "w")
+        fileItem.submenu = fileMenu
+        mainMenu.addItem(fileItem)
+
+        delegate.configureFileMenu(in: mainMenu)
+        let first = try XCTUnwrap(fileMenu.item(withTitle: "Reopen Windows from Last Session"))
+        fileMenu.removeItem(first)
+
+        try XCTUnwrap(fileMenu.delegate).menuWillOpen?(fileMenu)
+
+        let restored = try XCTUnwrap(
+            fileMenu.item(withTitle: "Reopen Windows from Last Session")
+        )
+        XCTAssertEqual(fileMenu.index(of: restored), fileMenu.index(of: recent) + 1)
+        XCTAssertFalse(restored.isEnabled)
     }
 
     func testApplicationLifecycleCallbacksKeepTheCurrentFileMenuConfigured() {
@@ -229,5 +327,19 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         restoration.documentDidOpen(at: document)
         delegate.hideGeneratedFileItems(in: mainMenu)
         XCTAssertFalse(reopen.isEnabled)
+    }
+}
+
+@MainActor
+private final class TestMenuDelegate: NSObject, NSMenuDelegate {
+    private(set) var needsUpdateCount = 0
+    private(set) var willOpenCount = 0
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        needsUpdateCount += 1
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        willOpenCount += 1
     }
 }

@@ -174,7 +174,42 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertEqual(view.scaleFactor, initialScale, accuracy: 0.001)
     }
 
-    func testCommandZeroFitsTheCompleteCurrentPage() throws {
+    func testCommandNineFitsTheCompleteCurrentPage() throws {
+        let document = try makeMultiPageDocument()
+        let secondPage = try XCTUnwrap(document.page(at: 1))
+        let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        view.display(document)
+        view.layoutSubtreeIfNeeded()
+        view.go(to: secondPage)
+        view.scaleFactor = 1.5
+        let commandNine = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: .command,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "9",
+            charactersIgnoringModifiers: "9",
+            isARepeat: false,
+            keyCode: 25
+        ))
+
+        XCTAssertTrue(view.performKeyEquivalent(with: commandNine))
+
+        let pageRect = view.convert(secondPage.bounds(for: .cropBox), from: secondPage)
+        XCTAssertTrue(view.currentPage === secondPage)
+        XCTAssertLessThan(pageRect.width, view.bounds.width)
+        XCTAssertLessThan(pageRect.height, view.bounds.height)
+        XCTAssertGreaterThanOrEqual(pageRect.minX, view.bounds.minX - 1)
+        XCTAssertGreaterThanOrEqual(pageRect.minY, view.bounds.minY - 1)
+        XCTAssertLessThanOrEqual(pageRect.maxX, view.bounds.maxX + 1)
+        XCTAssertLessThanOrEqual(pageRect.maxY, view.bounds.maxY + 1)
+        XCTAssertEqual(view.displayMode, .singlePageContinuous)
+        XCTAssertFalse(view.autoScales)
+    }
+
+    func testCommandZeroShowsTheDocumentAtActualSize() throws {
         let document = try makeMultiPageDocument()
         let secondPage = try XCTUnwrap(document.page(at: 1))
         let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
@@ -197,16 +232,34 @@ final class PDFPreviewViewTests: XCTestCase {
 
         XCTAssertTrue(view.performKeyEquivalent(with: commandZero))
 
-        let pageRect = view.convert(secondPage.bounds(for: .cropBox), from: secondPage)
         XCTAssertTrue(view.currentPage === secondPage)
-        XCTAssertLessThan(pageRect.width, view.bounds.width)
-        XCTAssertLessThan(pageRect.height, view.bounds.height)
-        XCTAssertGreaterThanOrEqual(pageRect.minX, view.bounds.minX - 1)
-        XCTAssertGreaterThanOrEqual(pageRect.minY, view.bounds.minY - 1)
-        XCTAssertLessThanOrEqual(pageRect.maxX, view.bounds.maxX + 1)
-        XCTAssertLessThanOrEqual(pageRect.maxY, view.bounds.maxY + 1)
-        XCTAssertEqual(view.displayMode, .singlePageContinuous)
+        XCTAssertEqual(view.scaleFactor, 1, accuracy: 0.001)
         XCTAssertFalse(view.autoScales)
+    }
+
+    func testCommandPlusAndMinusZoomTheCurrentDocument() throws {
+        let document = try makeMultiPageDocument()
+        let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        view.display(document)
+        view.layoutSubtreeIfNeeded()
+        view.scaleFactor = 1
+        let commandPlus = try keyEvent(
+            characters: "+",
+            modifiers: .command,
+            keyCode: 24
+        )
+        let commandMinus = try keyEvent(
+            characters: "-",
+            modifiers: .command,
+            keyCode: 27
+        )
+
+        XCTAssertTrue(view.performKeyEquivalent(with: commandPlus))
+        XCTAssertGreaterThan(view.scaleFactor, 1)
+        let zoomedScale = view.scaleFactor
+
+        XCTAssertTrue(view.performKeyEquivalent(with: commandMinus))
+        XCTAssertLessThan(view.scaleFactor, zoomedScale)
     }
 
     func testPlainSpaceAdvancesExactlyOnePage() throws {
@@ -230,6 +283,46 @@ final class PDFPreviewViewTests: XCTestCase {
         view.keyDown(with: space)
 
         XCTAssertEqual(document.index(for: try XCTUnwrap(view.currentPage)), 1)
+    }
+
+    func testShiftSpaceReturnsExactlyOnePage() throws {
+        let document = try makeMultiPageDocument()
+        let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        view.display(document)
+        view.layoutSubtreeIfNeeded()
+        view.goToNextPage(nil)
+        let shiftSpace = try keyEvent(
+            characters: " ",
+            modifiers: .shift,
+            keyCode: 49
+        )
+
+        view.keyDown(with: shiftSpace)
+
+        XCTAssertEqual(document.index(for: try XCTUnwrap(view.currentPage)), 0)
+    }
+
+    func testOptionArrowShortcutsMoveByOnePage() throws {
+        let document = try makeMultiPageDocument()
+        let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        view.display(document)
+        view.layoutSubtreeIfNeeded()
+        let optionDown = try keyEvent(
+            characters: String(UnicodeScalar(NSDownArrowFunctionKey)!),
+            modifiers: .option,
+            keyCode: 125
+        )
+        let optionUp = try keyEvent(
+            characters: String(UnicodeScalar(NSUpArrowFunctionKey)!),
+            modifiers: .option,
+            keyCode: 126
+        )
+
+        XCTAssertTrue(view.performKeyEquivalent(with: optionDown))
+        XCTAssertEqual(document.index(for: try XCTUnwrap(view.currentPage)), 1)
+
+        XCTAssertTrue(view.performKeyEquivalent(with: optionUp))
+        XCTAssertEqual(document.index(for: try XCTUnwrap(view.currentPage)), 0)
     }
 
     func testSettledInitialFitOverridesInterimRestoredPagePosition() async throws {
@@ -983,6 +1076,25 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertTrue(
             container.activeView.document?.string?.contains("Table row 13 changed neighbor") == true
         )
+    }
+
+    private func keyEvent(
+        characters: String,
+        modifiers: NSEvent.ModifierFlags,
+        keyCode: UInt16
+    ) throws -> NSEvent {
+        try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: modifiers,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: characters,
+            charactersIgnoringModifiers: characters,
+            isARepeat: false,
+            keyCode: keyCode
+        ))
     }
 
     private func makeMultiPageDocument() throws -> PDFDocument {

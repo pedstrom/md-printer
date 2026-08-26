@@ -52,7 +52,7 @@ package struct DocumentFileCommands: Commands {
     package init() {}
 
     package var body: some Commands {
-        CommandGroup(after: .saveItem) {
+        CommandGroup(replacing: .importExport) {
             Button("Show in Finder") {
                 controller?.showInFinder()
             }
@@ -62,9 +62,9 @@ package struct DocumentFileCommands: Commands {
                 controller?.share()
             }
             .disabled(controller?.canShare != true)
+        }
 
-            Divider()
-
+        CommandGroup(replacing: .printItem) {
             Button("Page Setup…") {
                 pageController?.showPageSetup()
             }

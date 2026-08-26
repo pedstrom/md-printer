@@ -1,5 +1,14 @@
 # Product Development Log
 
+## 2026-08-26 — Preview-style menus, zoom, and page navigation
+
+- Replaced the generated source-document Share submenu with the focused **Share PDF… / Share Microsoft Word…** command, placed **Show in Finder** with the native import/export group, and kept Page Setup and Print in the standard print group.
+- Made **Reopen Windows from Last Session** reinstall itself whenever SwiftUI rebuilds the File menu, while remaining visibly disabled when the stored workspace has nothing additional to open.
+- Reduced the read-only Edit menu to relevant selection and Find actions, removing unavailable editing, writing, autofill, dictation, and character-entry commands.
+- Removed the custom Window-menu tab-bar command so macOS supplies one standard **View → Show/Hide Tab Bar** item instead of duplicate Window entries.
+- Added Preview-style **Actual Size** (Command-0), **Zoom to Fit** (Command-9), **Zoom In/Out** (Command-Plus/Minus), and **Previous/Next Page** (Option-Up/Down) commands under View.
+- Kept Space and Shift-Space as secondary next/previous-page shortcuts while displaying the canonical Option-arrow equivalents in the menu, and added focused controller, PDFKit key-event, and menu-rebuilding coverage.
+
 ## 2026-08-26 — Native page setup, printing, and footer parity
 
 - Added focused **File → Page Setup…** and **File → Print…** commands backed by the native macOS sheets, with the toolbar Print button using the same generated-PDF-at-100-percent path.
