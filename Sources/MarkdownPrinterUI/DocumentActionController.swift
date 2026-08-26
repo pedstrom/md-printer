@@ -4,6 +4,7 @@ import MarkdownPrinterCore
 
 @MainActor
 package final class DocumentActionController: NSObject, ObservableObject {
+    typealias SavePanelPresenter = @MainActor (ExportFormat, String) -> ExportSaveSelection?
     typealias SharePickerPresenter = (NSSharingServicePicker, NSView, NSRect) -> Void
 
     @Published package private(set) var shareCommandTitle = "Share PDF…"
@@ -11,6 +12,7 @@ package final class DocumentActionController: NSObject, ObservableObject {
     private weak var session: DocumentSession?
     private weak var exportPreferences: ExportPreferences?
     private let activityCoordinator: ApplicationActivityCoordinator
+    private let presentSavePanel: SavePanelPresenter
     private let fileStore: ExportDragFileStore
     private let revealFiles: ([URL]) -> Void
     private let presentSharePicker: SharePickerPresenter
@@ -25,6 +27,7 @@ package final class DocumentActionController: NSObject, ObservableObject {
         session: DocumentSession,
         exportPreferences: ExportPreferences,
         activityCoordinator: ApplicationActivityCoordinator,
+        presentSavePanel: @escaping SavePanelPresenter,
         fileStore: ExportDragFileStore = ExportDragFileStore(),
         revealFiles: @escaping ([URL]) -> Void = { urls in
             NSWorkspace.shared.activateFileViewerSelecting(urls)
@@ -36,6 +39,7 @@ package final class DocumentActionController: NSObject, ObservableObject {
         self.session = session
         self.exportPreferences = exportPreferences
         self.activityCoordinator = activityCoordinator
+        self.presentSavePanel = presentSavePanel
         self.fileStore = fileStore
         self.revealFiles = revealFiles
         self.presentSharePicker = presentSharePicker
@@ -55,6 +59,10 @@ package final class DocumentActionController: NSObject, ObservableObject {
         session?.document?.sourceURL != nil
     }
 
+    package var canSaveAs: Bool {
+        session?.hasDocument == true
+    }
+
     package var canShare: Bool {
         session?.hasDocument == true && !isSharing
     }
@@ -67,6 +75,25 @@ package final class DocumentActionController: NSObject, ObservableObject {
     package func showInFinder() {
         guard let sourceURL = session?.document?.sourceURL else { return }
         revealFiles([sourceURL])
+    }
+
+    package func saveAs() {
+        guard let session,
+              session.hasDocument,
+              let defaultFormat = exportPreferences?.defaultFormat
+        else { return }
+
+        activityCoordinator.performBlockingOperation {
+            guard let selection = presentSavePanel(
+                defaultFormat,
+                session.suggestedFileName(for: defaultFormat)
+            ) else { return }
+            do {
+                try session.save(to: selection.url, as: selection.format)
+            } catch {
+                session.report(error: error)
+            }
+        }
     }
 
     package func attachToolbarShareAnchor(_ view: NSView?) {

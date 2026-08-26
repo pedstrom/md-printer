@@ -21,10 +21,12 @@ final class DocumentActionControllerTests: XCTestCase {
             session: session,
             exportPreferences: preferences,
             activityCoordinator: ApplicationActivityCoordinator(),
+            presentSavePanel: { _, _ in nil },
             revealFiles: { revealedURLs = $0 }
         )
 
         XCTAssertTrue(controller.canShowInFinder)
+        XCTAssertTrue(controller.canSaveAs)
         XCTAssertTrue(controller.canShare)
         XCTAssertEqual(controller.shareCommandTitle, "Share PDF…")
         controller.showInFinder()
@@ -34,11 +36,79 @@ final class DocumentActionControllerTests: XCTestCase {
         XCTAssertEqual(controller.shareCommandTitle, "Share Microsoft Word…")
     }
 
-    func testShareMaterializesExactPreferredBytesAndCancellationCleansUp() throws {
+    func testSaveAsUsesPreferredSuggestionAndWritesTheSelectedExportBytes() throws {
         let defaults = makeDefaults()
         defer { defaults.defaults.removePersistentDomain(forName: defaults.name) }
         let preferences = ExportPreferences(defaults: defaults.defaults)
         preferences.defaultFormat = .word
+        let session = DocumentSession()
+        try session.apply(MarkdownDocument(
+            sourceURL: URL(fileURLWithPath: "/tmp/Quarterly Notes.md"),
+            title: "Quarterly Notes",
+            markdown: "# Quarterly Notes\n\nEditable"
+        ))
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: outputURL) }
+        let activity = ApplicationActivityCoordinator()
+        var presentedFormat: ExportFormat?
+        var presentedFileName: String?
+        var activityWasBlocked = false
+        let controller = DocumentActionController(
+            session: session,
+            exportPreferences: preferences,
+            activityCoordinator: activity,
+            presentSavePanel: { format, fileName in
+                presentedFormat = format
+                presentedFileName = fileName
+                activityWasBlocked = activity.hasActiveBlockingOperation
+                return ExportSaveSelection(url: outputURL, format: .pdf)
+            }
+        )
+
+        controller.saveAs()
+
+        XCTAssertEqual(presentedFormat, .word)
+        XCTAssertEqual(presentedFileName, "Quarterly Notes.docx")
+        XCTAssertTrue(activityWasBlocked)
+        XCTAssertFalse(activity.hasActiveBlockingOperation)
+        XCTAssertEqual(try Data(contentsOf: outputURL), try session.exportData(as: .pdf))
+    }
+
+    func testSaveAsCancellationAndWriteFailureEndBlockingActivity() throws {
+        let defaults = makeDefaults()
+        defer { defaults.defaults.removePersistentDomain(forName: defaults.name) }
+        let preferences = ExportPreferences(defaults: defaults.defaults)
+        let session = DocumentSession()
+        try session.apply(MarkdownDocument(title: "Save Me", markdown: "# Save Me"))
+        let activity = ApplicationActivityCoordinator()
+        var selection: ExportSaveSelection?
+        let controller = DocumentActionController(
+            session: session,
+            exportPreferences: preferences,
+            activityCoordinator: activity,
+            presentSavePanel: { _, _ in selection }
+        )
+
+        controller.saveAs()
+        XCTAssertFalse(activity.hasActiveBlockingOperation)
+        XCTAssertNil(session.errorMessage)
+
+        selection = ExportSaveSelection(
+            url: URL(fileURLWithPath: "/dev/null/Save Me.pdf"),
+            format: .pdf
+        )
+        controller.saveAs()
+
+        XCTAssertFalse(activity.hasActiveBlockingOperation)
+        XCTAssertNotNil(session.errorMessage)
+    }
+
+    func testShareMaterializesExactPreferredBytesAndCancellationCleansUp() throws {
+        let defaults = makeDefaults()
+        defer { defaults.defaults.removePersistentDomain(forName: defaults.name) }
+        let preferences = ExportPreferences(defaults: defaults.defaults)
+        preferences.defaultFormat = .pdf
         let session = DocumentSession()
         try session.apply(MarkdownDocument(
             sourceURL: URL(fileURLWithPath: "/tmp/Share Me.md"),
@@ -55,6 +125,7 @@ final class DocumentActionControllerTests: XCTestCase {
             session: session,
             exportPreferences: preferences,
             activityCoordinator: activity,
+            presentSavePanel: { _, _ in nil },
             fileStore: ExportDragFileStore(temporaryDirectory: temporaryDirectory),
             presentSharePicker: { picker, _, _ in presentedPicker = picker }
         )
@@ -62,8 +133,8 @@ final class DocumentActionControllerTests: XCTestCase {
         controller.share(anchorView: NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100)))
 
         let fileURL = try XCTUnwrap(controller.activeShareFileURL)
-        XCTAssertEqual(fileURL.lastPathComponent, "Share Me.docx")
-        XCTAssertEqual(try Data(contentsOf: fileURL), try session.exportData(as: .word))
+        XCTAssertEqual(fileURL.lastPathComponent, "Share Me.pdf")
+        XCTAssertEqual(try Data(contentsOf: fileURL), try session.exportData(as: .pdf))
         XCTAssertTrue(activity.hasActiveBlockingOperation)
         XCTAssertTrue(controller.isPresentingSharePicker)
 
@@ -94,6 +165,7 @@ final class DocumentActionControllerTests: XCTestCase {
             session: session,
             exportPreferences: preferences,
             activityCoordinator: activity,
+            presentSavePanel: { _, _ in nil },
             fileStore: store,
             presentSharePicker: { _, _, _ in }
         )
@@ -126,6 +198,10 @@ final class DocumentActionControllerTests: XCTestCase {
             session: session,
             exportPreferences: preferences,
             activityCoordinator: ApplicationActivityCoordinator(),
+            presentSavePanel: { _, _ in
+                XCTFail("Save panel should not be presented")
+                return nil
+            },
             revealFiles: { revealedURLs = $0 },
             presentSharePicker: { _, _, _ in XCTFail("Share picker should not be presented") }
         )
@@ -134,13 +210,16 @@ final class DocumentActionControllerTests: XCTestCase {
         let observation = controller.objectWillChange.sink { changed.fulfill() }
 
         XCTAssertFalse(controller.canShowInFinder)
+        XCTAssertFalse(controller.canSaveAs)
         XCTAssertFalse(controller.canShare)
         controller.showInFinder()
+        controller.saveAs()
         controller.share(anchorView: NSView())
         XCTAssertTrue(revealedURLs.isEmpty)
 
         try session.apply(MarkdownDocument(title: "Ready", markdown: "# Ready"))
         wait(for: [changed], timeout: 1)
+        XCTAssertTrue(controller.canSaveAs)
         XCTAssertTrue(controller.canShare)
         withExtendedLifetime(observation) {}
     }
@@ -160,6 +239,7 @@ final class DocumentActionControllerTests: XCTestCase {
             session: session,
             exportPreferences: preferences,
             activityCoordinator: activity,
+            presentSavePanel: { _, _ in nil },
             fileStore: ExportDragFileStore(temporaryDirectory: temporaryDirectory),
             presentSharePicker: { _, _, _ in }
         )
@@ -194,6 +274,7 @@ final class DocumentActionControllerTests: XCTestCase {
             session: session,
             exportPreferences: preferences,
             activityCoordinator: ApplicationActivityCoordinator(),
+            presentSavePanel: { _, _ in nil },
             fileStore: ExportDragFileStore(temporaryDirectory: URL(fileURLWithPath: "/dev/null/share")),
             presentSharePicker: { _, _, _ in XCTFail("Share picker should not be presented") }
         )

@@ -58,7 +58,7 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         XCTAssertFalse(fileMenu.item(withTitle: "Open…")?.isHidden == true)
     }
 
-    func testGeneratedDuplicateAndShareMenuAreRemovedWithoutChangingOtherFileItems() {
+    func testGeneratedSaveDuplicateAndShareMenuAreRemovedWithoutChangingOtherFileItems() {
         let delegate = ApplicationLifecycleDelegate()
         let mainMenu = NSMenu()
         let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
@@ -66,13 +66,15 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         let duplicate = NSMenuItem(title: "Duplicate", action: nil, keyEquivalent: "")
         let genericShare = NSMenuItem(title: "Share", action: nil, keyEquivalent: "")
         genericShare.submenu = NSMenu(title: "Share")
-        let save = NSMenuItem(title: "Save…", action: nil, keyEquivalent: "s")
+        let save = NSMenuItem(title: "Save", action: nil, keyEquivalent: "s")
+        let saveAs = NSMenuItem(title: "Save As…", action: nil, keyEquivalent: "s")
         let preferredShare = NSMenuItem(title: "Share PDF…", action: nil, keyEquivalent: "")
         let open = NSMenuItem(title: "Open…", action: nil, keyEquivalent: "o")
         fileMenu.addItem(open)
         fileMenu.addItem(duplicate)
         fileMenu.addItem(genericShare)
         fileMenu.addItem(save)
+        fileMenu.addItem(saveAs)
         fileMenu.addItem(preferredShare)
         fileItem.submenu = fileMenu
         mainMenu.addItem(fileItem)
@@ -81,8 +83,9 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
 
         XCTAssertFalse(fileMenu.items.contains(duplicate))
         XCTAssertFalse(fileMenu.items.contains(genericShare))
+        XCTAssertFalse(fileMenu.items.contains(save))
         XCTAssertFalse(open.isHidden)
-        XCTAssertFalse(save.isHidden)
+        XCTAssertTrue(fileMenu.items.contains(saveAs))
         XCTAssertTrue(fileMenu.items.contains(preferredShare))
     }
 

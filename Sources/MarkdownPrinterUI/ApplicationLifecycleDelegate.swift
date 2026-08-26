@@ -89,7 +89,8 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
         guard let fileMenu = Self.fileMenu(in: mainMenu) else { return }
         fileMenu.items
             .filter { item in
-                item.title == "Duplicate"
+                item.title.replacingOccurrences(of: "…", with: "") == "Save"
+                    || item.title == "Duplicate"
                     || (item.title == "Share" && item.submenu != nil)
             }
             .forEach { fileMenu.removeItem($0) }

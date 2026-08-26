@@ -52,6 +52,14 @@ package struct DocumentFileCommands: Commands {
     package init() {}
 
     package var body: some Commands {
+        CommandGroup(replacing: .saveItem) {
+            Button("Save As…") {
+                controller?.saveAs()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .disabled(controller?.canSaveAs != true)
+        }
+
         CommandGroup(replacing: .importExport) {
             Button("Show in Finder") {
                 controller?.showInFinder()

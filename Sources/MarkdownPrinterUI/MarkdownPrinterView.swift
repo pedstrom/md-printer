@@ -28,7 +28,13 @@ public struct MarkdownPrinterView: View {
         _documentActions = StateObject(wrappedValue: DocumentActionController(
             session: session,
             exportPreferences: exportPreferences,
-            activityCoordinator: activityCoordinator
+            activityCoordinator: activityCoordinator,
+            presentSavePanel: { defaultFormat, suggestedFileName in
+                ExportSavePanelController(
+                    defaultFormat: defaultFormat,
+                    suggestedFileName: suggestedFileName
+                ).runModal()
+            }
         ))
         _pageActions = StateObject(wrappedValue: DocumentPageActionController(
             session: session,
@@ -72,11 +78,11 @@ public struct MarkdownPrinterView: View {
                 }
             }
             ToolbarItemGroup {
-                Button(action: saveDocument) {
+                Button(action: documentActions.saveAs) {
                     Label("Save…", systemImage: "square.and.arrow.down")
                 }
                 .keyboardShortcut("s", modifiers: .command)
-                .disabled(!session.hasDocument)
+                .disabled(!documentActions.canSaveAs)
                 if session.hasDocument {
                     ShareToolbarButton(controller: documentActions)
                 }
@@ -178,22 +184,6 @@ public struct MarkdownPrinterView: View {
         panel.allowedContentTypes = markdownTypes
         guard panel.runModal() == .OK else { return }
         openFiles(panel.urls)
-    }
-
-    private func saveDocument() {
-        activityCoordinator.performBlockingOperation {
-            let defaultFormat = exportPreferences.defaultFormat
-            let controller = ExportSavePanelController(
-                defaultFormat: defaultFormat,
-                suggestedFileName: session.suggestedFileName(for: defaultFormat)
-            )
-            guard let selection = controller.runModal() else { return }
-            do {
-                try session.save(to: selection.url, as: selection.format)
-            } catch {
-                session.report(error: error)
-            }
-        }
     }
 
     private func acceptDrop(providers: [NSItemProvider]) -> Bool {

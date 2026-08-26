@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-26 — Export-backed Save As command
+
+- Removed the read-only Markdown source document's generated **Save** command and replaced the generated **Save As…** behavior with the same PDF/Microsoft Word export flow used by the toolbar Save button.
+- Kept Command-S on the toolbar export action, added the standard Shift-Command-S shortcut to **File → Save As…**, and covered preferred-format suggestions, one-save format overrides, cancellation, write errors, updater activity deferral, and regenerated File-menu cleanup.
+
 ## 2026-08-26 — Preview-style menus, zoom, and page navigation
 
 - Replaced the generated source-document Share submenu with the focused **Share PDF… / Share Microsoft Word…** command, placed **Show in Finder** with the native import/export group, and kept Page Setup and Print in the standard print group.
