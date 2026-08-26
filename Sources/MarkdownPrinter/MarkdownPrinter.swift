@@ -10,6 +10,7 @@ struct MarkdownPrinterApp: App {
     @StateObject private var documentRestoration: OpenDocumentRestorationController
     @StateObject private var updateController: UpdateController
     @StateObject private var defaultApplicationController: DefaultApplicationController
+    @StateObject private var windowTabCoordinator: WindowTabCoordinator
     private let quickLookNavigator: FinderQuickLookSettingsNavigator
 
     init() {
@@ -27,16 +28,22 @@ struct MarkdownPrinterApp: App {
         _defaultApplicationController = StateObject(
             wrappedValue: DefaultApplicationController()
         )
+        _windowTabCoordinator = StateObject(wrappedValue: WindowTabCoordinator())
         quickLookNavigator = FinderQuickLookSettingsNavigator()
     }
 
     var body: some Scene {
-        Window("Markdown Printer", id: "welcome") {
+        WindowGroup("Markdown Printer", id: "welcome", for: UUID.self) { identifier in
             WelcomeMarkdownWindow(
+                identifier: identifier.wrappedValue,
+                applicationDelegate: applicationDelegate,
                 exportPreferences: exportPreferences,
                 activityCoordinator: activityCoordinator,
-                documentRestoration: documentRestoration
+                documentRestoration: documentRestoration,
+                windowTabCoordinator: windowTabCoordinator
             )
+        } defaultValue: {
+            UUID()
         }
         .defaultSize(width: 760, height: 980)
         .commands {
@@ -52,6 +59,7 @@ struct MarkdownPrinterApp: App {
             }
             PDFSearchCommands()
             PDFFitPageCommands()
+            WindowTabCommands(coordinator: windowTabCoordinator)
         }
 
         DocumentGroup(viewing: MarkdownFileDocument.self) { configuration in
@@ -60,7 +68,9 @@ struct MarkdownPrinterApp: App {
                 sourceURL: configuration.fileURL,
                 exportPreferences: exportPreferences,
                 activityCoordinator: activityCoordinator,
-                documentRestoration: documentRestoration
+                documentRestoration: documentRestoration,
+                applicationDelegate: applicationDelegate,
+                windowTabCoordinator: windowTabCoordinator
             )
         }
         .defaultSize(width: 760, height: 980)
@@ -82,9 +92,12 @@ private struct WelcomeMarkdownWindow: View {
     @Environment(\.openDocument) private var openDocument
     @StateObject private var session = DocumentSession()
     @State private var hasAttemptedUpdateRestoration = false
+    let identifier: UUID
+    let applicationDelegate: ApplicationLifecycleDelegate
     @ObservedObject var exportPreferences: ExportPreferences
     let activityCoordinator: ApplicationActivityCoordinator
     let documentRestoration: OpenDocumentRestorationController
+    let windowTabCoordinator: WindowTabCoordinator
 
     var body: some View {
         MarkdownPrinterView(
@@ -92,6 +105,18 @@ private struct WelcomeMarkdownWindow: View {
             exportPreferences: exportPreferences,
             activityCoordinator: activityCoordinator,
             openFiles: openFiles
+        )
+        .background(
+            WindowTabAttachmentView(
+                coordinator: windowTabCoordinator,
+                identifier: identifier
+            )
+        )
+        .background(
+            WindowTabActionInstallerView(
+                applicationDelegate: applicationDelegate,
+                coordinator: windowTabCoordinator
+            )
         )
         .task {
             await restoreDocumentsAfterUpdate()
@@ -103,15 +128,22 @@ private struct WelcomeMarkdownWindow: View {
         Task {
             var openedDocument = false
             for url in urls {
+                let tabRequest = windowTabCoordinator.prepareDocumentTab(
+                    for: url,
+                    replacingWelcomeWindow: identifier
+                )
                 do {
                     try await openDocument(at: url)
                     openedDocument = true
                 } catch {
+                    if let tabRequest {
+                        windowTabCoordinator.cancelDocumentTabRequest(tabRequest, for: url)
+                    }
                     session.report(error: error)
                 }
             }
             if openedDocument {
-                dismissWindow(id: "welcome")
+                dismissWindow(id: "welcome", value: identifier)
             }
         }
     }
@@ -143,18 +175,24 @@ private struct MarkdownDocumentWindow: View {
     private let sourceURL: URL?
     @ObservedObject var exportPreferences: ExportPreferences
     let activityCoordinator: ApplicationActivityCoordinator
+    let applicationDelegate: ApplicationLifecycleDelegate
+    let windowTabCoordinator: WindowTabCoordinator
 
     init(
         fileDocument: MarkdownFileDocument,
         sourceURL: URL?,
         exportPreferences: ExportPreferences,
         activityCoordinator: ApplicationActivityCoordinator,
-        documentRestoration: OpenDocumentRestorationController
+        documentRestoration: OpenDocumentRestorationController,
+        applicationDelegate: ApplicationLifecycleDelegate,
+        windowTabCoordinator: WindowTabCoordinator
     ) {
         self.fileDocument = fileDocument
         self.sourceURL = sourceURL
         self.exportPreferences = exportPreferences
         self.activityCoordinator = activityCoordinator
+        self.applicationDelegate = applicationDelegate
+        self.windowTabCoordinator = windowTabCoordinator
         _session = StateObject(
             wrappedValue: Self.makeSession(fileDocument: fileDocument, sourceURL: sourceURL)
         )
@@ -175,6 +213,18 @@ private struct MarkdownDocumentWindow: View {
         )
             .environment(\.documentWindowRestorationCoordinator, windowRestoration)
             .background(DocumentWindowRestorationAttachmentView(coordinator: windowRestoration))
+            .background(
+                WindowTabAttachmentView(
+                    coordinator: windowTabCoordinator,
+                    documentURL: sourceURL
+                )
+            )
+            .background(
+                WindowTabActionInstallerView(
+                    applicationDelegate: applicationDelegate,
+                    coordinator: windowTabCoordinator
+                )
+            )
             .onAppear {
                 windowRestoration.activate()
                 synchronizeFileDocument()
@@ -221,5 +271,30 @@ private struct MarkdownDocumentWindow: View {
             session.report(error: error)
         }
     }
+}
 
+@MainActor
+private struct WindowTabActionInstallerView: View {
+    @Environment(\.openWindow) private var openWindow
+    let applicationDelegate: ApplicationLifecycleDelegate
+    let coordinator: WindowTabCoordinator
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear {
+                coordinator.newTabRequestHandler = { [weak coordinator] sourceWindow in
+                    guard let coordinator else { return }
+                    let identifier = coordinator.prepareNewTab(from: sourceWindow)
+                    openWindow(id: "welcome", value: identifier)
+                }
+                applicationDelegate.newTabHandler = { [weak coordinator] in
+                    coordinator?.requestNewTab(from: NSApp.keyWindow ?? NSApp.mainWindow)
+                }
+                applicationDelegate.configureFileMenu(in: NSApp.mainMenu)
+                DispatchQueue.main.async { [weak applicationDelegate] in
+                    applicationDelegate?.configureFileMenu(in: NSApp.mainMenu)
+                }
+            }
+    }
 }

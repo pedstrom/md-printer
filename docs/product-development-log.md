@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-08-26 — Native window tabs
+
+- Added direct **File → New Window** and **File → New Tab** commands with Command-N and Command-T, removing the generated New submenu and its misleading New Document option while preserving Open and Open Recent.
+- Made both Command-T and the tab bar's plus button create a new tab that uses the existing blank welcome view until a Markdown file is chosen.
+- Added the standard **Window → Show/Hide Tab Bar** command with Shift-Command-T, keeping the command disabled when multiple tabs make the tab bar mandatory.
+- Converted the welcome scene to independent window instances and explicitly grouped new home tabs with the active welcome or document window, while closing only the chosen home tab after its file opens.
+- Added deterministic AppKit coverage for tab grouping, concurrent tab requests, tab-bar visibility, key-window changes, and standalone fallback behavior.
+
 ## 2026-08-26 — Version 1.4.2
 
 - Promoted the native File-menu bug fix, update-relaunch window restoration, Fit Page command, drag-readiness feedback, and larger welcome artwork together as version 1.4.2, build 11.

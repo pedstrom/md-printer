@@ -534,3 +534,65 @@ package struct PDFFitPageCommands: Commands {
         }
     }
 }
+
+package struct WindowTabAttachmentView: NSViewRepresentable {
+    let coordinator: WindowTabCoordinator
+    let windowIdentifier: UUID?
+    let documentURL: URL?
+
+    package init(
+        coordinator: WindowTabCoordinator,
+        identifier: UUID? = nil,
+        documentURL: URL? = nil
+    ) {
+        self.coordinator = coordinator
+        windowIdentifier = identifier
+        self.documentURL = documentURL
+    }
+
+    package func makeNSView(context: Context) -> WindowTabAttachmentHostView {
+        WindowTabAttachmentHostView(
+            coordinator: coordinator,
+            windowIdentifier: windowIdentifier,
+            documentURL: documentURL
+        )
+    }
+
+    package func updateNSView(_ view: WindowTabAttachmentHostView, context: Context) {
+        view.coordinator = coordinator
+        view.windowIdentifier = windowIdentifier
+        view.documentURL = documentURL
+        view.attachCurrentWindow()
+    }
+}
+
+package struct WindowTabCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var coordinator: WindowTabCoordinator
+
+    package init(coordinator: WindowTabCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    package var body: some Commands {
+        CommandGroup(before: .newItem) {
+            Button("New Window") {
+                openWindow(id: "welcome", value: UUID())
+            }
+            .keyboardShortcut("n", modifiers: .command)
+
+            Button("New Tab") {
+                coordinator.requestNewTab(from: NSApp.keyWindow ?? NSApp.mainWindow)
+            }
+            .keyboardShortcut("t", modifiers: .command)
+        }
+
+        CommandGroup(after: .windowArrangement) {
+            Button(coordinator.tabBarCommandTitle) {
+                coordinator.toggleTabBar(for: NSApp.keyWindow ?? NSApp.mainWindow)
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+            .disabled(!coordinator.canToggleTabBar)
+        }
+    }
+}
