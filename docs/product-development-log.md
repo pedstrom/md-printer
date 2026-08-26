@@ -1,8 +1,16 @@
 # Product Development Log
 
+## 2026-08-26 — Manual full-workspace reopening
+
+- Added **File → Reopen Windows from Last Session** immediately after Open Recent, disabled when every saved document is already open, while keeping normal launches on the welcome window and preserving the last snapshot until the next normal termination.
+- Added a versioned, local-only workspace schema that restores document windows, frames, tab groups, tab order, selected tabs, mixed welcome tabs, PDF zoom/page/scroll position, thumbnail visibility/width/scroll position, and tab-bar visibility without storing Markdown or generated PDF content.
+- Moved automatic updater relaunches onto the same consume-once workspace payload while retaining compatibility with legacy path-only and per-window update records, and kept update-triggered termination from replacing the normal last-session snapshot.
+- Added skip-and-continue restoration for already-open, missing, unreadable, or failed documents with one concise error summary after the remaining workspace opens.
+- Added deterministic coverage for version validation, manual snapshot lifetime, updater compatibility, menu placement and enablement, tab topology, welcome-tab rules, selection, sidebar state, duplicate avoidance, and partial-failure restoration.
+
 ## 2026-08-26 — Native thumbnails, sharing, and Finder actions
 
-- Added an off-by-default, resizable PDFKit thumbnail sidebar with a leading title-bar toggle and a focused **View → Show/Hide Thumbnails** command; thumbnails scale with the 120–260 point sidebar, the divider disappears completely when closed, and the persistent sidebar follows page selection and rebinds across buffered PDF refreshes without replacing the visible preview.
+- Added an off-by-default, resizable PDFKit thumbnail sidebar with a leading title-bar toggle and a focused **View → Show/Hide Thumbnails** command; thumbnails scale with the 120–260 point sidebar, the divider has a generous invisible drag target, dragging fully left collapses it, the divider disappears completely when closed, and the persistent sidebar follows page selection and rebinds across buffered PDF refreshes without replacing the visible preview.
 - Added **File → Show in Finder** for source-backed documents and removed only macOS's generated **Duplicate** item while preserving the rest of the standard File menu.
 - Added a standard Share toolbar item and dynamic **File → Share PDF… / Share Microsoft Word…** command that anchors the picker to the toolbar control, shares the selected export format as an exact, private temporary file, and participates in updater activity deferral until the picker completes or is cancelled.
 - Added deterministic coverage for sidebar visibility, sizing, rebinding, Finder routing, share bytes, filenames, cleanup, cancellation, activity deferral, errors, and targeted File-menu filtering.

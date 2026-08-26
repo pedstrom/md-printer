@@ -17,6 +17,16 @@ struct MarkdownPrinterApp: App {
         let exportPreferences = ExportPreferences()
         let activityCoordinator = ApplicationActivityCoordinator()
         let documentRestoration = OpenDocumentRestorationController()
+        let windowTabCoordinator = WindowTabCoordinator()
+        documentRestoration.workspaceCaptureProvider = {
+            [weak documentRestoration, weak windowTabCoordinator] in
+            guard let documentRestoration, let windowTabCoordinator else {
+                return WorkspaceSnapshot(groups: [])
+            }
+            return windowTabCoordinator.captureWorkspace(
+                restorationController: documentRestoration
+            )
+        }
         let updateController = UpdateController(
             documentRestoration: documentRestoration,
             activityCoordinator: activityCoordinator
@@ -28,7 +38,7 @@ struct MarkdownPrinterApp: App {
         _defaultApplicationController = StateObject(
             wrappedValue: DefaultApplicationController()
         )
-        _windowTabCoordinator = StateObject(wrappedValue: WindowTabCoordinator())
+        _windowTabCoordinator = StateObject(wrappedValue: windowTabCoordinator)
         quickLookNavigator = FinderQuickLookSettingsNavigator()
     }
 
@@ -57,10 +67,6 @@ struct MarkdownPrinterApp: App {
                 }
                 .disabled(!updateController.canCheckForUpdates)
             }
-            PDFSearchCommands()
-            PDFFitPageCommands()
-            PDFThumbnailCommands()
-            DocumentFileCommands()
             WindowTabCommands(coordinator: windowTabCoordinator)
         }
 
@@ -76,6 +82,13 @@ struct MarkdownPrinterApp: App {
             )
         }
         .defaultSize(width: 760, height: 980)
+        .commands {
+            PDFSearchCommands()
+            PDFFitPageCommands()
+            PDFThumbnailCommands()
+            DocumentFileCommands()
+            WindowTabCommands(coordinator: windowTabCoordinator)
+        }
 
         Settings {
             ExportSettingsView(
@@ -92,6 +105,7 @@ struct MarkdownPrinterApp: App {
 private struct WelcomeMarkdownWindow: View {
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.openDocument) private var openDocument
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var session = DocumentSession()
     @State private var hasAttemptedUpdateRestoration = false
     let identifier: UUID
@@ -117,7 +131,10 @@ private struct WelcomeMarkdownWindow: View {
         .background(
             WindowTabActionInstallerView(
                 applicationDelegate: applicationDelegate,
-                coordinator: windowTabCoordinator
+                coordinator: windowTabCoordinator,
+                documentRestoration: documentRestoration,
+                session: session,
+                welcomeIdentifier: identifier
             )
         )
         .task {
@@ -161,10 +178,25 @@ private struct WelcomeMarkdownWindow: View {
             return
         }
 
-        let urls = documentRestoration.consumeDocumentsForRelaunch(currentBuild: currentBuild)
-        guard !urls.isEmpty else { return }
+        guard let workspace = documentRestoration.consumeWorkspaceForRelaunch(
+            currentBuild: currentBuild
+        ) else { return }
         await Task.yield()
-        openFiles(urls.filter { !documentRestoration.isDocumentOpen(at: $0) })
+        let result = await WorkspaceRestorer.restore(
+            workspace,
+            restorationController: documentRestoration,
+            tabCoordinator: windowTabCoordinator,
+            openDocument: { url in try await openDocument(at: url) },
+            openWelcome: { identifier in openWindow(id: "welcome", value: identifier) }
+        )
+        if result.openedDocumentCount > 0 {
+            dismissWindow(id: "welcome", value: identifier)
+        }
+        if !result.failedDocumentNames.isEmpty {
+            session.report(error: WorkspaceRestorationSummaryError(
+                failedDocumentNames: result.failedDocumentNames
+            ))
+        }
     }
 }
 
@@ -177,6 +209,7 @@ private struct MarkdownDocumentWindow: View {
     private let sourceURL: URL?
     @ObservedObject var exportPreferences: ExportPreferences
     let activityCoordinator: ApplicationActivityCoordinator
+    let documentRestoration: OpenDocumentRestorationController
     let applicationDelegate: ApplicationLifecycleDelegate
     let windowTabCoordinator: WindowTabCoordinator
 
@@ -193,6 +226,7 @@ private struct MarkdownDocumentWindow: View {
         self.sourceURL = sourceURL
         self.exportPreferences = exportPreferences
         self.activityCoordinator = activityCoordinator
+        self.documentRestoration = documentRestoration
         self.applicationDelegate = applicationDelegate
         self.windowTabCoordinator = windowTabCoordinator
         _session = StateObject(
@@ -224,7 +258,10 @@ private struct MarkdownDocumentWindow: View {
             .background(
                 WindowTabActionInstallerView(
                     applicationDelegate: applicationDelegate,
-                    coordinator: windowTabCoordinator
+                    coordinator: windowTabCoordinator,
+                    documentRestoration: documentRestoration,
+                    session: session,
+                    welcomeIdentifier: nil
                 )
             )
             .onAppear {
@@ -278,8 +315,13 @@ private struct MarkdownDocumentWindow: View {
 @MainActor
 private struct WindowTabActionInstallerView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openDocument) private var openDocument
+    @Environment(\.dismissWindow) private var dismissWindow
     let applicationDelegate: ApplicationLifecycleDelegate
     let coordinator: WindowTabCoordinator
+    let documentRestoration: OpenDocumentRestorationController
+    let session: DocumentSession
+    let welcomeIdentifier: UUID?
 
     var body: some View {
         Color.clear
@@ -292,6 +334,37 @@ private struct WindowTabActionInstallerView: View {
                 }
                 applicationDelegate.newTabHandler = { [weak coordinator] in
                     coordinator?.requestNewTab(from: NSApp.keyWindow ?? NSApp.mainWindow)
+                }
+                applicationDelegate.documentRestorationController = documentRestoration
+                applicationDelegate.normalTerminationHandler = { [weak documentRestoration] in
+                    documentRestoration?.captureLastSession()
+                }
+                documentRestoration.reopenLastSessionHandler = {
+                    [weak documentRestoration, weak coordinator, weak session] in
+                    guard let documentRestoration,
+                          let coordinator,
+                          let session,
+                          let workspace = documentRestoration.lastSessionWorkspace()
+                    else { return }
+                    Task { @MainActor in
+                        let result = await WorkspaceRestorer.restore(
+                            workspace,
+                            restorationController: documentRestoration,
+                            tabCoordinator: coordinator,
+                            openDocument: { url in try await openDocument(at: url) },
+                            openWelcome: { identifier in
+                                openWindow(id: "welcome", value: identifier)
+                            }
+                        )
+                        if result.openedDocumentCount > 0, let welcomeIdentifier {
+                            dismissWindow(id: "welcome", value: welcomeIdentifier)
+                        }
+                        if !result.failedDocumentNames.isEmpty {
+                            session.report(error: WorkspaceRestorationSummaryError(
+                                failedDocumentNames: result.failedDocumentNames
+                            ))
+                        }
+                    }
                 }
                 applicationDelegate.configureFileMenu(in: NSApp.mainMenu)
                 DispatchQueue.main.async { [weak applicationDelegate] in

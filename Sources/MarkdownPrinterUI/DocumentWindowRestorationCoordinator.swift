@@ -8,8 +8,10 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
     private let providerID = UUID()
     private weak var window: NSWindow?
     private weak var preview: BufferedPDFPreviewView?
+    private weak var previewContainer: PDFPreviewContainerView?
     private var pendingFrame: CGRect?
     private var pendingViewport: PersistedPreviewViewport?
+    private var pendingThumbnails: PersistedThumbnailSidebar?
     private var isActive = false
     private var restoreSequence: UInt64 = 0
 
@@ -22,6 +24,7 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
         let pendingState = restorationController.takeWindowState(for: sourceURL)
         pendingFrame = pendingState?.frame
         pendingViewport = pendingState?.viewport
+        pendingThumbnails = pendingState?.thumbnails
     }
 
     package func activate() {
@@ -57,6 +60,16 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
         scheduleViewportRestorationIfPossible()
     }
 
+    package func attach(previewContainer: PDFPreviewContainerView) {
+        self.previewContainer = previewContainer
+        self.preview = previewContainer.previewView
+        if let pendingThumbnails {
+            self.pendingThumbnails = nil
+            previewContainer.restoreThumbnailRestorationState(pendingThumbnails)
+        }
+        scheduleViewportRestorationIfPossible()
+    }
+
     package func previewDidDisplayDocument() {
         scheduleViewportRestorationIfPossible()
     }
@@ -64,8 +77,13 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
     private func captureState() -> DocumentWindowRestorationState? {
         let frame = window?.frame
         let viewport = preview?.capturePersistedViewport()
-        guard frame != nil || viewport != nil else { return nil }
-        return DocumentWindowRestorationState(frame: frame, viewport: viewport)
+        let thumbnails = previewContainer?.captureThumbnailRestorationState()
+        guard frame != nil || viewport != nil || thumbnails != nil else { return nil }
+        return DocumentWindowRestorationState(
+            frame: frame,
+            viewport: viewport,
+            thumbnails: thumbnails
+        )
     }
 
     private func applyPendingFrameIfPossible() {

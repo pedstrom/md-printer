@@ -136,6 +136,52 @@ final class DocumentWindowRestorationCoordinatorTests: XCTestCase {
         restoredCoordinator.deactivate()
     }
 
+    func testCoordinatorCapturesAndRestoresThumbnailVisibilityAndWidth() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = OpenDocumentRestorationController(defaults: defaults)
+        let url = URL(fileURLWithPath: "/tmp/Sidebar-Restoration.md")
+        let originalContainer = PDFPreviewContainerView(
+            frame: CGRect(x: 0, y: 0, width: 800, height: 700)
+        )
+        originalContainer.setThumbnailSidebarWidth(212)
+        originalContainer.setThumbnailSidebarVisible(true)
+        let originalCoordinator = DocumentWindowRestorationCoordinator(
+            sourceURL: url,
+            restorationController: controller
+        )
+        originalCoordinator.attach(previewContainer: originalContainer)
+        originalCoordinator.activate()
+        let captured = try XCTUnwrap(controller.currentWindowState(for: url))
+        XCTAssertEqual(captured.thumbnails, PersistedThumbnailSidebar(
+            isVisible: true,
+            width: 212,
+            scrollOffset: 0
+        ))
+        originalCoordinator.deactivate()
+
+        let workspace = WorkspaceSnapshot(groups: [
+            WorkspaceWindowGroup(
+                identifier: "sidebar",
+                tabs: [.document(url, state: captured)],
+                selectedTabIndex: 0,
+                isTabBarVisible: false
+            )
+        ])
+        controller.prepareWindowStates(for: workspace)
+        let restoredCoordinator = DocumentWindowRestorationCoordinator(
+            sourceURL: url,
+            restorationController: controller
+        )
+        let restoredContainer = PDFPreviewContainerView(
+            frame: CGRect(x: 0, y: 0, width: 800, height: 700)
+        )
+        restoredCoordinator.attach(previewContainer: restoredContainer)
+
+        XCTAssertTrue(restoredContainer.isThumbnailSidebarVisible)
+        XCTAssertEqual(restoredContainer.thumbnailSidebarWidth, 212, accuracy: 0.5)
+    }
+
     private func makeDocument() throws -> PDFDocument {
         let markdown = (0..<100)
             .map { "Paragraph \($0): enough text to produce a stable multipage restoration fixture." }

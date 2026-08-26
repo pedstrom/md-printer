@@ -3,9 +3,20 @@ import AppKit
 @MainActor
 public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate {
     package var newTabHandler: (() -> Void)?
+    package weak var documentRestorationController: OpenDocumentRestorationController?
+    package var normalTerminationHandler: (() -> Void)?
+    private static let reopenLastSessionIdentifier = NSUserInterfaceItemIdentifier(
+        "com.peteedstrom.markdown-printer.reopen-last-session"
+    )
     private lazy var fileMenuDelegateProxy = FileMenuDelegateProxy(owner: self)
 
     public func applicationDidFinishLaunching(_ notification: Notification) {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(menuDidBeginTracking(_:)),
+            name: NSMenu.didBeginTrackingNotification,
+            object: nil
+        )
         configureFileMenu(in: NSApp.mainMenu)
         DispatchQueue.main.async { [weak self] in
             self?.configureFileMenu(in: NSApp.mainMenu)
@@ -14,6 +25,11 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
 
     public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        normalTerminationHandler?()
+        return .terminateNow
     }
 
     @IBAction public func newWindowForTab(_ sender: Any?) {
@@ -36,6 +52,13 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
                     })
             }
             .forEach { $0.isHidden = true }
+
+        for title in ["New Window", "New Tab"] {
+            fileMenu.items
+                .filter { $0.title == title }
+                .dropFirst()
+                .forEach { fileMenu.removeItem($0) }
+        }
     }
 
     package func configureFileMenu(in mainMenu: NSMenu?) {
@@ -46,6 +69,7 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
             fileMenu.delegate = fileMenuDelegateProxy
         }
         hideGeneratedFileItems(in: mainMenu)
+        installReopenLastSessionItem(in: fileMenu)
     }
 
     package func hideGeneratedFileItems(in mainMenu: NSMenu?) {
@@ -53,10 +77,48 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
         guard let fileMenu = Self.fileMenu(in: mainMenu) else { return }
         fileMenu.items
             .filter { $0.title == "Duplicate" }
-            .forEach { $0.isHidden = true }
+            .forEach { fileMenu.removeItem($0) }
+        updateReopenLastSessionItem(in: fileMenu)
+    }
+
+    @IBAction package func reopenWindowsFromLastSession(_ sender: Any?) {
+        documentRestorationController?.reopenLastSession()
+    }
+
+    package func installReopenLastSessionItem(in fileMenu: NSMenu) {
+        let item: NSMenuItem
+        if let existing = fileMenu.items.first(where: {
+            $0.identifier == Self.reopenLastSessionIdentifier
+        }) {
+            item = existing
+        } else {
+            item = NSMenuItem(
+                title: "Reopen Windows from Last Session",
+                action: #selector(reopenWindowsFromLastSession(_:)),
+                keyEquivalent: ""
+            )
+            item.identifier = Self.reopenLastSessionIdentifier
+            item.target = self
+            let openRecentIndex = fileMenu.items.firstIndex(where: { menuItem in
+                menuItem.title == "Open Recent" || menuItem.submenu?.title == "Open Recent"
+            })
+            fileMenu.insertItem(item, at: min((openRecentIndex ?? -1) + 1, fileMenu.items.count))
+        }
+        updateReopenLastSessionItem(in: fileMenu)
+    }
+
+    private func updateReopenLastSessionItem(in fileMenu: NSMenu) {
+        fileMenu.items.first(where: {
+            $0.identifier == Self.reopenLastSessionIdentifier
+        })?.isEnabled = documentRestorationController?.canReopenLastSession == true
     }
 
     public func applicationDidUpdate(_ notification: Notification) {
+        configureFileMenu(in: NSApp.mainMenu)
+    }
+
+    @objc private func menuDidBeginTracking(_ notification: Notification) {
+        guard notification.object is NSMenu else { return }
         configureFileMenu(in: NSApp.mainMenu)
     }
 

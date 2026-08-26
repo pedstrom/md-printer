@@ -15,6 +15,7 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
 
         XCTAssertFalse(container.isThumbnailSidebarVisible)
         XCTAssertEqual(container.sidebarDividerThickness, 0)
+        XCTAssertEqual(container.sidebarDividerHitThickness, 0)
         XCTAssertFalse(controller.isVisible)
         XCTAssertEqual(controller.commandTitle, "Show Thumbnails")
         XCTAssertTrue(controller.canToggle)
@@ -24,6 +25,7 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
 
         XCTAssertTrue(container.isThumbnailSidebarVisible)
         XCTAssertGreaterThan(container.sidebarDividerThickness, 0)
+        XCTAssertGreaterThanOrEqual(container.sidebarDividerHitThickness, 12)
         XCTAssertTrue(controller.isVisible)
         XCTAssertEqual(controller.commandTitle, "Hide Thumbnails")
         XCTAssertEqual(
@@ -72,12 +74,16 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
         XCTAssertTrue(container.thumbnailView.pdfView?.document === second.document)
     }
 
-    func testSplitPositionIsClampedToSidebarRange() {
+    func testSplitPositionIsClampedToSidebarRange() throws {
         let container = PDFPreviewContainerView()
         let splitView = NSSplitView()
 
         XCTAssertEqual(
             container.splitView(splitView, constrainSplitPosition: 12, ofSubviewAt: 0),
+            0
+        )
+        XCTAssertEqual(
+            container.splitView(splitView, constrainSplitPosition: 80, ofSubviewAt: 0),
             PDFPreviewContainerView.minimumSidebarWidth
         )
         XCTAssertEqual(
@@ -88,6 +94,13 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
             container.splitView(splitView, constrainSplitPosition: 190, ofSubviewAt: 1),
             190
         )
+        XCTAssertTrue(
+            container.splitView(
+                splitView,
+                canCollapseSubview: try XCTUnwrap(container.thumbnailView.superview)
+            )
+        )
+        XCTAssertFalse(container.splitView(splitView, canCollapseSubview: container.previewView))
     }
 
     func testThumbnailSizeTracksResizableSidebarWidth() {

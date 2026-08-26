@@ -295,6 +295,77 @@ final class WindowTabCoordinatorTests: XCTestCase {
         XCTAssertFalse(newWindow.nextResponder is WindowTabCommandResponder)
     }
 
+    func testWorkspaceCapturePreservesTabOrderSelectionAndMixedWelcomeTabs() throws {
+        let suiteName = "WindowTabCoordinatorTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let restoration = OpenDocumentRestorationController(defaults: defaults)
+        let coordinator = WindowTabCoordinator()
+        let firstURL = URL(fileURLWithPath: "/tmp/First.md")
+        let secondURL = URL(fileURLWithPath: "/tmp/Second.md")
+        let first = makeWindow()
+        let welcome = makeWindow()
+        let second = makeWindow()
+        let standaloneWelcome = makeWindow()
+        coordinator.attach(window: first, documentURL: firstURL)
+        coordinator.attach(window: welcome, identifier: UUID())
+        coordinator.attach(window: second, documentURL: secondURL)
+        coordinator.attach(window: standaloneWelcome, identifier: UUID())
+        first.addTabbedWindow(welcome, ordered: .above)
+        first.addTabbedWindow(second, ordered: .above)
+        first.tabGroup?.selectedWindow = welcome
+
+        let workspace = coordinator.captureWorkspace(restorationController: restoration)
+
+        XCTAssertEqual(workspace.groups.count, 1)
+        let group = try XCTUnwrap(workspace.groups.first)
+        XCTAssertEqual(group.tabs.map(\.kind), [.document, .document, .welcome])
+        XCTAssertEqual(group.tabs.compactMap(\.documentURL), [firstURL, secondURL])
+        XCTAssertEqual(group.selectedTabIndex, 2)
+    }
+
+    func testWorkspaceRestorationGroupsTabsAndRestoresSelectedTab() throws {
+        let coordinator = WindowTabCoordinator()
+        let groupIdentifier = "restored-group"
+        let welcome = makeWindow()
+        let first = makeWindow()
+        let second = makeWindow()
+        let firstURL = URL(fileURLWithPath: "/tmp/First-Restored.md")
+        let secondURL = URL(fileURLWithPath: "/tmp/Second-Restored.md")
+
+        let welcomeIdentifier = coordinator.prepareWorkspaceWelcome(
+            groupIdentifier: groupIdentifier,
+            isSelected: false,
+            isTabBarVisible: true
+        )
+        coordinator.attach(window: welcome, identifier: welcomeIdentifier)
+        coordinator.prepareWorkspaceDocument(
+            at: firstURL,
+            groupIdentifier: groupIdentifier,
+            isSelected: true,
+            isTabBarVisible: true
+        )
+        coordinator.attach(window: first, documentURL: firstURL)
+        coordinator.prepareWorkspaceDocument(
+            at: secondURL,
+            groupIdentifier: groupIdentifier,
+            isSelected: false,
+            isTabBarVisible: true
+        )
+        coordinator.attach(window: second, documentURL: secondURL)
+        coordinator.finishWorkspaceRestoration()
+
+        let tabGroup = try XCTUnwrap(first.tabGroup)
+        XCTAssertEqual(tabGroup.windows.count, 3)
+        XCTAssertEqual(tabGroup.windows.map { ObjectIdentifier($0) }, [
+            ObjectIdentifier(welcome),
+            ObjectIdentifier(first),
+            ObjectIdentifier(second)
+        ])
+        XCTAssertTrue(tabGroup.selectedWindow === first)
+        XCTAssertTrue(tabGroup.isTabBarVisible)
+    }
+
     private func makeWindow() -> NSWindow {
         NSWindow(
             contentRect: CGRect(x: 0, y: 0, width: 640, height: 480),

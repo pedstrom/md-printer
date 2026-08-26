@@ -19,6 +19,7 @@ private final class ThumbnailSplitView: NSSplitView {
         guard !hidesDivider else { return }
         super.drawDivider(in: rect)
     }
+
 }
 
 @MainActor
@@ -71,6 +72,7 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
     static let defaultSidebarWidth: CGFloat = 168
     static let minimumSidebarWidth: CGFloat = 120
     static let maximumSidebarWidth: CGFloat = 260
+    static let sidebarCollapseThreshold: CGFloat = 72
 
     let previewView: BufferedPDFPreviewView
     let thumbnailView: PDFThumbnailView
@@ -90,6 +92,39 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
 
     var sidebarDividerThickness: CGFloat {
         splitView.dividerThickness
+    }
+
+    var sidebarDividerHitThickness: CGFloat {
+        self.splitView(
+            splitView,
+            effectiveRect: NSRect(
+                x: 0,
+                y: 0,
+                width: splitView.dividerThickness,
+                height: 100
+            ),
+            forDrawnRect: NSRect(x: 0, y: 0, width: splitView.dividerThickness, height: 100),
+            ofDividerAt: 0
+        ).width
+    }
+
+    func captureThumbnailRestorationState() -> PersistedThumbnailSidebar {
+        PersistedThumbnailSidebar(
+            isVisible: isThumbnailSidebarVisible,
+            width: Double(storedSidebarWidth),
+            scrollOffset: Double(max(thumbnailView.visibleRect.minY, 0))
+        )
+    }
+
+    func restoreThumbnailRestorationState(_ state: PersistedThumbnailSidebar) {
+        setThumbnailSidebarWidth(CGFloat(state.width))
+        setThumbnailSidebarVisible(state.isVisible)
+        guard state.isVisible else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.thumbnailView.scroll(
+                NSPoint(x: 0, y: CGFloat(state.scrollOffset))
+            )
+        }
     }
 
     override init(frame frameRect: NSRect) {
@@ -186,11 +221,35 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         ofSubviewAt dividerIndex: Int
     ) -> CGFloat {
         guard dividerIndex == 0 else { return proposedPosition }
+        if proposedPosition < Self.sidebarCollapseThreshold {
+            return 0
+        }
         return min(max(proposedPosition, Self.minimumSidebarWidth), Self.maximumSidebarWidth)
     }
 
+    public func splitView(_ splitView: NSSplitView, canCollapseSubview subview: NSView) -> Bool {
+        subview === sidebarView
+    }
+
+    public func splitView(
+        _ splitView: NSSplitView,
+        effectiveRect proposedEffectiveRect: NSRect,
+        forDrawnRect drawnRect: NSRect,
+        ofDividerAt dividerIndex: Int
+    ) -> NSRect {
+        guard !self.splitView.hidesDivider else { return .zero }
+        return proposedEffectiveRect.insetBy(dx: -6, dy: 0)
+    }
+
     public func splitViewDidResizeSubviews(_ notification: Notification) {
-        guard !isApplyingSidebarLayout, isThumbnailSidebarVisible else { return }
+        guard !isApplyingSidebarLayout else { return }
+        if sidebarView.frame.width < 1 {
+            sidebarView.isHidden = true
+            splitView.hidesDivider = true
+            sidebarController?.targetDidChange()
+            return
+        }
+        guard isThumbnailSidebarVisible else { return }
         storedSidebarWidth = min(
             max(sidebarView.frame.width, Self.minimumSidebarWidth),
             Self.maximumSidebarWidth

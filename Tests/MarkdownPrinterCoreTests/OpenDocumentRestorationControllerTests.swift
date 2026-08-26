@@ -135,6 +135,97 @@ final class OpenDocumentRestorationControllerTests: XCTestCase {
         XCTAssertNil(controller.takeWindowState(for: url))
     }
 
+    func testLastSessionWorkspacePersistsUntilNextCaptureAndTracksAdditionalDocuments() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = OpenDocumentRestorationController(defaults: defaults)
+        let document = URL(fileURLWithPath: "/tmp/Manual.md")
+        let workspace = WorkspaceSnapshot(groups: [
+            WorkspaceWindowGroup(
+                identifier: "tabs",
+                tabs: [.welcome, .document(document, state: nil)],
+                selectedTabIndex: 1,
+                isTabBarVisible: true
+            )
+        ])
+        controller.workspaceCaptureProvider = { workspace }
+
+        controller.captureLastSession()
+
+        XCTAssertEqual(controller.lastSessionWorkspace(), workspace)
+        XCTAssertTrue(controller.canReopenLastSession)
+        var reopenCount = 0
+        controller.reopenLastSessionHandler = { reopenCount += 1 }
+        controller.reopenLastSession()
+        XCTAssertEqual(reopenCount, 1)
+        XCTAssertEqual(controller.lastSessionWorkspace(), workspace)
+
+        controller.documentDidOpen(at: document)
+        XCTAssertFalse(controller.canReopenLastSession)
+        controller.reopenLastSession()
+        XCTAssertEqual(reopenCount, 1)
+
+        controller.documentDidClose(at: document)
+        XCTAssertTrue(controller.canReopenLastSession)
+        controller.workspaceCaptureProvider = { WorkspaceSnapshot(groups: []) }
+        controller.captureLastSession()
+        XCTAssertNil(controller.lastSessionWorkspace())
+        XCTAssertFalse(controller.canReopenLastSession)
+    }
+
+    func testVersionedUpdateWorkspaceRoundTripsTabsAndThumbnailStateOnce() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = OpenDocumentRestorationController(defaults: defaults)
+        let document = URL(fileURLWithPath: "/tmp/Versioned.md")
+        let state = DocumentWindowRestorationState(
+            frame: CGRect(x: 30, y: 40, width: 700, height: 800),
+            viewport: PersistedPreviewViewport(
+                scaleFactor: 0.75,
+                pageIndex: 2,
+                normalizedPageX: 0.2,
+                normalizedPageY: 0.6,
+                documentProgress: 0.4
+            ),
+            thumbnails: PersistedThumbnailSidebar(
+                isVisible: true,
+                width: 214,
+                scrollOffset: 320
+            )
+        )
+        let workspace = WorkspaceSnapshot(groups: [
+            WorkspaceWindowGroup(
+                identifier: "group-a",
+                tabs: [.document(document, state: state), .welcome],
+                selectedTabIndex: 0,
+                isTabBarVisible: true
+            )
+        ])
+        controller.workspaceCaptureProvider = { workspace }
+
+        controller.prepareForRelaunch(targetBuild: "12")
+
+        XCTAssertNil(controller.consumeWorkspaceForRelaunch(currentBuild: "11"))
+        XCTAssertEqual(controller.consumeWorkspaceForRelaunch(currentBuild: "12"), workspace)
+        XCTAssertEqual(controller.takeWindowState(for: document), state)
+        XCTAssertNil(controller.consumeWorkspaceForRelaunch(currentBuild: "12"))
+    }
+
+    func testUnknownWorkspaceVersionIsNotRestored() {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(
+            [
+                "build": "12",
+                "workspace": ["version": 99, "groups": []]
+            ],
+            forKey: OpenDocumentRestorationController.pendingRelaunchKey
+        )
+        let controller = OpenDocumentRestorationController(defaults: defaults)
+
+        XCTAssertNil(controller.consumeWorkspaceForRelaunch(currentBuild: "12"))
+    }
+
     private func makeDefaults() -> (UserDefaults, String) {
         let name = "OpenDocumentRestorationControllerTests.\(UUID().uuidString)"
         return (UserDefaults(suiteName: name)!, name)

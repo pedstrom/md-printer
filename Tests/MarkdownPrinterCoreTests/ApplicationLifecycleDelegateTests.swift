@@ -10,6 +10,17 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         XCTAssertTrue(delegate.applicationShouldTerminateAfterLastWindowClosed(.shared))
     }
 
+    func testNormalTerminationCapturesWorkspaceBeforeTerminating() {
+        let delegate = ApplicationLifecycleDelegate()
+        var captureCount = 0
+        delegate.normalTerminationHandler = { captureCount += 1 }
+
+        let reply = delegate.applicationShouldTerminate(.shared)
+
+        XCTAssertEqual(reply, .terminateNow)
+        XCTAssertEqual(captureCount, 1)
+    }
+
     func testNewWindowForTabUsesTheInstalledHandler() {
         let delegate = ApplicationLifecycleDelegate()
         var invocationCount = 0
@@ -47,7 +58,7 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         XCTAssertFalse(fileMenu.item(withTitle: "Open…")?.isHidden == true)
     }
 
-    func testGeneratedDuplicateIsHiddenWithoutChangingOtherFileItems() {
+    func testGeneratedDuplicateIsRemovedWithoutChangingOtherFileItems() {
         let delegate = ApplicationLifecycleDelegate()
         let mainMenu = NSMenu()
         let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
@@ -63,9 +74,27 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
 
         delegate.hideGeneratedFileItems(in: mainMenu)
 
-        XCTAssertTrue(duplicate.isHidden)
+        XCTAssertFalse(fileMenu.items.contains(duplicate))
         XCTAssertFalse(open.isHidden)
         XCTAssertFalse(save.isHidden)
+    }
+
+    func testGeneratedNewWindowAndTabDuplicatesAreRemoved() {
+        let delegate = ApplicationLifecycleDelegate()
+        let mainMenu = NSMenu()
+        let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(withTitle: "New Window", action: nil, keyEquivalent: "n")
+        fileMenu.addItem(withTitle: "New Tab", action: nil, keyEquivalent: "t")
+        fileMenu.addItem(withTitle: "New Window", action: nil, keyEquivalent: "n")
+        fileMenu.addItem(withTitle: "New Tab", action: nil, keyEquivalent: "t")
+        fileMenu.addItem(withTitle: "Open…", action: nil, keyEquivalent: "o")
+        fileItem.submenu = fileMenu
+        mainMenu.addItem(fileItem)
+
+        delegate.hideGeneratedNewSubmenu(in: mainMenu)
+
+        XCTAssertEqual(fileMenu.items.map(\.title), ["New Window", "New Tab", "Open…"])
     }
 
     func testMenuCleanupIgnoresUnrelatedNewSubmenusAndMissingMenus() {
@@ -148,5 +177,57 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         newItem.isHidden = false
         RunLoop.main.run(until: Date().addingTimeInterval(0.01))
         XCTAssertTrue(newItem.isHidden)
+    }
+
+    func testReopenLastSessionItemAppearsAfterOpenRecentAndTracksAvailability() throws {
+        let suiteName = "ApplicationLifecycleDelegateTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let restoration = OpenDocumentRestorationController(defaults: defaults)
+        let document = URL(fileURLWithPath: "/tmp/Reopen.md")
+        restoration.workspaceCaptureProvider = {
+            WorkspaceSnapshot(groups: [
+                WorkspaceWindowGroup(
+                    identifier: "window",
+                    tabs: [.document(document, state: nil)],
+                    selectedTabIndex: 0,
+                    isTabBarVisible: false
+                )
+            ])
+        }
+        restoration.captureLastSession()
+        var reopenCount = 0
+        restoration.reopenLastSessionHandler = { reopenCount += 1 }
+
+        let delegate = ApplicationLifecycleDelegate()
+        delegate.documentRestorationController = restoration
+        let mainMenu = NSMenu()
+        let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(withTitle: "Open…", action: nil, keyEquivalent: "o")
+        let recent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        recent.submenu = NSMenu(title: "Open Recent")
+        fileMenu.addItem(recent)
+        fileMenu.addItem(.separator())
+        fileMenu.addItem(withTitle: "Close", action: nil, keyEquivalent: "w")
+        fileItem.submenu = fileMenu
+        mainMenu.addItem(fileItem)
+
+        delegate.configureFileMenu(in: mainMenu)
+        delegate.configureFileMenu(in: mainMenu)
+
+        let reopenItems = fileMenu.items.filter {
+            $0.title == "Reopen Windows from Last Session"
+        }
+        XCTAssertEqual(reopenItems.count, 1)
+        let reopen = try XCTUnwrap(reopenItems.first)
+        XCTAssertEqual(fileMenu.index(of: reopen), fileMenu.index(of: recent) + 1)
+        XCTAssertTrue(reopen.isEnabled)
+        delegate.reopenWindowsFromLastSession(nil)
+        XCTAssertEqual(reopenCount, 1)
+
+        restoration.documentDidOpen(at: document)
+        delegate.hideGeneratedFileItems(in: mainMenu)
+        XCTAssertFalse(reopen.isEnabled)
     }
 }

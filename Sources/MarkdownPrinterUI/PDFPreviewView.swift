@@ -110,7 +110,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         let container = PDFPreviewContainerView()
         container.previewView.delegate = context.coordinator
         container.attach(sidebarController: sidebarController)
-        windowRestorationCoordinator?.attach(preview: container.previewView)
+        windowRestorationCoordinator?.attach(previewContainer: container)
         return container
     }
 
@@ -120,7 +120,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         context.coordinator.onDragError = onDragError
         view.delegate = context.coordinator
         container.attach(sidebarController: sidebarController)
-        windowRestorationCoordinator?.attach(preview: view)
+        windowRestorationCoordinator?.attach(previewContainer: container)
         view.updateDragPayload(
             format: exportFormat,
             fileName: fileName,

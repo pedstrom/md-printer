@@ -58,13 +58,49 @@ package struct PersistedPreviewViewport: Equatable {
     }
 }
 
+package struct PersistedThumbnailSidebar: Equatable {
+    let isVisible: Bool
+    let width: Double
+    let scrollOffset: Double
+
+    package init(isVisible: Bool, width: Double, scrollOffset: Double) {
+        self.isVisible = isVisible
+        self.width = min(max(width, 120), 260)
+        self.scrollOffset = max(scrollOffset, 0)
+    }
+
+    fileprivate var propertyList: [String: Any] {
+        [
+            "isVisible": isVisible,
+            "width": width,
+            "scrollOffset": scrollOffset
+        ]
+    }
+
+    fileprivate init?(propertyList: [String: Any]) {
+        guard let isVisible = propertyList["isVisible"] as? Bool,
+              let width = propertyList["width"] as? Double,
+              let scrollOffset = propertyList["scrollOffset"] as? Double,
+              width.isFinite,
+              scrollOffset.isFinite
+        else { return nil }
+        self.init(isVisible: isVisible, width: width, scrollOffset: scrollOffset)
+    }
+}
+
 package struct DocumentWindowRestorationState: Equatable {
     let frame: CGRect?
     let viewport: PersistedPreviewViewport?
+    let thumbnails: PersistedThumbnailSidebar?
 
-    package init(frame: CGRect?, viewport: PersistedPreviewViewport?) {
+    package init(
+        frame: CGRect?,
+        viewport: PersistedPreviewViewport?,
+        thumbnails: PersistedThumbnailSidebar? = nil
+    ) {
         self.frame = frame
         self.viewport = viewport
+        self.thumbnails = thumbnails
     }
 
     fileprivate var propertyList: [String: Any] {
@@ -79,6 +115,9 @@ package struct DocumentWindowRestorationState: Equatable {
         }
         if let viewport {
             result["viewport"] = viewport.propertyList
+        }
+        if let thumbnails {
+            result["thumbnails"] = thumbnails.propertyList
         }
         return result
     }
@@ -96,12 +135,155 @@ package struct DocumentWindowRestorationState: Equatable {
         viewport = (propertyList["viewport"] as? [String: Any]).flatMap(
             PersistedPreviewViewport.init(propertyList:)
         )
+        thumbnails = (propertyList["thumbnails"] as? [String: Any]).flatMap(
+            PersistedThumbnailSidebar.init(propertyList:)
+        )
+    }
+}
+
+package struct WorkspaceTabRecord: Equatable {
+    package enum Kind: String {
+        case document
+        case welcome
+    }
+
+    let kind: Kind
+    let documentURL: URL?
+    let windowState: DocumentWindowRestorationState?
+
+    package static func document(
+        _ url: URL,
+        state: DocumentWindowRestorationState?
+    ) -> Self {
+        Self(kind: .document, documentURL: url.standardizedFileURL, windowState: state)
+    }
+
+    package static let welcome = Self(kind: .welcome, documentURL: nil, windowState: nil)
+
+    fileprivate var propertyList: [String: Any] {
+        var result: [String: Any] = ["kind": kind.rawValue]
+        if let documentURL {
+            result["path"] = documentURL.path
+        }
+        if let windowState {
+            result["state"] = windowState.propertyList
+        }
+        return result
+    }
+
+    fileprivate init?(propertyList: [String: Any]) {
+        guard let rawKind = propertyList["kind"] as? String,
+              let kind = Kind(rawValue: rawKind)
+        else { return nil }
+        switch kind {
+        case .document:
+            guard let path = propertyList["path"] as? String else { return nil }
+            self.kind = kind
+            documentURL = URL(fileURLWithPath: path).standardizedFileURL
+            windowState = (propertyList["state"] as? [String: Any]).map(
+                DocumentWindowRestorationState.init(propertyList:)
+            )
+        case .welcome:
+            self = .welcome
+        }
+    }
+
+    private init(
+        kind: Kind,
+        documentURL: URL?,
+        windowState: DocumentWindowRestorationState?
+    ) {
+        self.kind = kind
+        self.documentURL = documentURL
+        self.windowState = windowState
+    }
+}
+
+package struct WorkspaceWindowGroup: Equatable {
+    let identifier: String
+    let tabs: [WorkspaceTabRecord]
+    let selectedTabIndex: Int
+    let isTabBarVisible: Bool
+
+    package init(
+        identifier: String,
+        tabs: [WorkspaceTabRecord],
+        selectedTabIndex: Int,
+        isTabBarVisible: Bool
+    ) {
+        self.identifier = identifier
+        self.tabs = tabs
+        self.selectedTabIndex = tabs.indices.contains(selectedTabIndex) ? selectedTabIndex : 0
+        self.isTabBarVisible = isTabBarVisible
+    }
+
+    fileprivate var propertyList: [String: Any] {
+        [
+            "identifier": identifier,
+            "tabs": tabs.map(\.propertyList),
+            "selectedTabIndex": selectedTabIndex,
+            "isTabBarVisible": isTabBarVisible
+        ]
+    }
+
+    fileprivate init?(propertyList: [String: Any]) {
+        guard let identifier = propertyList["identifier"] as? String,
+              let storedTabs = propertyList["tabs"] as? [[String: Any]],
+              let selectedTabIndex = propertyList["selectedTabIndex"] as? Int,
+              let isTabBarVisible = propertyList["isTabBarVisible"] as? Bool
+        else { return nil }
+        let tabs = storedTabs.compactMap(WorkspaceTabRecord.init(propertyList:))
+        guard !tabs.isEmpty, tabs.contains(where: { $0.kind == .document }) else { return nil }
+        self.init(
+            identifier: identifier,
+            tabs: tabs,
+            selectedTabIndex: selectedTabIndex,
+            isTabBarVisible: isTabBarVisible
+        )
+    }
+}
+
+package struct WorkspaceSnapshot: Equatable {
+    package static let currentVersion = 1
+
+    let version: Int
+    let groups: [WorkspaceWindowGroup]
+
+    package init(groups: [WorkspaceWindowGroup], version: Int = currentVersion) {
+        self.version = version
+        self.groups = groups.filter { group in
+            group.tabs.contains(where: { $0.kind == .document })
+        }
+    }
+
+    package var documentURLs: [URL] {
+        groups.flatMap(\.tabs).compactMap(\.documentURL)
+    }
+
+    fileprivate var propertyList: [String: Any] {
+        ["version": version, "groups": groups.map(\.propertyList)]
+    }
+
+    fileprivate init?(propertyList: [String: Any]) {
+        guard let version = propertyList["version"] as? Int,
+              version == Self.currentVersion,
+              let storedGroups = propertyList["groups"] as? [[String: Any]]
+        else { return nil }
+        self.init(
+            groups: storedGroups.compactMap(WorkspaceWindowGroup.init(propertyList:)),
+            version: version
+        )
     }
 }
 
 @MainActor
 public final class OpenDocumentRestorationController: ObservableObject {
     package static let pendingRelaunchKey = "pendingUpdateDocumentRestoration"
+    package static let lastSessionKey = "lastDocumentWorkspace"
+
+    @Published package private(set) var canReopenLastSession = false
+    package var workspaceCaptureProvider: (() -> WorkspaceSnapshot)?
+    package var reopenLastSessionHandler: (() -> Void)?
 
     private struct StateProviderRegistration {
         let id: UUID
@@ -112,14 +294,17 @@ public final class OpenDocumentRestorationController: ObservableObject {
     private var openDocumentCounts: [URL: Int] = [:]
     private var stateProviders: [URL: [StateProviderRegistration]] = [:]
     private var pendingWindowStates: [URL: DocumentWindowRestorationState] = [:]
+    private var isPreparingUpdateRelaunch = false
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        refreshReopenAvailability()
     }
 
     public func documentDidOpen(at url: URL?) {
         guard let url = normalizedFileURL(url) else { return }
         openDocumentCounts[url, default: 0] += 1
+        refreshReopenAvailability()
     }
 
     public func documentDidClose(at url: URL?) {
@@ -129,6 +314,7 @@ public final class OpenDocumentRestorationController: ObservableObject {
         } else {
             openDocumentCounts.removeValue(forKey: url)
         }
+        refreshReopenAvailability()
     }
 
     public func isDocumentOpen(at url: URL) -> Bool {
@@ -161,52 +347,72 @@ public final class OpenDocumentRestorationController: ObservableObject {
     }
 
     package func prepareForRelaunch(targetBuild: String) {
-        let urls = openDocumentCounts.keys.sorted { $0.path < $1.path }
-        guard !urls.isEmpty else {
+        isPreparingUpdateRelaunch = true
+        let workspace = captureWorkspace()
+        guard !workspace.documentURLs.isEmpty else {
             defaults.removeObject(forKey: Self.pendingRelaunchKey)
             return
         }
-        let documents: [[String: Any]] = urls.map { url in
-            var record: [String: Any] = ["path": url.path]
-            if let state = stateProviders[url]?.last?.provider() {
-                record.merge(state.propertyList) { _, new in new }
-            }
-            return record
-        }
         defaults.set(
-            ["build": targetBuild, "documents": documents],
+            ["build": targetBuild, "workspace": workspace.propertyList],
             forKey: Self.pendingRelaunchKey
         )
     }
 
-    public func consumeDocumentsForRelaunch(currentBuild: String) -> [URL] {
-        guard
-            let record = defaults.dictionary(forKey: Self.pendingRelaunchKey),
-            record["build"] as? String == currentBuild
-        else {
-            return []
-        }
-
-        let documents: [[String: Any]]
-        if let storedDocuments = record["documents"] as? [[String: Any]] {
-            documents = storedDocuments
-        } else if let paths = record["paths"] as? [String] {
-            documents = paths.map { ["path": $0] }
+    package func captureLastSession() {
+        guard !isPreparingUpdateRelaunch else { return }
+        let workspace = captureWorkspace()
+        if workspace.documentURLs.isEmpty {
+            defaults.removeObject(forKey: Self.lastSessionKey)
         } else {
-            return []
+            defaults.set(workspace.propertyList, forKey: Self.lastSessionKey)
         }
+        refreshReopenAvailability()
+    }
 
-        defaults.removeObject(forKey: Self.pendingRelaunchKey)
-        pendingWindowStates.removeAll()
-        return documents.compactMap { document in
-            guard let path = document["path"] as? String else { return nil }
-            let url = URL(fileURLWithPath: path).standardizedFileURL
-            let state = DocumentWindowRestorationState(propertyList: document)
-            if state.frame != nil || state.viewport != nil {
-                pendingWindowStates[url] = state
-            }
-            return url
+    package func reopenLastSession() {
+        guard canReopenLastSession else { return }
+        reopenLastSessionHandler?()
+    }
+
+    package func lastSessionWorkspace() -> WorkspaceSnapshot? {
+        guard let propertyList = defaults.dictionary(forKey: Self.lastSessionKey) else {
+            return nil
         }
+        return WorkspaceSnapshot(propertyList: propertyList)
+    }
+
+    package func consumeWorkspaceForRelaunch(currentBuild: String) -> WorkspaceSnapshot? {
+        guard let record = defaults.dictionary(forKey: Self.pendingRelaunchKey),
+              record["build"] as? String == currentBuild
+        else { return nil }
+
+        let workspace: WorkspaceSnapshot?
+        if let storedWorkspace = record["workspace"] as? [String: Any] {
+            workspace = WorkspaceSnapshot(propertyList: storedWorkspace)
+        } else {
+            workspace = legacyWorkspace(from: record)
+        }
+        guard let workspace else { return nil }
+        defaults.removeObject(forKey: Self.pendingRelaunchKey)
+        prepareWindowStates(for: workspace)
+        return workspace
+    }
+
+    public func consumeDocumentsForRelaunch(currentBuild: String) -> [URL] {
+        consumeWorkspaceForRelaunch(currentBuild: currentBuild)?.documentURLs ?? []
+    }
+
+    package func prepareWindowStates(for workspace: WorkspaceSnapshot) {
+        pendingWindowStates.removeAll()
+        for tab in workspace.groups.flatMap(\.tabs) {
+            guard let url = tab.documentURL, let state = tab.windowState else { continue }
+            pendingWindowStates[url.standardizedFileURL] = state
+        }
+    }
+
+    package func currentWindowState(for url: URL) -> DocumentWindowRestorationState? {
+        stateProviders[url.standardizedFileURL]?.last?.provider()
     }
 
     package func takeWindowState(for url: URL?) -> DocumentWindowRestorationState? {
@@ -217,5 +423,55 @@ public final class OpenDocumentRestorationController: ObservableObject {
     private func normalizedFileURL(_ url: URL?) -> URL? {
         guard let url, url.isFileURL else { return nil }
         return url.standardizedFileURL
+    }
+
+    private func captureWorkspace() -> WorkspaceSnapshot {
+        if let captured = workspaceCaptureProvider?(), !captured.documentURLs.isEmpty {
+            return captured
+        }
+        let groups = openDocumentCounts.keys.sorted { $0.path < $1.path }.enumerated().map {
+            index, url in
+            WorkspaceWindowGroup(
+                identifier: "window-\(index)",
+                tabs: [.document(url, state: currentWindowState(for: url))],
+                selectedTabIndex: 0,
+                isTabBarVisible: false
+            )
+        }
+        return WorkspaceSnapshot(groups: groups)
+    }
+
+    private func legacyWorkspace(from record: [String: Any]) -> WorkspaceSnapshot? {
+        let documents: [[String: Any]]
+        if let storedDocuments = record["documents"] as? [[String: Any]] {
+            documents = storedDocuments
+        } else if let paths = record["paths"] as? [String] {
+            documents = paths.map { ["path": $0] }
+        } else {
+            return nil
+        }
+        let groups = documents.enumerated().compactMap { index, document -> WorkspaceWindowGroup? in
+            guard let path = document["path"] as? String else { return nil }
+            let url = URL(fileURLWithPath: path).standardizedFileURL
+            let state = DocumentWindowRestorationState(propertyList: document)
+            let hasState = state.frame != nil || state.viewport != nil || state.thumbnails != nil
+            return WorkspaceWindowGroup(
+                identifier: "legacy-\(index)",
+                tabs: [.document(url, state: hasState ? state : nil)],
+                selectedTabIndex: 0,
+                isTabBarVisible: false
+            )
+        }
+        return WorkspaceSnapshot(groups: groups)
+    }
+
+    private func refreshReopenAvailability() {
+        guard let workspace = lastSessionWorkspace() else {
+            canReopenLastSession = false
+            return
+        }
+        canReopenLastSession = workspace.documentURLs.contains { url in
+            openDocumentCounts[url.standardizedFileURL] == nil
+        }
     }
 }
