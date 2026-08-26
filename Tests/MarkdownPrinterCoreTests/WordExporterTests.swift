@@ -127,6 +127,40 @@ final class WordExporterTests: XCTestCase {
         XCTAssertTrue(decoded.string.contains("Supporting note."))
     }
 
+    func testWordReferenceFeaturesPreserveLinksImagesAndLiteralRawHTML() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try makePNG().write(to: directory.appendingPathComponent("reference.png"))
+        let rendered = MarkdownRenderer().render(markdown: """
+        [Guide][guide] <reader@example.com> ![Local][image]
+
+        Raw <a href="https://example.com/inert">source</a>.
+
+        <img src="https://example.com/never-fetch.png">
+
+        [guide]: https://example.com/guide "Guide title"
+        [image]: reference.png "Image title"
+        """, baseURL: directory)
+        let data = try WordExporter().wordData(from: rendered)
+        let outputURL = directory.appendingPathComponent("CommonMark.docx")
+        try data.write(to: outputURL)
+
+        let packageListing = try unzip(arguments: ["-l", outputURL.path])
+        let documentXML = try unzip(arguments: ["-p", outputURL.path, "word/document.xml"])
+        let relationshipsXML = try unzip(
+            arguments: ["-p", outputURL.path, "word/_rels/document.xml.rels"]
+        )
+        XCTAssertTrue(packageListing.contains("word/media/markdown-printer-image-1.png"))
+        XCTAssertTrue(relationshipsXML.contains("https://example.com/guide"))
+        XCTAssertTrue(relationshipsXML.contains("mailto:reader@example.com"))
+        XCTAssertFalse(relationshipsXML.contains("https://example.com/inert"))
+        XCTAssertFalse(relationshipsXML.contains("never-fetch.png"))
+        XCTAssertTrue(documentXML.contains("&lt;a href="))
+        XCTAssertTrue(documentXML.contains("https://example.com/inert"))
+        XCTAssertTrue(documentXML.contains("&lt;img src="))
+        XCTAssertTrue(documentXML.contains("https://example.com/never-fetch.png"))
+    }
+
     func testWordBlockquotesPreserveBorderIndentItalicAndInlineLinks() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

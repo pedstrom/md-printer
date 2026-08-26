@@ -7,9 +7,10 @@ public indirect enum InlineNode: Equatable, Sendable {
     case underline([InlineNode])
     case strikethrough([InlineNode])
     case code(String)
-    case link(children: [InlineNode], destination: String)
+    case link(children: [InlineNode], destination: String, title: String? = nil)
     case footnoteReference(label: String)
-    case image(alt: String, source: String)
+    case image(alt: String, source: String, title: String? = nil)
+    case rawHTML(String)
     case lineBreak
 }
 
@@ -20,21 +21,32 @@ public enum TableAlignment: Equatable, Sendable {
 }
 
 public struct MarkdownListItem: Equatable, Sendable {
-    public let content: [InlineNode]
+    public let blocks: [MarkdownBlock]
     public let checked: Bool?
 
     public init(content: [InlineNode], checked: Bool? = nil) {
-        self.content = content
+        self.blocks = [.paragraph(content)]
         self.checked = checked
+    }
+
+    public init(blocks: [MarkdownBlock], checked: Bool? = nil) {
+        self.blocks = blocks
+        self.checked = checked
+    }
+
+    public var content: [InlineNode] {
+        guard case let .paragraph(content) = blocks.first else { return [] }
+        return content
     }
 }
 
-public enum MarkdownBlock: Equatable, Sendable {
+public indirect enum MarkdownBlock: Equatable, Sendable {
     case heading(level: Int, content: [InlineNode])
     case paragraph([InlineNode])
-    case blockquote([InlineNode])
+    case blockquote([MarkdownBlock])
     case list(items: [MarkdownListItem], ordered: Bool, start: Int)
     case codeBlock(language: String?, code: String)
+    case rawHTML(String)
     case thematicBreak
     case footnoteDefinition(label: String, content: [InlineNode])
     case table(

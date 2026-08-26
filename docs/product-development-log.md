@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-08-26 — Entirely missing CommonMark families
+
+- Added two-phase block and inline parsing for Setext headings, indented code blocks, forward and backward reference links and images with titles, core angle-bracket autolinks, HTML5 named and numeric entities, and all seven CommonMark HTML-block forms plus inline raw HTML.
+- Kept raw HTML entirely inert and offline by rendering inline forms like inline code and block forms like fenced code; raw links and images never become annotations, attachments, interpreted markup, or network requests, while the existing `<u>` and `<br>` extensions retain precedence.
+- Generated a compiled production entity lookup from the authoritative WHATWG HTML5 snapshot with its checksum, without adding a runtime resource, network lookup, or package dependency.
+- Pinned all 166 normative CommonMark 0.31.2 examples from the seven added sections in the test target with source, version, checksum, and license attribution, and validated them through a normalized test-only AST-to-HTML serializer.
+- Added focused parser, document-title, renderer, PDF annotation/searchability, editable Word link/image/style, local-only image, and Finder Quick Look parity regressions, and expanded the showcase and public support wording without claiming complete CommonMark conformance.
+
 ## 2026-08-26 — Native window tabs
 
 - Added direct **File → New Window** and **File → New Tab** commands with Command-N and Command-T, removing the generated New submenu and its misleading New Document option while preserving Open and Open Recent.

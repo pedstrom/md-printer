@@ -263,6 +263,53 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(attachment?.bounds.height, 252)
     }
 
+    func testReferenceImageUsesTheSameLocalOnlyAttachmentPath() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let imageURL = directory.appendingPathComponent("reference.png")
+        try makePNG(size: NSSize(width: 160, height: 80)).write(to: imageURL)
+
+        let output = renderer.render(
+            markdown: "![Reference][asset]\n\n[asset]: reference.png \"Local title\"",
+            baseURL: directory
+        )
+
+        XCTAssertEqual(output.string, "\u{fffc}\n")
+        XCTAssertNotNil(output.attribute(.attachment, at: 0, effectiveRange: nil))
+    }
+
+    func testReferenceAutolinkAndRawHTMLRenderingIsLinkedOrLiteralAsAppropriate() throws {
+        let output = renderer.render(markdown: """
+        [Guide][guide] and <reader@example.com>. Raw <span data-x="1">text</span>.
+
+        <img src="https://example.com/never-fetch.png">
+
+        [guide]: https://example.com/guide "Guide title"
+        """)
+
+        assertAttribute(.link, text: "Guide", in: output)
+        assertAttribute(.link, text: "reader@example.com", in: output)
+        assertAttribute(.backgroundColor, text: "<span data-x=\"1\">", in: output)
+
+        let rawLinkRange = (output.string as NSString).range(of: "<span data-x=\"1\">")
+        let rawBlockRange = (output.string as NSString).range(of: "<img src=\"https://example.com/never-fetch.png\">")
+        XCTAssertNil(output.attribute(.link, at: rawLinkRange.location, effectiveRange: nil))
+        XCTAssertNil(output.attribute(.attachment, at: rawLinkRange.location, effectiveRange: nil))
+        XCTAssertFalse((0..<output.length).contains {
+            output.attribute(.attachment, at: $0, effectiveRange: nil) != nil
+        })
+        let rawFont = try XCTUnwrap(
+            output.attribute(.font, at: rawLinkRange.location, effectiveRange: nil) as? NSFont
+        )
+        XCTAssertTrue(rawFont.isFixedPitch)
+        let rawBlockParagraph = try XCTUnwrap(
+            output.attribute(.paragraphStyle, at: rawBlockRange.location, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
+        XCTAssertEqual(rawBlockParagraph.textBlocks.first?.backgroundColor, renderer.configuration.codeBackgroundColor)
+    }
+
     func testMissingRemoteAndAbsoluteImagesBecomePlaceholders() {
         let remote = renderer.render(markdown: "![Remote](https://example.com/a.png)")
         XCTAssertEqual(remote.string, "[Image: Remote]\n")
@@ -274,7 +321,10 @@ final class MarkdownRendererTests: XCTestCase {
 
     private func assertAttribute(_ key: NSAttributedString.Key, text: String, in output: NSAttributedString) {
         let range = (output.string as NSString).range(of: text)
-        XCTAssertNotNil(output.attribute(key, at: range.location, effectiveRange: nil))
+        XCTAssertNotNil(
+            output.attribute(key, at: range.location, effectiveRange: nil),
+            "Missing \(key.rawValue) for \(text)"
+        )
     }
 
     private func makePNG(size: NSSize) throws -> Data {

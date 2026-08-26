@@ -16,7 +16,7 @@ Drop one file—or a whole batch—onto the app. Each document opens in its own 
 
 ## What it does
 
-- Formats headings, paragraphs, bold, italics, underlining, strikethrough, links, footnotes, lists, quotations, tables, and local images
+- Formats ATX and Setext headings, paragraphs, bold, italics, underlining, strikethrough, inline and reference links, core autolinks, footnotes, lists, quotations, tables, fenced and indented code, entity references, and local inline or reference images
 - Previews Markdown directly in Finder with a continuous, screen-optimized Quick Look view: select a file and press Space or Command-Y
 - Uses Avenir Next for the document and a proper monospaced font for code
 - Produces searchable, US Letter PDFs with page numbers
@@ -29,6 +29,8 @@ Drop one file—or a whole batch—onto the app. Each document opens in its own 
 - Keeps your files entirely on your Mac: no account, upload, analytics, or remote rendering
 
 The PDF in the app preview is the same print-ready, paginated PDF that gets saved or printed. Finder Quick Look is intentionally different: it reuses the native Markdown renderer before PDF pagination to provide a continuous, screen-optimized reading view with selectable text and adaptive light/dark colors. PDF remains the default export, while **Markdown Printer > Settings** can make Microsoft Word the default for both Save and dragging; the Save dialog can also switch formats for one export. Saved and dragged files keep the original Markdown filename with the appropriate `.pdf` or `.docx` extension. A dragged file is prepared locally only when the drag begins, so apps that accept normal Mac file attachments receive a concrete file with the correct name. Local images are resolved relative to the Markdown file; missing or remote images are shown as placeholders instead of being fetched from the internet. Because macOS gives the Quick Look sandbox access to the selected Markdown file but may withhold access to neighboring files, a relative local image can also appear as a readable placeholder in Finder even when it renders in the full app.
+
+Markdown Printer implements selected CommonMark 0.31.2 syntax rather than claiming complete CommonMark conformance. Recognized raw HTML is always displayed as literal, code-styled source: it is never executed, interpreted, used to create links or images, or fetched from the network. The app's established `<u>` underline and `<br>` line-break extensions remain available.
 
 ## Install
 

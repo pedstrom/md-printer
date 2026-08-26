@@ -224,6 +224,22 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertTrue(annotations.contains(where: { $0.url?.absoluteString == "https://openai.com" }))
     }
 
+    func testPDFPreservesReferenceAndAutolinkAnnotationsWhileRawHTMLStaysInert() throws {
+        let text = MarkdownRenderer().render(markdown: """
+        [Guide][guide] <reader@example.com> Raw <a href="https://example.com/inert">source</a>.
+
+        [guide]: https://example.com/guide "Guide title"
+        """)
+        let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))
+        let page = try XCTUnwrap(document.page(at: 0))
+        let annotations = page.annotations.compactMap(\.url?.absoluteString)
+
+        XCTAssertTrue(annotations.contains("https://example.com/guide"))
+        XCTAssertTrue(annotations.contains("mailto:reader@example.com"))
+        XCTAssertFalse(annotations.contains("https://example.com/inert"))
+        XCTAssertTrue(page.string?.contains("<a href=\"https://example.com/inert\">") == true)
+    }
+
     func testPDFPreservesResolvedLocalMarkdownLinkAnnotation() throws {
         let baseURL = URL(fileURLWithPath: "/tmp/reports/deeper-research", isDirectory: true)
         let expectedURL = try XCTUnwrap(

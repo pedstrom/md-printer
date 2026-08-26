@@ -50,6 +50,9 @@ let package = Package(
                 "MarkdownPrinterCore",
                 "MarkdownPrinterQuickLookSupport",
                 "MarkdownPrinterUI"
+            ],
+            resources: [
+                .copy("Fixtures/CommonMark")
             ]
         )
     ],

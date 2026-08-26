@@ -37,7 +37,7 @@ final class InlineParserTests: XCTestCase {
         )
         XCTAssertEqual(
             parser.parse("![Photo](image.png \"Caption\")"),
-            [.image(alt: "Photo", source: "image.png")]
+            [.image(alt: "Photo", source: "image.png", title: "Caption")]
         )
     }
 

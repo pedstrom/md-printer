@@ -149,6 +149,38 @@ final class ContinuousPreviewRenderingTests: XCTestCase {
         )
     }
 
+    func testRendererSharesReferenceAutolinkEntityAndInertHTMLBehavior() throws {
+        let markdown = """
+        Quick Look title
+        ================
+
+        [Guide][guide] <reader@example.com> &copy; Raw <span>source</span>.
+
+        <img src="https://example.com/never-fetch.png">
+
+        [guide]: https://example.com/guide
+        """
+        let document = MarkdownDocument(title: "Fallback", markdown: markdown)
+        let blocks = MarkdownParser().parse(markdown)
+        let output = ContinuousPreviewRenderer().render(PreparedQuickLookDocument(
+            document: document,
+            blocks: blocks
+        ))
+
+        XCTAssertEqual(document.title, "Quick Look title")
+        XCTAssertTrue(output.string.contains("Guide reader@example.com © Raw <span>source</span>."))
+        XCTAssertTrue(output.string.contains("<img src=\"https://example.com/never-fetch.png\">"))
+        let guide = (output.string as NSString).range(of: "Guide")
+        let email = (output.string as NSString).range(of: "reader@example.com")
+        let raw = (output.string as NSString).range(of: "<span>")
+        XCTAssertNotNil(output.attribute(.link, at: guide.location, effectiveRange: nil))
+        XCTAssertNotNil(output.attribute(.link, at: email.location, effectiveRange: nil))
+        XCTAssertNil(output.attribute(.link, at: raw.location, effectiveRange: nil))
+        XCTAssertNil(output.attribute(.attachment, at: raw.location, effectiveRange: nil))
+        let rawFont = try XCTUnwrap(output.attribute(.font, at: raw.location, effectiveRange: nil) as? NSFont)
+        XCTAssertTrue(rawFont.isFixedPitch)
+    }
+
     func testFootnoteLinksRoundTripUnicodeAndRejectOtherLinks() {
         let label = "résumé / note"
         let definitionURL = QuickLookFootnoteLink.url(for: .definition(label))

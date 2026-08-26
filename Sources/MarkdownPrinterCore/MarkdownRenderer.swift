@@ -74,7 +74,7 @@ public final class MarkdownRenderer {
             result.append(rendered)
             result.append(NSAttributedString(string: "\n"))
 
-        case let .blockquote(content):
+        case let .blockquote(blocks):
             let block = NSTextBlock()
             block.setContentWidth(100, type: .percentageValueType)
             block.setWidth(1.5, type: .absoluteValueType, for: .border, edge: .minX)
@@ -82,12 +82,17 @@ public final class MarkdownRenderer {
             block.setWidth(12, type: .absoluteValueType, for: .padding, edge: .minX)
             block.setWidth(3, type: .absoluteValueType, for: .padding, edge: .minY)
             block.setWidth(3, type: .absoluteValueType, for: .padding, edge: .maxY)
+            let quote = NSMutableAttributedString()
+            for child in blocks {
+                append(block: child, to: quote, baseURL: baseURL, footnotes: footnotes)
+            }
             let paragraph = paragraphStyle()
             paragraph.textBlocks = [block]
-            let quote = renderInline(content, font: fonts.italic(size: configuration.bodyFontSize), baseURL: baseURL, footnotes: footnotes)
-            quote.addAttribute(.paragraphStyle, value: paragraph, range: quote.fullRange)
+            quote.addAttributes([
+                .paragraphStyle: paragraph,
+                .font: fonts.italic(size: configuration.bodyFontSize)
+            ], range: quote.fullRange)
             result.append(quote)
-            result.append(NSAttributedString(string: "\n"))
 
         case let .list(items, ordered, start):
             for (offset, item) in items.enumerated() {
@@ -103,12 +108,14 @@ public final class MarkdownRenderer {
                     string: prefix,
                     attributes: bodyAttributes(font: fonts.bold(size: configuration.bodyFontSize))
                 )
-                line.append(renderInline(
-                    item.content,
-                    font: fonts.regular(size: configuration.bodyFontSize),
-                    baseURL: baseURL,
-                    footnotes: footnotes
-                ))
+                let itemContent = NSMutableAttributedString()
+                for block in item.blocks {
+                    append(block: block, to: itemContent, baseURL: baseURL, footnotes: footnotes)
+                }
+                if itemContent.string.hasSuffix("\n") {
+                    itemContent.deleteCharacters(in: NSRange(location: itemContent.length - 1, length: 1))
+                }
+                line.append(itemContent)
                 let paragraph = paragraphStyle(spacingAfter: 4)
                 paragraph.firstLineHeadIndent = 8
                 paragraph.headIndent = 30
@@ -126,6 +133,27 @@ public final class MarkdownRenderer {
             paragraph.textBlocks = [block]
             let rendered = NSMutableAttributedString(
                 string: code.isEmpty ? " " : code,
+                attributes: [
+                    .font: fonts.monospaced(size: configuration.bodyFontSize - 1),
+                    .foregroundColor: configuration.textColor,
+                    .paragraphStyle: paragraph
+                ]
+            )
+            result.append(rendered)
+            result.append(NSAttributedString(
+                string: "\n",
+                attributes: [.paragraphStyle: paragraphStyle(spacingAfter: 10)]
+            ))
+
+        case let .rawHTML(source):
+            let block = NSTextBlock()
+            block.setContentWidth(100, type: .percentageValueType)
+            block.setWidth(configuration.codeBlockPadding, type: .absoluteValueType, for: .padding)
+            block.backgroundColor = configuration.codeBackgroundColor
+            let paragraph = paragraphStyle(spacingAfter: 0)
+            paragraph.textBlocks = [block]
+            let rendered = NSMutableAttributedString(
+                string: source.isEmpty ? " " : source.trimmingCharacters(in: .newlines),
                 attributes: [
                     .font: fonts.monospaced(size: configuration.bodyFontSize - 1),
                     .foregroundColor: configuration.textColor,
@@ -288,18 +316,18 @@ public final class MarkdownRenderer {
     private func plainText(from nodes: [InlineNode]) -> String {
         nodes.map { node in
             switch node {
-            case let .text(text), let .code(text):
+            case let .text(text), let .code(text), let .rawHTML(text):
                 return text
             case let .emphasis(children),
                  let .strong(children),
                  let .underline(children),
                  let .strikethrough(children):
                 return plainText(from: children)
-            case let .link(children, _):
+            case let .link(children, _, _):
                 return plainText(from: children)
             case let .footnoteReference(label):
                 return label
-            case let .image(alt, _):
+            case let .image(alt, _, _):
                 return alt
             case .lineBreak:
                 return " "
@@ -341,7 +369,7 @@ public final class MarkdownRenderer {
                         .backgroundColor: configuration.codeBackgroundColor
                     ]
                 ))
-            case let .link(children, destination):
+            case let .link(children, destination, _):
                 let child = renderInline(children, font: font, baseURL: baseURL, footnotes: footnotes)
                 child.addAttributes([
                     .foregroundColor: configuration.accentColor,
@@ -368,8 +396,17 @@ public final class MarkdownRenderer {
                         .markdownFootnoteReference: label
                     ]
                 ))
-            case let .image(alt, source):
+            case let .image(alt, source, _):
                 result.append(imageAttachment(alt: alt, source: source, baseURL: baseURL, font: font))
+            case let .rawHTML(source):
+                result.append(NSAttributedString(
+                    string: source,
+                    attributes: [
+                        .font: fonts.monospaced(size: font.pointSize - 0.5),
+                        .foregroundColor: configuration.textColor,
+                        .backgroundColor: configuration.codeBackgroundColor
+                    ]
+                ))
             case .lineBreak:
                 result.append(NSAttributedString(string: "\n", attributes: bodyAttributes(font: font)))
             }
@@ -515,14 +552,15 @@ private extension MarkdownBlock {
         switch self {
         case let .heading(_, content),
              let .paragraph(content),
-             let .blockquote(content),
              let .footnoteDefinition(_, content):
             return content.footnoteReferenceLabels
+        case let .blockquote(blocks):
+            return blocks.flatMap(\.footnoteReferenceLabels)
         case let .list(items, _, _):
-            return items.flatMap { $0.content.footnoteReferenceLabels }
+            return items.flatMap { $0.blocks.flatMap(\.footnoteReferenceLabels) }
         case let .table(headers, _, rows):
             return (headers + rows.flatMap { $0 }).flatMap(\.footnoteReferenceLabels)
-        case .codeBlock, .thematicBreak:
+        case .codeBlock, .rawHTML, .thematicBreak:
             return []
         }
     }
@@ -538,9 +576,9 @@ private extension Array where Element == InlineNode {
                  let .strong(children),
                  let .underline(children),
                  let .strikethrough(children),
-                 let .link(children, _):
+                 let .link(children, _, _):
                 return children.footnoteReferenceLabels
-            case .text, .code, .image, .lineBreak:
+            case .text, .code, .image, .rawHTML, .lineBreak:
                 return []
             }
         }

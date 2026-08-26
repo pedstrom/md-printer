@@ -54,18 +54,18 @@ public struct MarkdownDocument: Equatable, Sendable {
     private static func plainText(from nodes: [InlineNode]) -> String {
         nodes.map { node in
             switch node {
-            case let .text(text), let .code(text):
+            case let .text(text), let .code(text), let .rawHTML(text):
                 return text
             case let .emphasis(children),
                  let .strong(children),
                  let .underline(children),
                  let .strikethrough(children):
                 return plainText(from: children)
-            case let .link(children, _):
+            case let .link(children, _, _):
                 return plainText(from: children)
             case .footnoteReference:
                 return ""
-            case let .image(alt, _):
+            case let .image(alt, _, _):
                 return alt
             case .lineBreak:
                 return " "

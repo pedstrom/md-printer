@@ -28,7 +28,7 @@ final class MarkdownParserTests: XCTestCase {
     func testBlockquoteAndMixedLists() {
         let blocks = parser.parse("> first\n> second\n\n- apple\n* [x] done\n+ [ ] todo\n\n3. third\n4. fourth")
         XCTAssertEqual(blocks, [
-            .blockquote([.text("first"), .lineBreak, .text("second")]),
+            .blockquote([.paragraph([.text("first"), .lineBreak, .text("second")])]),
             .list(items: [
                 MarkdownListItem(content: [.text("apple")]),
                 MarkdownListItem(content: [.text("done")], checked: true),
