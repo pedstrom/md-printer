@@ -5,12 +5,20 @@ import PDFKit
 @MainActor
 public final class PDFExporter {
     public let configuration: RendererConfiguration
+    public let pageSetup: DocumentPageSetup?
 
-    public init(configuration: RendererConfiguration = RendererConfiguration()) {
+    public init(
+        configuration: RendererConfiguration = RendererConfiguration(),
+        pageSetup: DocumentPageSetup? = nil
+    ) {
         self.configuration = configuration
+        self.pageSetup = pageSetup
     }
 
-    public func pdfData(from attributedText: NSAttributedString) throws -> Data {
+    public func pdfData(
+        from attributedText: NSAttributedString,
+        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
+    ) throws -> Data {
         let data = NSMutableData()
         guard let consumer = CGDataConsumer(data: data as CFMutableData) else {
             throw PDFExporterError.renderingFailed
@@ -36,7 +44,7 @@ public final class PDFExporter {
             let origin = CGPoint(x: configuration.pageMargins.left, y: configuration.pageMargins.top)
             page.layoutManager.drawBackground(forGlyphRange: page.glyphRange, at: origin)
             page.layoutManager.drawGlyphs(forGlyphRange: page.glyphRange, at: origin)
-            drawPageNumber(pageIndex + 1)
+            drawFooter(pageNumber: pageIndex + 1, footers: footers)
             NSGraphicsContext.restoreGraphicsState()
             context.restoreGState()
             context.endPDFPage()
@@ -272,19 +280,50 @@ public final class PDFExporter {
         return nil
     }
 
-    private func drawPageNumber(_ pageNumber: Int) {
+    private func drawFooter(
+        pageNumber: Int,
+        footers: ResolvedFooterConfiguration
+    ) {
+        let columns = footerColumnFrames()
+        let footerTop = configuration.pageSize.height - configuration.pageMargins.bottom
+        let y = footerTop + 16
+        drawFooterValue(footers.left, alignment: .left, in: columns.left.offsetBy(dx: 0, dy: y))
+        drawFooterValue(String(pageNumber), alignment: .center, in: columns.center.offsetBy(dx: 0, dy: y))
+        drawFooterValue(footers.right, alignment: .right, in: columns.right.offsetBy(dx: 0, dy: y))
+    }
+
+    private func footerColumnFrames() -> (left: CGRect, center: CGRect, right: CGRect) {
+        let availableWidth = configuration.contentWidth
+        let centerWidth = min(72, availableWidth * 0.2)
+        let sideWidth = max(1, (availableWidth - centerWidth) / 2)
+        let originX = configuration.pageMargins.left
+        return (
+            CGRect(x: originX, y: 0, width: sideWidth, height: 14),
+            CGRect(x: originX + sideWidth, y: 0, width: centerWidth, height: 14),
+            CGRect(x: originX + sideWidth + centerWidth, y: 0, width: sideWidth, height: 14)
+        )
+    }
+
+    private func drawFooterValue(
+        _ value: String,
+        alignment: NSTextAlignment,
+        in frame: CGRect
+    ) {
+        guard !value.isEmpty else { return }
         let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        let label = NSAttributedString(
-            string: String(pageNumber),
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
+        NSAttributedString(
+            string: value,
             attributes: [
                 .font: FontBook(configuration: configuration).regular(size: 8),
                 .foregroundColor: configuration.secondaryTextColor,
                 .paragraphStyle: paragraph
             ]
+        ).draw(
+            with: frame,
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine]
         )
-        let footerTop = configuration.pageSize.height - configuration.pageMargins.bottom
-        label.draw(in: CGRect(x: 0, y: footerTop + 16, width: configuration.pageSize.width, height: 14))
     }
 
     private func addingFootnoteNavigation(
@@ -390,7 +429,14 @@ public final class PDFExporter {
 
     private func printInfo() -> NSPrintInfo {
         let info = NSPrintInfo()
+        if let pageSetup {
+            info.paperName = NSPrinter.PaperName(rawValue: pageSetup.paperName)
+        }
         info.paperSize = configuration.pageSize
+        info.orientation = (pageSetup?.orientation == .landscape
+            || (pageSetup == nil && configuration.pageSize.width > configuration.pageSize.height))
+            ? .landscape
+            : .portrait
         // The generated PDF already contains the configured print-safe margins.
         // A second margin layer would shrink and offset the complete PDF page.
         info.topMargin = 0
@@ -401,6 +447,7 @@ public final class PDFExporter {
         info.verticalPagination = .clip
         info.isHorizontallyCentered = false
         info.isVerticallyCentered = false
+        info.scalingFactor = 1
         return info
     }
 }

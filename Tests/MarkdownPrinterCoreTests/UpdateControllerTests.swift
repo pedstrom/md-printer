@@ -51,7 +51,7 @@ final class UpdateControllerTests: XCTestCase {
         XCTAssertTrue(controller.canCheckForUpdates)
     }
 
-    func testProductionControllerStartsSparkleBridge() async {
+    func testProductionControllerConstructsSparkleBridgeWithoutLaunchingUpdaterUIInTests() async {
         let (defaults, suiteName) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let restoration = OpenDocumentRestorationController(defaults: defaults)

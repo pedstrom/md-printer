@@ -95,6 +95,65 @@ final class WordExporterTests: XCTestCase {
         XCTAssertEqual(decoded.string.trimmingCharacters(in: .newlines), "Editable")
     }
 
+    func testWordPageSetupAndEditableThreeColumnFooterMatchPDFInputs() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let setup = DocumentPageSetup(
+            paperName: "iso-a4",
+            paperSize: CGSize(width: 595, height: 842),
+            orientation: .landscape,
+            scale: 1.25
+        )
+        let rendered = MarkdownRenderer(
+            configuration: RendererConfiguration().applying(setup)
+        ).render(markdown: "# Editable scaled body")
+        let data = try WordExporter().wordData(
+            from: rendered,
+            pageSetup: setup,
+            footers: ResolvedFooterConfiguration(
+                left: "January 2, 2026",
+                right: "Pete & Co."
+            )
+        )
+        let outputURL = directory.appendingPathComponent("Configured.docx")
+        try data.write(to: outputURL)
+
+        let listing = try unzip(arguments: ["-l", outputURL.path])
+        let documentXML = try unzip(arguments: ["-p", outputURL.path, "word/document.xml"])
+        let footerXML = try unzip(arguments: ["-p", outputURL.path, "word/footer1.xml"])
+        let relationshipsXML = try unzip(
+            arguments: ["-p", outputURL.path, "word/_rels/document.xml.rels"]
+        )
+        let contentTypesXML = try unzip(
+            arguments: ["-p", outputURL.path, "\\[Content_Types\\].xml"]
+        )
+
+        XCTAssertTrue(listing.contains("word/footer1.xml"))
+        XCTAssertTrue(documentXML.contains("<w:footerReference w:type=\"default\""))
+        XCTAssertTrue(documentXML.contains("<w:pgSz w:w=\"16840\" w:h=\"11900\" w:orient=\"landscape\"/>"))
+        XCTAssertTrue(documentXML.contains("w:top=\"1080\""))
+        XCTAssertTrue(documentXML.contains("w:left=\"1080\""))
+        XCTAssertTrue(documentXML.contains("w:bottom=\"1080\""))
+        XCTAssertTrue(documentXML.contains("w:right=\"1080\""))
+        XCTAssertTrue(relationshipsXML.contains("relationships/footer"))
+        XCTAssertTrue(contentTypesXML.contains("/word/footer1.xml"))
+        XCTAssertEqual(footerXML.components(separatedBy: "<w:tc>").count - 1, 3)
+        XCTAssertTrue(footerXML.contains("January 2, 2026"))
+        XCTAssertTrue(footerXML.contains("Pete &amp; Co."))
+        XCTAssertTrue(footerXML.contains("<w:instrText xml:space=\"preserve\"> PAGE </w:instrText>"))
+        XCTAssertTrue(footerXML.contains("w:ascii=\"Avenir Next\""))
+        XCTAssertTrue(footerXML.contains("<w:sz w:val=\"16\"/>"))
+        XCTAssertEqual(footerXML.components(separatedBy: "<w:sz w:val=\"16\"/>").count - 1, 7)
+        XCTAssertTrue(documentXML.contains("w:sz w:val=\"60\""), documentXML)
+
+        let decoded = try NSAttributedString(
+            data: data,
+            options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
+            documentAttributes: nil
+        )
+        XCTAssertTrue(decoded.string.contains("Editable scaled body"))
+    }
+
     func testWordFootnotesPreserveSuperscriptAndBidirectionalLinks() throws {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

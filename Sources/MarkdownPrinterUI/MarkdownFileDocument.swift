@@ -23,8 +23,12 @@ public struct MarkdownFileDocument: FileDocument {
     }
 
     public func markdownDocument(sourceURL: URL?) -> MarkdownDocument {
-        MarkdownDocument(
+        let modificationDate = sourceURL.flatMap {
+            try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        } ?? nil
+        return MarkdownDocument(
             sourceURL: sourceURL,
+            sourceModificationDate: modificationDate,
             title: sourceURL?.deletingPathExtension().lastPathComponent ?? decodedDocument.title,
             markdown: decodedDocument.markdown
         )

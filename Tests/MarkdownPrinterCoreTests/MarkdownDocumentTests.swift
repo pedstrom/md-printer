@@ -40,6 +40,7 @@ final class MarkdownDocumentTests: XCTestCase {
         XCTAssertEqual(document.markdown, "Body")
         XCTAssertEqual(document.sourceURL, url)
         XCTAssertEqual(document.baseURL, directory)
+        XCTAssertNotNil(document.sourceModificationDate)
     }
 
     func testDecodeUTF16AndRejectsBinary() throws {

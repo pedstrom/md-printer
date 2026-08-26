@@ -12,6 +12,7 @@ public struct MarkdownPrinterView: View {
     @StateObject private var searchController = PDFSearchController()
     @StateObject private var sidebarController: PDFThumbnailSidebarController
     @StateObject private var documentActions: DocumentActionController
+    @StateObject private var pageActions: DocumentPageActionController
 
     public init(
         session: DocumentSession,
@@ -29,6 +30,10 @@ public struct MarkdownPrinterView: View {
             exportPreferences: exportPreferences,
             activityCoordinator: activityCoordinator
         ))
+        _pageActions = StateObject(wrappedValue: DocumentPageActionController(
+            session: session,
+            activityCoordinator: activityCoordinator
+        ))
     }
 
     public var body: some View {
@@ -43,6 +48,7 @@ public struct MarkdownPrinterView: View {
         .focusedSceneObject(searchController)
         .focusedSceneObject(sidebarController)
         .focusedSceneObject(documentActions)
+        .focusedSceneObject(pageActions)
         .background(StableWindowTitleView(title: session.title))
         .background(PDFSearchPanelPresenter(controller: searchController))
         .background(Color(nsColor: .windowBackgroundColor))
@@ -74,7 +80,7 @@ public struct MarkdownPrinterView: View {
                 if session.hasDocument {
                     ShareToolbarButton(controller: documentActions)
                 }
-                Button(action: printDocument) {
+                Button(action: pageActions.printDocument) {
                     Label("Print", systemImage: "printer")
                 }
                 .keyboardShortcut("p", modifiers: .command)
@@ -184,16 +190,6 @@ public struct MarkdownPrinterView: View {
             guard let selection = controller.runModal() else { return }
             do {
                 try session.save(to: selection.url, as: selection.format)
-            } catch {
-                session.report(error: error)
-            }
-        }
-    }
-
-    private func printDocument() {
-        activityCoordinator.performBlockingOperation {
-            do {
-                try session.printOperation().run()
             } catch {
                 session.report(error: error)
             }

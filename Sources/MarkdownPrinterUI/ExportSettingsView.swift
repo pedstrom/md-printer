@@ -1,3 +1,4 @@
+import AppKit
 import MarkdownPrinterCore
 import SwiftUI
 
@@ -76,7 +77,7 @@ public struct ExportSettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(24)
-        .frame(width: 520)
+        .frame(width: 520, height: 540, alignment: .topLeading)
         .task {
             defaultApplicationController.refreshDefaultStatus()
         }
@@ -119,6 +120,151 @@ public struct ExportSettingsView: View {
     private func requestDefaultApplication() {
         Task {
             await defaultApplicationController.makeMarkdownPrinterDefault()
+        }
+    }
+}
+
+public struct PageSettingsView: View {
+    @ObservedObject private var preferences: PagePreferences
+    private let pageSetupPresenter: NativePageSetupPresenter
+
+    public init(preferences: PagePreferences) {
+        self.preferences = preferences
+        pageSetupPresenter = NativePageSetupPresenter()
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Default Page Setup")
+                .font(.headline)
+
+            LabeledContent("Paper", value: paperDescription)
+            LabeledContent("Orientation", value: orientationDescription)
+            LabeledContent("Scale", value: "\(preferences.defaultPageSetup.scalePercentage)%")
+
+            Button("Change Default Page Setup…") {
+                changeDefaultPageSetup()
+            }
+
+            Text("Documents use fixed 0.75-inch print-safe margins. A document changed with File → Page Setup keeps its own setup.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            Text("Footers")
+                .font(.headline)
+            FooterPreferenceControl(title: "Left Footer", value: $preferences.leftFooter)
+            FooterPreferenceControl(title: "Right Footer", value: $preferences.rightFooter)
+            Text("Dates use the Markdown file’s last-modified time. Page numbers remain centered.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(width: 520, height: 540, alignment: .topLeading)
+    }
+
+    private var paperDescription: String {
+        if preferences.defaultPageSetup.paperName == DocumentPageSetup.letter.paperName {
+            return "US Letter"
+        }
+        return preferences.defaultPageSetup.paperName
+    }
+
+    private var orientationDescription: String {
+        preferences.defaultPageSetup.orientation == .portrait ? "Portrait" : "Landscape"
+    }
+
+    private func changeDefaultPageSetup() {
+        guard let window = NSApp.keyWindow else { return }
+        pageSetupPresenter.present(preferences.defaultPageSetup, for: window) { accepted in
+            guard let accepted else { return }
+            preferences.defaultPageSetup = accepted
+        }
+    }
+}
+
+private struct FooterPreferenceControl: View {
+    let title: String
+    @Binding var value: FooterValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker(title, selection: kindBinding) {
+                ForEach(FooterKind.allCases) { kind in
+                    Text(kind.displayName).tag(kind)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if case .custom = value {
+                TextField("Custom footer text", text: customTextBinding)
+                    .textFieldStyle(.roundedBorder)
+            }
+        }
+    }
+
+    private var kindBinding: Binding<FooterKind> {
+        Binding(
+            get: { FooterKind(value) },
+            set: { kind in
+                switch kind {
+                case .none: value = .none
+                case .date: value = .date
+                case .dateTime: value = .dateTime
+                case .documentTitle: value = .documentTitle
+                case .filename: value = .filename
+                case .custom:
+                    if case .custom = value { return }
+                    value = .custom("")
+                }
+            }
+        )
+    }
+
+    private var customTextBinding: Binding<String> {
+        Binding(
+            get: {
+                guard case let .custom(text) = value else { return "" }
+                return text
+            },
+            set: { value = FooterValue.custom($0).normalized }
+        )
+    }
+}
+
+private enum FooterKind: String, CaseIterable, Identifiable {
+    case none
+    case date
+    case dateTime
+    case documentTitle
+    case filename
+    case custom
+
+    init(_ value: FooterValue) {
+        switch value {
+        case .none: self = .none
+        case .date: self = .date
+        case .dateTime: self = .dateTime
+        case .documentTitle: self = .documentTitle
+        case .filename: self = .filename
+        case .custom: self = .custom
+        }
+    }
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none: return "None"
+        case .date: return "Date"
+        case .dateTime: return "Date & Time"
+        case .documentTitle: return "Document Title"
+        case .filename: return "Filename"
+        case .custom: return "Custom…"
         }
     }
 }

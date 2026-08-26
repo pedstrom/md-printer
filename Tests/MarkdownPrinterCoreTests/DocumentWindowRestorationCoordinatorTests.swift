@@ -182,6 +182,52 @@ final class DocumentWindowRestorationCoordinatorTests: XCTestCase {
         XCTAssertEqual(restoredContainer.thumbnailSidebarWidth, 212, accuracy: 0.5)
     }
 
+    func testCoordinatorCapturesAndRestoresExplicitDocumentPageSetup() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = OpenDocumentRestorationController(defaults: defaults)
+        let url = URL(fileURLWithPath: "/tmp/Page-Setup-Restoration.md")
+        let setup = DocumentPageSetup(
+            paperName: "iso-a4",
+            paperSize: CGSize(width: 595, height: 842),
+            orientation: .landscape,
+            scale: 0.85
+        )
+        let originalSession = DocumentSession()
+        try originalSession.apply(MarkdownDocument(title: "Original", markdown: "# Original"))
+        try originalSession.applyExplicitPageSetup(setup)
+        let originalCoordinator = DocumentWindowRestorationCoordinator(
+            sourceURL: url,
+            restorationController: controller,
+            session: originalSession
+        )
+        originalCoordinator.activate()
+        let captured = try XCTUnwrap(controller.currentWindowState(for: url))
+        XCTAssertEqual(captured.explicitPageSetup, setup)
+        originalCoordinator.deactivate()
+
+        controller.prepareWindowStates(for: WorkspaceSnapshot(groups: [
+            WorkspaceWindowGroup(
+                identifier: "page",
+                tabs: [.document(url, state: captured)],
+                selectedTabIndex: 0,
+                isTabBarVisible: false
+            )
+        ]))
+        let restoredSession = DocumentSession()
+        try restoredSession.apply(MarkdownDocument(title: "Restored", markdown: "# Restored"))
+        let restoredCoordinator = DocumentWindowRestorationCoordinator(
+            sourceURL: url,
+            restorationController: controller,
+            session: restoredSession
+        )
+        restoredCoordinator.activate()
+
+        XCTAssertTrue(restoredSession.hasExplicitPageSetup)
+        XCTAssertEqual(restoredSession.activePageSetup, setup)
+        restoredCoordinator.deactivate()
+    }
+
     private func makeDocument() throws -> PDFDocument {
         let markdown = (0..<100)
             .map { "Paragraph \($0): enough text to produce a stable multipage restoration fixture." }

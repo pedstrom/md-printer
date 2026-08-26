@@ -6,6 +6,7 @@ import SwiftUI
 struct MarkdownPrinterApp: App {
     @NSApplicationDelegateAdaptor(ApplicationLifecycleDelegate.self) private var applicationDelegate
     @StateObject private var exportPreferences: ExportPreferences
+    @StateObject private var pagePreferences: PagePreferences
     @StateObject private var activityCoordinator: ApplicationActivityCoordinator
     @StateObject private var documentRestoration: OpenDocumentRestorationController
     @StateObject private var updateController: UpdateController
@@ -15,6 +16,7 @@ struct MarkdownPrinterApp: App {
 
     init() {
         let exportPreferences = ExportPreferences()
+        let pagePreferences = PagePreferences()
         let activityCoordinator = ApplicationActivityCoordinator()
         let documentRestoration = OpenDocumentRestorationController()
         let windowTabCoordinator = WindowTabCoordinator()
@@ -32,6 +34,7 @@ struct MarkdownPrinterApp: App {
             activityCoordinator: activityCoordinator
         )
         _exportPreferences = StateObject(wrappedValue: exportPreferences)
+        _pagePreferences = StateObject(wrappedValue: pagePreferences)
         _activityCoordinator = StateObject(wrappedValue: activityCoordinator)
         _documentRestoration = StateObject(wrappedValue: documentRestoration)
         _updateController = StateObject(wrappedValue: updateController)
@@ -75,6 +78,7 @@ struct MarkdownPrinterApp: App {
                 fileDocument: configuration.document,
                 sourceURL: configuration.fileURL,
                 exportPreferences: exportPreferences,
+                pagePreferences: pagePreferences,
                 activityCoordinator: activityCoordinator,
                 documentRestoration: documentRestoration,
                 applicationDelegate: applicationDelegate,
@@ -91,12 +95,18 @@ struct MarkdownPrinterApp: App {
         }
 
         Settings {
-            ExportSettingsView(
-                preferences: exportPreferences,
-                updateController: updateController,
-                defaultApplicationController: defaultApplicationController,
-                quickLookNavigator: quickLookNavigator
-            )
+            TabView {
+                ExportSettingsView(
+                    preferences: exportPreferences,
+                    updateController: updateController,
+                    defaultApplicationController: defaultApplicationController,
+                    quickLookNavigator: quickLookNavigator
+                )
+                .tabItem { Label("General", systemImage: "gearshape") }
+
+                PageSettingsView(preferences: pagePreferences)
+                    .tabItem { Label("Page", systemImage: "doc") }
+            }
         }
     }
 }
@@ -208,6 +218,7 @@ private struct MarkdownDocumentWindow: View {
     private let fileDocument: MarkdownFileDocument
     private let sourceURL: URL?
     @ObservedObject var exportPreferences: ExportPreferences
+    @ObservedObject var pagePreferences: PagePreferences
     let activityCoordinator: ApplicationActivityCoordinator
     let documentRestoration: OpenDocumentRestorationController
     let applicationDelegate: ApplicationLifecycleDelegate
@@ -217,6 +228,7 @@ private struct MarkdownDocumentWindow: View {
         fileDocument: MarkdownFileDocument,
         sourceURL: URL?,
         exportPreferences: ExportPreferences,
+        pagePreferences: PagePreferences,
         activityCoordinator: ApplicationActivityCoordinator,
         documentRestoration: OpenDocumentRestorationController,
         applicationDelegate: ApplicationLifecycleDelegate,
@@ -225,17 +237,22 @@ private struct MarkdownDocumentWindow: View {
         self.fileDocument = fileDocument
         self.sourceURL = sourceURL
         self.exportPreferences = exportPreferences
+        self.pagePreferences = pagePreferences
         self.activityCoordinator = activityCoordinator
         self.documentRestoration = documentRestoration
         self.applicationDelegate = applicationDelegate
         self.windowTabCoordinator = windowTabCoordinator
-        _session = StateObject(
-            wrappedValue: Self.makeSession(fileDocument: fileDocument, sourceURL: sourceURL)
+        let session = Self.makeSession(
+            fileDocument: fileDocument,
+            sourceURL: sourceURL,
+            pagePreferences: pagePreferences
         )
+        _session = StateObject(wrappedValue: session)
         _windowRestoration = StateObject(
             wrappedValue: DocumentWindowRestorationCoordinator(
                 sourceURL: sourceURL,
-                restorationController: documentRestoration
+                restorationController: documentRestoration,
+                session: session
             )
         )
     }
@@ -292,9 +309,10 @@ private struct MarkdownDocumentWindow: View {
 
     private static func makeSession(
         fileDocument: MarkdownFileDocument,
-        sourceURL: URL?
+        sourceURL: URL?,
+        pagePreferences: PagePreferences
     ) -> DocumentSession {
-        let session = DocumentSession()
+        let session = DocumentSession(pagePreferences: pagePreferences)
         do {
             try session.apply(fileDocument.markdownDocument(sourceURL: sourceURL))
         } catch {

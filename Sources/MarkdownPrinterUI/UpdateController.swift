@@ -77,8 +77,16 @@ private final class SparkleUpdateChecker: NSObject, UpdateChecking {
     private var observations: [NSKeyValueObservation] = []
 
     init(delegate: SPUUpdaterDelegate) {
+        // A real updater started inside an XCTest host can present Sparkle UI and
+        // identify the host application as "xctest". Tests exercise the bridge
+        // without starting network or user-interface work.
+        let processInfo = ProcessInfo.processInfo
+        let isRunningTests = processInfo.processName == "xctest"
+            || processInfo.arguments.first?.hasSuffix("/xctest") == true
+            || NSClassFromString("XCTestCase") != nil
+        let shouldStartUpdater = !isRunningTests
         updaterController = SPUStandardUpdaterController(
-            startingUpdater: true,
+            startingUpdater: shouldStartUpdater,
             updaterDelegate: delegate,
             userDriverDelegate: nil
         )

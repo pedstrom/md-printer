@@ -2,23 +2,38 @@ import Foundation
 
 public struct MarkdownDocument: Equatable, Sendable {
     public let sourceURL: URL?
+    public let sourceModificationDate: Date?
     public let title: String
     public let markdown: String
 
-    public init(sourceURL: URL? = nil, title: String, markdown: String) {
+    public init(
+        sourceURL: URL? = nil,
+        sourceModificationDate: Date? = nil,
+        title: String,
+        markdown: String
+    ) {
         self.sourceURL = sourceURL
+        self.sourceModificationDate = sourceModificationDate
         self.title = Self.markdownTitle(in: markdown) ?? title
         self.markdown = markdown
     }
 
     public static func load(from url: URL) throws -> MarkdownDocument {
         let data = try Data(contentsOf: url)
-        return try decode(data: data, sourceURL: url)
+        let modificationDate = try? url.resourceValues(
+            forKeys: [.contentModificationDateKey]
+        ).contentModificationDate
+        return try decode(
+            data: data,
+            sourceURL: url,
+            sourceModificationDate: modificationDate
+        )
     }
 
     public static func decode(
         data: Data,
         sourceURL: URL? = nil,
+        sourceModificationDate: Date? = nil,
         suggestedTitle: String? = nil
     ) throws -> MarkdownDocument {
         let markdown: String
@@ -35,7 +50,12 @@ public struct MarkdownDocument: Equatable, Sendable {
         let title = suggestedTitle
             ?? sourceURL?.deletingPathExtension().lastPathComponent
             ?? "Untitled"
-        return MarkdownDocument(sourceURL: sourceURL, title: title, markdown: markdown)
+        return MarkdownDocument(
+            sourceURL: sourceURL,
+            sourceModificationDate: sourceModificationDate,
+            title: title,
+            markdown: markdown
+        )
     }
 
     public var baseURL: URL? {

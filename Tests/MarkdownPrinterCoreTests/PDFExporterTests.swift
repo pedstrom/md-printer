@@ -206,6 +206,59 @@ final class PDFExporterTests: XCTestCase {
         }
     }
 
+    func testPageSetupAndSideFootersAreBakedIntoSearchablePDF() throws {
+        let setup = DocumentPageSetup(
+            paperName: "iso-a4",
+            paperSize: CGSize(width: 595, height: 842),
+            orientation: .landscape,
+            scale: 1.2
+        )
+        let configuration = RendererConfiguration().applying(setup)
+        let renderer = MarkdownRenderer(configuration: configuration)
+        let exporter = PDFExporter(configuration: configuration)
+        let data = try exporter.pdfData(
+            from: renderer.render(markdown: "# Scaled landscape"),
+            footers: ResolvedFooterConfiguration(
+                left: "January 2, 2026",
+                right: "Author Name"
+            )
+        )
+        let document = try XCTUnwrap(PDFDocument(data: data))
+        let page = try XCTUnwrap(document.page(at: 0))
+        let pageText = try XCTUnwrap(page.string)
+
+        XCTAssertEqual(page.bounds(for: .mediaBox).width, 842, accuracy: 0.5)
+        XCTAssertEqual(page.bounds(for: .mediaBox).height, 595, accuracy: 0.5)
+        XCTAssertTrue(pageText.contains("January 2, 2026"))
+        XCTAssertTrue(pageText.contains("Author Name"))
+        XCTAssertEqual(pageText.split(whereSeparator: \.isWhitespace).last.map(String.init), "Name")
+        let left = try XCTUnwrap(document.findString("January 2, 2026", withOptions: []).first)
+        let center = try XCTUnwrap(document.findString("1", withOptions: []).first(where: {
+            $0.pages.contains(page) && $0.bounds(for: page).maxY < 54
+        }))
+        let right = try XCTUnwrap(document.findString("Author Name", withOptions: []).first)
+        XCTAssertLessThan(left.bounds(for: page).maxX, center.bounds(for: page).minX)
+        XCTAssertLessThan(center.bounds(for: page).maxX, right.bounds(for: page).minX)
+        XCTAssertEqual(try exporter.printOperation(forPDFData: data).printInfo.scalingFactor, 1)
+    }
+
+    func testLongSideFooterTruncatesWithoutOverlappingCenteredPageNumber() throws {
+        let longFooter = "A very long custom footer " + String(repeating: "extended ", count: 40)
+        let data = try PDFExporter().pdfData(
+            from: MarkdownRenderer().render(markdown: "Body without digits"),
+            footers: ResolvedFooterConfiguration(left: longFooter, right: "Right")
+        )
+        let document = try XCTUnwrap(PDFDocument(data: data))
+        let page = try XCTUnwrap(document.page(at: 0))
+        let extracted = try XCTUnwrap(page.string)
+        let center = try XCTUnwrap(document.findString("1", withOptions: []).first)
+        let right = try XCTUnwrap(document.findString("Right", withOptions: []).first)
+
+        XCTAssertFalse(extracted.contains(longFooter))
+        XCTAssertTrue(extracted.contains("A very long custom footer"))
+        XCTAssertLessThan(center.bounds(for: page).maxX, right.bounds(for: page).minX)
+    }
+
     func testLongTablePaginatesAndStaysSearchable() throws {
         let rows = (1...70).map { "| Row \($0) | Value \($0) |" }.joined(separator: "\n")
         let markdown = "| Name | Value |\n| --- | ---: |\n" + rows

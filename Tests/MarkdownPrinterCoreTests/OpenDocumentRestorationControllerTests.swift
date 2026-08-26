@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+@testable import MarkdownPrinterCore
 @testable import MarkdownPrinterUI
 
 @MainActor
@@ -191,6 +192,12 @@ final class OpenDocumentRestorationControllerTests: XCTestCase {
                 isVisible: true,
                 width: 214,
                 scrollOffset: 320
+            ),
+            explicitPageSetup: DocumentPageSetup(
+                paperName: "iso-a4",
+                paperSize: CGSize(width: 595, height: 842),
+                orientation: .landscape,
+                scale: 0.9
             )
         )
         let workspace = WorkspaceSnapshot(groups: [

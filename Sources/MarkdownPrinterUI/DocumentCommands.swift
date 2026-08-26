@@ -47,6 +47,7 @@ package struct ShareToolbarButton: NSViewRepresentable {
 
 package struct DocumentFileCommands: Commands {
     @FocusedObject private var controller: DocumentActionController?
+    @FocusedObject private var pageController: DocumentPageActionController?
 
     package init() {}
 
@@ -61,6 +62,20 @@ package struct DocumentFileCommands: Commands {
                 controller?.share()
             }
             .disabled(controller?.canShare != true)
+
+            Divider()
+
+            Button("Page Setup…") {
+                pageController?.showPageSetup()
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(pageController?.canPageSetup != true)
+
+            Button("Print…") {
+                pageController?.printDocument()
+            }
+            .keyboardShortcut("p", modifiers: .command)
+            .disabled(pageController?.canPrint != true)
         }
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import MarkdownPrinterCore
 
 @MainActor
 package final class DocumentWindowRestorationCoordinator: ObservableObject {
@@ -9,22 +10,27 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
     private weak var window: NSWindow?
     private weak var preview: BufferedPDFPreviewView?
     private weak var previewContainer: PDFPreviewContainerView?
+    private weak var session: DocumentSession?
     private var pendingFrame: CGRect?
     private var pendingViewport: PersistedPreviewViewport?
     private var pendingThumbnails: PersistedThumbnailSidebar?
+    private var pendingPageSetup: DocumentPageSetup?
     private var isActive = false
     private var restoreSequence: UInt64 = 0
 
     package init(
         sourceURL: URL?,
-        restorationController: OpenDocumentRestorationController
+        restorationController: OpenDocumentRestorationController,
+        session: DocumentSession? = nil
     ) {
         self.sourceURL = sourceURL
         self.restorationController = restorationController
+        self.session = session
         let pendingState = restorationController.takeWindowState(for: sourceURL)
         pendingFrame = pendingState?.frame
         pendingViewport = pendingState?.viewport
         pendingThumbnails = pendingState?.thumbnails
+        pendingPageSetup = pendingState?.explicitPageSetup
     }
 
     package func activate() {
@@ -37,6 +43,7 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
         ) { [weak self] in
             self?.captureState()
         }
+        applyPendingPageSetupIfPossible()
         applyPendingFrameIfPossible()
         scheduleViewportRestorationIfPossible()
     }
@@ -78,12 +85,28 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
         let frame = window?.frame
         let viewport = preview?.capturePersistedViewport()
         let thumbnails = previewContainer?.captureThumbnailRestorationState()
-        guard frame != nil || viewport != nil || thumbnails != nil else { return nil }
+        let pageSetup = session?.hasExplicitPageSetup == true
+            ? session?.activePageSetup
+            : nil
+        guard frame != nil || viewport != nil || thumbnails != nil || pageSetup != nil else {
+            return nil
+        }
         return DocumentWindowRestorationState(
             frame: frame,
             viewport: viewport,
-            thumbnails: thumbnails
+            thumbnails: thumbnails,
+            explicitPageSetup: pageSetup
         )
+    }
+
+    private func applyPendingPageSetupIfPossible() {
+        guard let pendingPageSetup, let session else { return }
+        self.pendingPageSetup = nil
+        do {
+            try session.applyExplicitPageSetup(pendingPageSetup)
+        } catch {
+            session.report(error: error)
+        }
     }
 
     private func applyPendingFrameIfPossible() {

@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import MarkdownPrinterCore
 
 package struct PersistedPreviewViewport: Equatable {
     let scaleFactor: Double
@@ -92,15 +93,18 @@ package struct DocumentWindowRestorationState: Equatable {
     let frame: CGRect?
     let viewport: PersistedPreviewViewport?
     let thumbnails: PersistedThumbnailSidebar?
+    let explicitPageSetup: DocumentPageSetup?
 
     package init(
         frame: CGRect?,
         viewport: PersistedPreviewViewport?,
-        thumbnails: PersistedThumbnailSidebar? = nil
+        thumbnails: PersistedThumbnailSidebar? = nil,
+        explicitPageSetup: DocumentPageSetup? = nil
     ) {
         self.frame = frame
         self.viewport = viewport
         self.thumbnails = thumbnails
+        self.explicitPageSetup = explicitPageSetup
     }
 
     fileprivate var propertyList: [String: Any] {
@@ -118,6 +122,10 @@ package struct DocumentWindowRestorationState: Equatable {
         }
         if let thumbnails {
             result["thumbnails"] = thumbnails.propertyList
+        }
+        if let explicitPageSetup,
+           let data = try? JSONEncoder().encode(explicitPageSetup) {
+            result["pageSetup"] = data
         }
         return result
     }
@@ -138,6 +146,9 @@ package struct DocumentWindowRestorationState: Equatable {
         thumbnails = (propertyList["thumbnails"] as? [String: Any]).flatMap(
             PersistedThumbnailSidebar.init(propertyList:)
         )
+        explicitPageSetup = (propertyList["pageSetup"] as? Data).flatMap {
+            try? JSONDecoder().decode(DocumentPageSetup.self, from: $0)
+        }
     }
 }
 
@@ -454,7 +465,8 @@ public final class OpenDocumentRestorationController: ObservableObject {
             guard let path = document["path"] as? String else { return nil }
             let url = URL(fileURLWithPath: path).standardizedFileURL
             let state = DocumentWindowRestorationState(propertyList: document)
-            let hasState = state.frame != nil || state.viewport != nil || state.thumbnails != nil
+            let hasState = state.frame != nil || state.viewport != nil
+                || state.thumbnails != nil || state.explicitPageSetup != nil
             return WorkspaceWindowGroup(
                 identifier: "legacy-\(index)",
                 tabs: [.document(url, state: hasState ? state : nil)],

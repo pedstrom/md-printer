@@ -1,5 +1,15 @@
 # Product Development Log
 
+## 2026-08-26 — Native page setup, printing, and footer parity
+
+- Added focused **File → Page Setup…** and **File → Print…** commands backed by the native macOS sheets, with the toolbar Print button using the same generated-PDF-at-100-percent path.
+- Added persisted Letter/portrait/100% defaults with fixed 0.75-inch print-safe margins, transactional per-document overrides, immediate preview regeneration, inherited-default propagation, and workspace restoration of explicit setups.
+- Reorganized Settings into General and Page tabs, with a native default Page Setup sheet plus independently configurable left and right footer menus for blank, source date, source date and time, document title, filename, or normalized custom text.
+- Added searchable, non-overlapping Avenir Next PDF footer columns around the existing centered page number, including ellipsis truncation, and editable Word three-column footers with a native PAGE field.
+- Made PDF, save, drag, share, print, and Word output share paper, orientation, scale, fixed margins, and source metadata; Word section XML now matches the PDF page while retaining editable body content and scaled typography.
+- Prevented the production Sparkle bridge from starting update or UI work inside an XCTest host, so verification cannot surface misleading “xctest” updater alerts.
+- Added focused validation for page-model persistence and fallback, source modification timestamps, inherited and explicit setup behavior, print fidelity, localized footer resolution, PDF footer positioning and truncation, Word relationships/content types/footer fields/section properties, and workspace round trips.
+
 ## 2026-08-26 — Manual full-workspace reopening
 
 - Added **File → Reopen Windows from Last Session** immediately after Open Recent, disabled when every saved document is already open, while keeping normal launches on the welcome window and preserving the last snapshot until the next normal termination.

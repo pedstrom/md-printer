@@ -14,8 +14,16 @@ public final class WordExporter {
         self.zipURL = zipURL
     }
 
-    public func wordData(from attributedText: NSAttributedString) throws -> Data {
-        let preparedDocument = try prepareDocument(attributedText)
+    public func wordData(
+        from attributedText: NSAttributedString,
+        pageSetup: DocumentPageSetup = .letter,
+        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
+    ) throws -> Data {
+        let preparedDocument = try prepareDocument(
+            attributedText,
+            pageSetup: pageSetup,
+            footers: footers
+        )
         let nativeData = try preparedDocument.text.data(
             from: NSRange(location: 0, length: preparedDocument.text.length),
             documentAttributes: [.documentType: NSAttributedString.DocumentType.officeOpenXML]
@@ -28,7 +36,11 @@ public final class WordExporter {
         try wordData(from: attributedText).write(to: url, options: .atomic)
     }
 
-    private func prepareDocument(_ attributedText: NSAttributedString) throws -> PreparedWordDocument {
+    private func prepareDocument(
+        _ attributedText: NSAttributedString,
+        pageSetup: DocumentPageSetup,
+        footers: ResolvedFooterConfiguration
+    ) throws -> PreparedWordDocument {
         var images: [WordImage] = []
         var links: [WordLink] = []
         var footnoteReferences: [(label: String, range: NSRange)] = []
@@ -98,7 +110,9 @@ public final class WordExporter {
                 links: [],
                 footnoteLinks: [],
                 tables: [],
-                quotes: []
+                quotes: [],
+                pageSetup: pageSetup,
+                footers: footers
             )
         }
 
@@ -174,7 +188,9 @@ public final class WordExporter {
             links: renderedLinks,
             footnoteLinks: renderedFootnoteLinks,
             tables: renderedTables,
-            quotes: quotes
+            quotes: quotes,
+            pageSetup: pageSetup,
+            footers: footers
         )
     }
 
@@ -462,9 +478,30 @@ public final class WordExporter {
             }
         }
 
+        let footerRelationshipID = "rIdMarkdownPrinterFooter"
+        documentXML = try applyingSectionProperties(
+            pageSetup: document.pageSetup,
+            footerRelationshipID: footerRelationshipID,
+            to: documentXML
+        )
+        relationshipsXML = try inserting(
+            "<Relationship Id=\"\(footerRelationshipID)\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer\" Target=\"footer1.xml\"/>",
+            before: "</Relationships>",
+            in: relationshipsXML
+        )
+        let footerURL = directoryURL.appendingPathComponent("word/footer1.xml")
+        try Data(footerXML(for: document).utf8).write(to: footerURL, options: .atomic)
+
         if !contentTypesXML.contains("Extension=\"png\"") {
             contentTypesXML = try inserting(
                 "<Default Extension=\"png\" ContentType=\"image/png\"/>",
+                before: "</Types>",
+                in: contentTypesXML
+            )
+        }
+        if !contentTypesXML.contains("PartName=\"/word/footer1.xml\"") {
+            contentTypesXML = try inserting(
+                "<Override PartName=\"/word/footer1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml\"/>",
                 before: "</Types>",
                 in: contentTypesXML
             )
@@ -484,6 +521,83 @@ public final class WordExporter {
         var result = xml
         result.insert(contentsOf: fragment, at: range.lowerBound)
         return result
+    }
+
+    private func applyingSectionProperties(
+        pageSetup: DocumentPageSetup,
+        footerRelationshipID: String,
+        to xml: String
+    ) throws -> String {
+        guard let start = xml.range(of: "<w:sectPr"),
+              let end = xml.range(of: "</w:sectPr>", range: start.lowerBound..<xml.endIndex)
+        else { throw WordExporterError.packagingFailed }
+        let sectionRange = start.lowerBound..<end.upperBound
+        var section = String(xml[sectionRange])
+        section = section.replacingOccurrences(
+            of: #"<w:footerReference\b[^>]*/>"#,
+            with: "",
+            options: .regularExpression
+        )
+        section = section.replacingOccurrences(
+            of: #"<w:pgSz\b[^>]*/>"#,
+            with: "",
+            options: .regularExpression
+        )
+        section = section.replacingOccurrences(
+            of: #"<w:pgMar\b[^>]*/>"#,
+            with: "",
+            options: .regularExpression
+        )
+        guard let openingEnd = section.firstIndex(of: ">") else {
+            throw WordExporterError.packagingFailed
+        }
+        let size = pageSetup.pageSize
+        let orientation = pageSetup.orientation == .landscape
+            ? " w:orient=\"landscape\""
+            : ""
+        let fragment = "<w:footerReference w:type=\"default\" r:id=\"\(footerRelationshipID)\"/>"
+            + "<w:pgSz w:w=\"\(Int((size.width * 20).rounded()))\" w:h=\"\(Int((size.height * 20).rounded()))\"\(orientation)/>"
+            + "<w:pgMar w:top=\"1080\" w:right=\"1080\" w:bottom=\"1080\" w:left=\"1080\" w:header=\"360\" w:footer=\"360\" w:gutter=\"0\"/>"
+        section.insert(contentsOf: fragment, at: section.index(after: openingEnd))
+        var result = xml
+        result.replaceSubrange(sectionRange, with: section)
+        return result
+    }
+
+    private func footerXML(for document: PreparedWordDocument) -> String {
+        let pageWidth = Int((document.pageSetup.pageSize.width * 20).rounded())
+        let contentWidth = max(720, pageWidth - 2_160)
+        let centerWidth = min(720, contentWidth)
+        let sideWidth = max(1, (contentWidth - centerWidth) / 2)
+        return """
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:tbl>
+            <w:tblPr><w:tblW w:w="\(contentWidth)" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr>
+            <w:tblGrid><w:gridCol w:w="\(sideWidth)"/><w:gridCol w:w="\(centerWidth)"/><w:gridCol w:w="\(sideWidth)"/></w:tblGrid>
+            <w:tr>
+              <w:tc><w:tcPr><w:tcW w:w="\(sideWidth)" w:type="dxa"/></w:tcPr>\(footerParagraph(text: document.footers.left, alignment: "left"))</w:tc>
+              <w:tc><w:tcPr><w:tcW w:w="\(centerWidth)" w:type="dxa"/></w:tcPr>\(pageFieldParagraph())</w:tc>
+              <w:tc><w:tcPr><w:tcW w:w="\(sideWidth)" w:type="dxa"/></w:tcPr>\(footerParagraph(text: document.footers.right, alignment: "right"))</w:tc>
+            </w:tr>
+          </w:tbl>
+        </w:ftr>
+        """
+    }
+
+    private func footerParagraph(text: String, alignment: String) -> String {
+        let value = Self.escapeXML(text)
+        return "<w:p><w:pPr><w:jc w:val=\"\(alignment)\"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii=\"Avenir Next\" w:hAnsi=\"Avenir Next\"/><w:sz w:val=\"16\"/><w:color w:val=\"808080\"/></w:rPr><w:t xml:space=\"preserve\">\(value)</w:t></w:r></w:p>"
+    }
+
+    private func pageFieldParagraph() -> String {
+        let properties = "<w:rPr><w:rFonts w:ascii=\"Avenir Next\" w:hAnsi=\"Avenir Next\"/><w:sz w:val=\"16\"/><w:color w:val=\"808080\"/></w:rPr>"
+        return "<w:p><w:pPr><w:jc w:val=\"center\"/></w:pPr>"
+            + "<w:r>\(properties)<w:fldChar w:fldCharType=\"begin\"/></w:r>"
+            + "<w:r>\(properties)<w:instrText xml:space=\"preserve\"> PAGE </w:instrText></w:r>"
+            + "<w:r>\(properties)<w:fldChar w:fldCharType=\"separate\"/></w:r>"
+            + "<w:r>\(properties)<w:t>1</w:t></w:r>"
+            + "<w:r>\(properties)<w:fldChar w:fldCharType=\"end\"/></w:r></w:p>"
     }
 
     private func replaceTextElement(
@@ -664,10 +778,11 @@ private struct PreparedWordDocument {
     let footnoteLinks: [RenderedWordFootnoteLink]
     let tables: [RenderedWordTable]
     let quotes: [RenderedWordQuote]
+    let pageSetup: DocumentPageSetup
+    let footers: ResolvedFooterConfiguration
 
     var requiresPackaging: Bool {
-        !images.isEmpty || !links.isEmpty || !footnoteLinks.isEmpty
-            || !tables.isEmpty || !quotes.isEmpty
+        true
     }
 }
 

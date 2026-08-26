@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import MarkdownPrinterCore
 
@@ -7,9 +8,14 @@ public final class DocumentSession: ObservableObject {
     @Published public private(set) var renderedSnapshot: RenderedDocumentSnapshot?
     @Published public private(set) var errorMessage: String?
 
-    public let renderer: MarkdownRenderer
-    public let exporter: PDFExporter
+    public private(set) var renderer: MarkdownRenderer
+    public private(set) var exporter: PDFExporter
     public let wordExporter: WordExporter
+    @Published public private(set) var activePageSetup: DocumentPageSetup
+    @Published public private(set) var hasExplicitPageSetup = false
+    private let baseRendererConfiguration: RendererConfiguration
+    private let pagePreferences: PagePreferences?
+    private var preferenceObservation: AnyCancellable?
     private let sourceMonitorFactory: (URL, @escaping () -> Void) -> SourceChangeMonitoring
     private var sourceMonitor: SourceChangeMonitoring?
     private var sourceMonitorLifetime: SourceMonitorLifetime?
@@ -18,26 +24,50 @@ public final class DocumentSession: ObservableObject {
     public init(
         renderer: MarkdownRenderer = MarkdownRenderer(),
         exporter: PDFExporter? = nil,
-        wordExporter: WordExporter? = nil
+        wordExporter: WordExporter? = nil,
+        pagePreferences: PagePreferences? = nil
     ) {
-        self.renderer = renderer
-        self.exporter = exporter ?? PDFExporter(configuration: renderer.configuration)
+        baseRendererConfiguration = renderer.configuration
+        self.pagePreferences = pagePreferences
+        let initialPageSetup = pagePreferences?.defaultPageSetup ?? .letter
+        activePageSetup = initialPageSetup
+        let configuredRenderer = pagePreferences == nil
+            ? renderer
+            : MarkdownRenderer(configuration: renderer.configuration.applying(initialPageSetup))
+        self.renderer = configuredRenderer
+        self.exporter = exporter ?? PDFExporter(
+            configuration: configuredRenderer.configuration,
+            pageSetup: initialPageSetup
+        )
         self.wordExporter = wordExporter ?? WordExporter()
         self.sourceMonitorFactory = { url, onChange in
             SourceFileMonitor(sourceURL: url, onChange: onChange)
         }
+        observePagePreferences()
     }
 
     init(
         renderer: MarkdownRenderer = MarkdownRenderer(),
         exporter: PDFExporter? = nil,
         wordExporter: WordExporter? = nil,
+        pagePreferences: PagePreferences? = nil,
         sourceMonitorFactory: @escaping (URL, @escaping () -> Void) -> SourceChangeMonitoring
     ) {
-        self.renderer = renderer
-        self.exporter = exporter ?? PDFExporter(configuration: renderer.configuration)
+        baseRendererConfiguration = renderer.configuration
+        self.pagePreferences = pagePreferences
+        let initialPageSetup = pagePreferences?.defaultPageSetup ?? .letter
+        activePageSetup = initialPageSetup
+        let configuredRenderer = pagePreferences == nil
+            ? renderer
+            : MarkdownRenderer(configuration: renderer.configuration.applying(initialPageSetup))
+        self.renderer = configuredRenderer
+        self.exporter = exporter ?? PDFExporter(
+            configuration: configuredRenderer.configuration,
+            pageSetup: initialPageSetup
+        )
         self.wordExporter = wordExporter ?? WordExporter()
         self.sourceMonitorFactory = sourceMonitorFactory
+        observePagePreferences()
     }
 
     public var document: MarkdownDocument? {
@@ -109,15 +139,57 @@ public final class DocumentSession: ObservableObject {
     }
 
     public func apply(_ document: MarkdownDocument) throws {
-        let nextRenderedText = NSAttributedString(
-            attributedString: renderer.render(document: document)
+        try rebuild(document: document, pageSetup: activePageSetup)
+    }
+
+    public func applyExplicitPageSetup(_ pageSetup: DocumentPageSetup) throws {
+        if let document {
+            try rebuild(document: document, pageSetup: pageSetup, explicit: true)
+        } else {
+            activePageSetup = pageSetup
+            hasExplicitPageSetup = true
+        }
+    }
+
+    public func clearPageSetupOverride() throws {
+        let pageSetup = pagePreferences?.defaultPageSetup ?? .letter
+        if let document {
+            try rebuild(document: document, pageSetup: pageSetup, explicit: false)
+        } else {
+            activePageSetup = pageSetup
+            hasExplicitPageSetup = false
+        }
+    }
+
+    private func rebuild(
+        document: MarkdownDocument,
+        pageSetup: DocumentPageSetup,
+        explicit: Bool? = nil,
+        footers: ResolvedFooterConfiguration? = nil
+    ) throws {
+        let nextConfiguration = baseRendererConfiguration.applying(pageSetup)
+        let nextRenderer = MarkdownRenderer(configuration: nextConfiguration)
+        let nextExporter = PDFExporter(
+            configuration: nextConfiguration,
+            pageSetup: pageSetup
         )
-        let nextPDFData = try exporter.pdfData(from: nextRenderedText)
+        let nextRenderedText = NSAttributedString(
+            attributedString: nextRenderer.render(document: document)
+        )
+        let footers = footers ?? pagePreferences?.resolvedFooters(for: document)
+            ?? ResolvedFooterConfiguration()
+        let nextPDFData = try nextExporter.pdfData(from: nextRenderedText, footers: footers)
         nextRenderRevision &+= 1
+        renderer = nextRenderer
+        exporter = nextExporter
+        activePageSetup = pageSetup
+        if let explicit { hasExplicitPageSetup = explicit }
         renderedSnapshot = RenderedDocumentSnapshot(
             document: document,
             renderedText: nextRenderedText,
             pdfData: nextPDFData,
+            pageSetup: pageSetup,
+            footers: footers,
             revision: nextRenderRevision
         )
         errorMessage = nil
@@ -125,9 +197,25 @@ public final class DocumentSession: ObservableObject {
 
     @discardableResult
     public func synchronize(with document: MarkdownDocument) throws -> Bool {
+        let document = preservingKnownModificationDate(in: document)
         guard document != self.document else { return false }
         try apply(document)
         return true
+    }
+
+    private func preservingKnownModificationDate(
+        in document: MarkdownDocument
+    ) -> MarkdownDocument {
+        guard document.sourceModificationDate == nil,
+              document.sourceURL?.standardizedFileURL == self.document?.sourceURL?.standardizedFileURL,
+              let knownDate = self.document?.sourceModificationDate
+        else { return document }
+        return MarkdownDocument(
+            sourceURL: document.sourceURL,
+            sourceModificationDate: knownDate,
+            title: document.title,
+            markdown: document.markdown
+        )
     }
 
     public func startMonitoringSourceChanges() {
@@ -188,7 +276,12 @@ public final class DocumentSession: ObservableObject {
         case .pdf:
             return try pdfData()
         case .word:
-            return try wordExporter.wordData(from: renderedText)
+            guard let renderedSnapshot else { throw DocumentSessionError.noDocument }
+            return try wordExporter.wordData(
+                from: renderedSnapshot.renderedText,
+                pageSetup: renderedSnapshot.pageSetup,
+                footers: renderedSnapshot.footers
+            )
         }
     }
 
@@ -204,12 +297,41 @@ public final class DocumentSession: ObservableObject {
         guard let renderedPDFData else { throw DocumentSessionError.noDocument }
         return try exporter.printOperation(forPDFData: renderedPDFData)
     }
+
+    private func observePagePreferences() {
+        guard let pagePreferences else { return }
+        preferenceObservation = Publishers.CombineLatest3(
+            pagePreferences.$defaultPageSetup,
+            pagePreferences.$leftFooter,
+            pagePreferences.$rightFooter
+        )
+        .dropFirst()
+        .sink { [weak self] defaultPageSetup, leftFooter, rightFooter in
+            guard let self, let document = self.document else { return }
+            let pageSetup = self.hasExplicitPageSetup ? self.activePageSetup : defaultPageSetup
+            let footers = ResolvedFooterConfiguration(
+                left: leftFooter.resolved(for: document),
+                right: rightFooter.resolved(for: document)
+            )
+            do {
+                try self.rebuild(
+                    document: document,
+                    pageSetup: pageSetup,
+                    footers: footers
+                )
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
 }
 
 public struct RenderedDocumentSnapshot {
     public let document: MarkdownDocument
     public let renderedText: NSAttributedString
     public let pdfData: Data
+    public let pageSetup: DocumentPageSetup
+    public let footers: ResolvedFooterConfiguration
     public let revision: UInt64
 }
 

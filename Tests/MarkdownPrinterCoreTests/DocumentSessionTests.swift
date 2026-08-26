@@ -248,6 +248,115 @@ final class DocumentSessionTests: XCTestCase {
         session.stopMonitoringSourceChanges()
     }
 
+    func testInheritedDefaultsReflowWhileExplicitPageSetupIsRetained() throws {
+        let suite = "DocumentSessionTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = PagePreferences(defaults: defaults)
+        let session = DocumentSession(pagePreferences: preferences)
+        try session.apply(MarkdownDocument(title: "Page", markdown: "# Page\n\nBody"))
+        let initialRevision = try XCTUnwrap(session.renderedSnapshot).revision
+
+        preferences.defaultPageSetup = DocumentPageSetup(
+            paperName: "iso-a4",
+            paperSize: CGSize(width: 595, height: 842),
+            orientation: .landscape,
+            scale: 1.2
+        )
+
+        XCTAssertEqual(session.activePageSetup, preferences.defaultPageSetup)
+        XCTAssertFalse(session.hasExplicitPageSetup)
+        XCTAssertGreaterThan(try XCTUnwrap(session.renderedSnapshot).revision, initialRevision)
+        let inheritedPDF = try XCTUnwrap(PDFDocument(data: try session.pdfData()))
+        XCTAssertEqual(inheritedPDF.page(at: 0)?.bounds(for: .mediaBox).width, 842)
+        let printInfo = try session.printOperation().printInfo
+        XCTAssertEqual(printInfo.orientation, .landscape)
+        XCTAssertEqual(printInfo.paperName?.rawValue, "iso-a4")
+        XCTAssertEqual(printInfo.scalingFactor, 1)
+
+        let explicit = DocumentPageSetup(
+            paperName: "na-letter",
+            paperSize: CGSize(width: 612, height: 792),
+            orientation: .portrait,
+            scale: 0.8
+        )
+        try session.applyExplicitPageSetup(explicit)
+        let explicitRevision = try XCTUnwrap(session.renderedSnapshot).revision
+        preferences.defaultPageSetup = .letter
+
+        XCTAssertTrue(session.hasExplicitPageSetup)
+        XCTAssertEqual(session.activePageSetup, explicit)
+        XCTAssertGreaterThan(try XCTUnwrap(session.renderedSnapshot).revision, explicitRevision)
+
+        try session.clearPageSetupOverride()
+        XCTAssertFalse(session.hasExplicitPageSetup)
+        XCTAssertEqual(session.activePageSetup, .letter)
+    }
+
+    func testPageSetupOverrideCanBePreparedAndClearedBeforeLoadingADocument() throws {
+        let session = DocumentSession()
+        let explicit = DocumentPageSetup(
+            paperName: "iso-a4",
+            paperSize: CGSize(width: 595, height: 842),
+            orientation: .landscape,
+            scale: 1.1
+        )
+
+        try session.applyExplicitPageSetup(explicit)
+        XCTAssertEqual(session.activePageSetup, explicit)
+        XCTAssertTrue(session.hasExplicitPageSetup)
+
+        try session.clearPageSetupOverride()
+        XCTAssertEqual(session.activePageSetup, .letter)
+        XCTAssertFalse(session.hasExplicitPageSetup)
+    }
+
+    func testFooterChangesAndModificationDateRefreshRegeneratePDFAndWord() throws {
+        let suite = "DocumentSessionTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = PagePreferences(defaults: defaults)
+        preferences.leftFooter = .documentTitle
+        preferences.rightFooter = .filename
+        let session = DocumentSession(pagePreferences: preferences)
+        let sourceURL = URL(fileURLWithPath: "/tmp/Footer Source.md")
+        let initialDate = Date(timeIntervalSince1970: 1_700_000_000)
+        try session.apply(MarkdownDocument(
+            sourceURL: sourceURL,
+            sourceModificationDate: initialDate,
+            title: "Fallback",
+            markdown: "# Footer Title\n\nBody"
+        ))
+
+        let pageText = try XCTUnwrap(PDFDocument(data: try session.pdfData())?.page(at: 0)?.string)
+        XCTAssertTrue(pageText.contains("Footer Title"))
+        XCTAssertTrue(pageText.contains("Footer Source.md"))
+
+        let revision = try XCTUnwrap(session.renderedSnapshot).revision
+        preferences.leftFooter = .date
+        XCTAssertGreaterThan(try XCTUnwrap(session.renderedSnapshot).revision, revision)
+        XCTAssertNotEqual(session.renderedSnapshot?.footers.left, "Footer Title")
+
+        let newerDate = initialDate.addingTimeInterval(86_400)
+        XCTAssertTrue(try session.synchronize(with: MarkdownDocument(
+            sourceURL: sourceURL,
+            sourceModificationDate: newerDate,
+            title: "Fallback",
+            markdown: "# Footer Title\n\nBody"
+        )))
+        XCTAssertEqual(session.document?.sourceModificationDate, newerDate)
+        let wordData = try session.exportData(as: .word)
+        XCTAssertTrue(wordData.starts(with: Data([0x50, 0x4B])))
+
+        XCTAssertFalse(try session.synchronize(with: MarkdownDocument(
+            sourceURL: sourceURL,
+            sourceModificationDate: nil,
+            title: "Fallback",
+            markdown: "# Footer Title\n\nBody"
+        )))
+        XCTAssertEqual(session.document?.sourceModificationDate, newerDate)
+    }
+
 }
 
 private enum TestError: LocalizedError {
