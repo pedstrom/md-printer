@@ -14,6 +14,7 @@ public struct PDFPreviewView: NSViewRepresentable {
     private let openURL: (URL) -> Void
     private let onDragError: (Error) -> Void
     private let searchController: PDFSearchController?
+    private let viewingController: PDFViewingController?
     private let sidebarController: PDFThumbnailSidebarController?
 
     public init(
@@ -31,6 +32,7 @@ public struct PDFPreviewView: NSViewRepresentable {
             exportFormat: exportFormat,
             fileName: fileName,
             searchController: nil,
+            viewingController: nil,
             sidebarController: nil,
             exportData: exportData,
             openURL: openURL,
@@ -44,6 +46,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         exportFormat: ExportFormat,
         fileName: String,
         searchController: PDFSearchController,
+        viewingController: PDFViewingController,
         sidebarController: PDFThumbnailSidebarController,
         exportData: @escaping () throws -> Data,
         openURL: @escaping (URL) -> Void,
@@ -55,6 +58,7 @@ public struct PDFPreviewView: NSViewRepresentable {
             exportFormat: exportFormat,
             fileName: fileName,
             searchController: Optional(searchController),
+            viewingController: Optional(viewingController),
             sidebarController: Optional(sidebarController),
             exportData: exportData,
             openURL: openURL,
@@ -68,6 +72,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         exportFormat: ExportFormat,
         fileName: String,
         searchController: PDFSearchController?,
+        viewingController: PDFViewingController?,
         sidebarController: PDFThumbnailSidebarController?,
         exportData: @escaping () throws -> Data,
         openURL: @escaping (URL) -> Void,
@@ -78,6 +83,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         self.exportFormat = exportFormat
         self.fileName = fileName
         self.searchController = searchController
+        self.viewingController = viewingController
         self.sidebarController = sidebarController
         self.exportData = exportData
         self.openURL = openURL
@@ -130,7 +136,10 @@ public struct PDFPreviewView: NSViewRepresentable {
         guard let document = PDFDocument(data: data) else { return }
         view.display(document, data: data, revision: revision)
         windowRestorationCoordinator?.previewDidDisplayDocument()
-        view.deferSearchControllerUpdate(searchController)
+        view.deferControllerUpdate(
+            searchController: searchController,
+            viewingController: viewingController
+        )
     }
 
     public static func dismantleNSView(
@@ -465,11 +474,12 @@ private enum PDFSearchStartingPoint {
 }
 
 @MainActor
-public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
+public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTarget {
     private var pendingCommit: DispatchWorkItem?
     private var stagedView: PageAdvancingPDFView?
     private var requestSequence: UInt64 = 0
     private var searchControllerUpdateSequence: UInt64 = 0
+    private var viewingNotificationTokens: [NSObjectProtocol] = []
     private var searchState = PDFSearchState.empty
     private var showsAllSearchMatches = false
     private var dragDataProvider: (() throws -> Data)?
@@ -491,7 +501,18 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         }
     }
 
-    func deferSearchControllerUpdate(_ searchController: PDFSearchController?) {
+    weak var viewingController: PDFViewingController? {
+        didSet {
+            guard oldValue !== viewingController else { return }
+            oldValue?.detach(from: self)
+            viewingController?.attach(to: self)
+        }
+    }
+
+    func deferControllerUpdate(
+        searchController: PDFSearchController?,
+        viewingController: PDFViewingController?
+    ) {
         searchControllerUpdateSequence &+= 1
         let requestedSequence = searchControllerUpdateSequence
         Task { @MainActor [weak self] in
@@ -499,13 +520,24 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
                   self.searchControllerUpdateSequence == requestedSequence
             else { return }
             self.searchController = searchController
+            self.viewingController = viewingController
         }
+    }
+
+    func deferSearchControllerUpdate(_ searchController: PDFSearchController?) {
+        deferControllerUpdate(
+            searchController: searchController,
+            viewingController: viewingController
+        )
     }
 
     func prepareForDismantling() {
         searchControllerUpdateSequence &+= 1
         searchController?.detachForDismantling(from: self)
         searchController = nil
+        viewingController?.detachForDismantling(from: self)
+        viewingController = nil
+        stopObservingViewingState()
     }
 
     package func capturePersistedViewport() -> PersistedPreviewViewport? {
@@ -514,34 +546,48 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
 
     package func restorePersistedViewport(_ viewport: PersistedPreviewViewport) {
         activeView.restoreRelaunchViewport(viewport.previewViewport)
+        notifyViewingController()
     }
 
-    var isFitPageAvailable: Bool {
-        activeView.document?.pageCount ?? 0 > 0
+    var viewingState: PDFViewingState {
+        guard activeView.document?.pageCount ?? 0 > 0 else { return .unavailable }
+        return PDFViewingState(
+            isAvailable: true,
+            canZoomIn: activeView.canZoomIn,
+            canZoomOut: activeView.canZoomOut,
+            canGoToPreviousPage: activeView.canGoToPreviousPage,
+            canGoToNextPage: activeView.canGoToNextPage
+        )
     }
 
     func showActualSize() {
         activeView.showActualSize()
+        notifyViewingController()
     }
 
     func fitCurrentPage() {
         activeView.fitCurrentPage()
+        notifyViewingController()
     }
 
     func zoomIn() {
         activeView.zoomInByStep()
+        notifyViewingController()
     }
 
     func zoomOut() {
         activeView.zoomOutByStep()
+        notifyViewingController()
     }
 
     func goToPreviousPage() {
         activeView.moveToPreviousPage()
+        notifyViewingController()
     }
 
     func goToNextPage() {
         activeView.moveToNextPage()
+        notifyViewingController()
     }
 
     var delegate: PDFViewDelegate? {
@@ -559,6 +605,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         initialView.setAccessibilityElement(true)
         initialView.setAccessibilityHidden(false)
         addSubview(initialView)
+        observeViewingState(in: initialView)
     }
 
     required init?(coder: NSCoder) {
@@ -587,6 +634,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
             activeRevision = revision
             activeView.displayInitial(document)
             activeViewDidChange?(activeView)
+            notifyViewingController()
             searchState = makeSearchState(
                 query: searchState.query,
                 in: document,
@@ -890,6 +938,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         previousView.setAccessibilityHidden(true)
         stagedView.setAccessibilityHidden(false)
         activeView = stagedView
+        observeViewingState(in: stagedView)
         activeViewDidChange?(stagedView)
         activeData = data
         activeRevision = revision
@@ -897,6 +946,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
         self.stagedView = nil
         pendingCommit = nil
         notifySearchController()
+        notifyViewingController()
         if shouldTransferFocus {
             window?.makeFirstResponder(stagedView)
         }
@@ -920,6 +970,33 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget {
             CATransaction.commit()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + retirementDelay, execute: workItem)
+    }
+
+    private func observeViewingState(in view: PDFView) {
+        stopObservingViewingState()
+        let center = NotificationCenter.default
+        let names: [Notification.Name] = [
+            .PDFViewPageChanged,
+            .PDFViewScaleChanged
+        ]
+        viewingNotificationTokens = names.map { name in
+            center.addObserver(forName: name, object: view, queue: .main) {
+                [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.notifyViewingController()
+                }
+            }
+        }
+    }
+
+    private func stopObservingViewingState() {
+        let center = NotificationCenter.default
+        viewingNotificationTokens.forEach(center.removeObserver)
+        viewingNotificationTokens = []
+    }
+
+    private func notifyViewingController() {
+        viewingController?.targetDidChange(self)
     }
 }
 
@@ -1110,26 +1187,26 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     }
 
     func zoomInByStep() {
-        guard document != nil else { return }
+        guard document != nil, canZoomIn else { return }
         autoScales = false
         zoomIn(nil)
         fittedViewWidth = nil
     }
 
     func zoomOutByStep() {
-        guard document != nil else { return }
+        guard document != nil, canZoomOut else { return }
         autoScales = false
         zoomOut(nil)
         fittedViewWidth = nil
     }
 
     func moveToPreviousPage() {
-        guard document != nil else { return }
+        guard document != nil, canGoToPreviousPage else { return }
         goToPreviousPage(nil)
     }
 
     func moveToNextPage() {
-        guard document != nil else { return }
+        guard document != nil, canGoToNextPage else { return }
         goToNextPage(nil)
     }
 

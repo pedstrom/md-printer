@@ -10,6 +10,7 @@ public struct MarkdownPrinterView: View {
     private let openFiles: ([URL]) -> Void
     @State private var isDropTargeted = false
     @StateObject private var searchController = PDFSearchController()
+    @StateObject private var viewingController = PDFViewingController()
     @StateObject private var sidebarController: PDFThumbnailSidebarController
     @StateObject private var documentActions: DocumentActionController
     @StateObject private var pageActions: DocumentPageActionController
@@ -55,6 +56,7 @@ public struct MarkdownPrinterView: View {
         }
         .frame(minWidth: 680, minHeight: 560)
         .focusedSceneObject(searchController)
+        .focusedSceneObject(viewingController)
         .focusedSceneObject(sidebarController)
         .focusedSceneObject(documentActions)
         .focusedSceneObject(pageActions)
@@ -113,6 +115,7 @@ public struct MarkdownPrinterView: View {
                     exportFormat: exportFormat,
                     fileName: session.suggestedFileName(for: exportFormat),
                     searchController: searchController,
+                    viewingController: viewingController,
                     sidebarController: sidebarController,
                     exportData: { try session.exportData(as: exportFormat) },
                     openURL: openLink,
@@ -532,7 +535,7 @@ package struct PDFSearchCommands: Commands {
 }
 
 package struct PDFViewingCommands: Commands {
-    @FocusedObject private var controller: PDFSearchController?
+    @FocusedObject private var controller: PDFViewingController?
 
     package init() { }
 
@@ -542,25 +545,25 @@ package struct PDFViewingCommands: Commands {
                 controller?.actualSize()
             }
             .keyboardShortcut("0", modifiers: .command)
-            .disabled(controller?.canFitPage != true)
+            .disabled(controller?.isAvailable != true)
 
             Button("Zoom to Fit") {
                 controller?.fitPage()
             }
             .keyboardShortcut("9", modifiers: .command)
-            .disabled(controller?.canFitPage != true)
+            .disabled(controller?.isAvailable != true)
 
             Button("Zoom In") {
                 controller?.zoomIn()
             }
             .keyboardShortcut("+", modifiers: .command)
-            .disabled(controller?.canFitPage != true)
+            .disabled(controller?.canZoomIn != true)
 
             Button("Zoom Out") {
                 controller?.zoomOut()
             }
             .keyboardShortcut("-", modifiers: .command)
-            .disabled(controller?.canFitPage != true)
+            .disabled(controller?.canZoomOut != true)
 
             Divider()
 
@@ -568,13 +571,13 @@ package struct PDFViewingCommands: Commands {
                 controller?.previousPage()
             }
             .keyboardShortcut(.upArrow, modifiers: .option)
-            .disabled(controller?.canFitPage != true)
+            .disabled(controller?.canGoToPreviousPage != true)
 
             Button("Next Page") {
                 controller?.nextPage()
             }
             .keyboardShortcut(.downArrow, modifiers: .option)
-            .disabled(controller?.canFitPage != true)
+            .disabled(controller?.canGoToNextPage != true)
         }
     }
 }

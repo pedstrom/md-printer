@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-08-27 — State-aware PDF viewing commands
+
+- Separated page and zoom commands from PDF search into a focused per-window viewing controller backed by PDFKit's live capabilities.
+- Made Zoom In, Zoom Out, Previous Page, and Next Page disable at their actual boundaries while retaining Actual Size, Zoom to Fit, Option-arrow, Space/Shift-Space, and Command zoom shortcuts.
+- Kept viewing state synchronized across page and scale changes, buffered live-preview swaps, restored viewports, and SwiftUI attachment and teardown boundaries.
+
 ## 2026-08-27 — Broader CommonMark compatibility and performance guardrails
 
 - Expanded the parser from the seven previously missing feature families into the high-frequency CommonMark interactions around delimiter runs, exact code-span fences, hard and soft breaks, ATX closing sequences, tabs, lazy block-quote continuation, nested lists, list marker identity, tight and loose lists, and inline-link precedence.

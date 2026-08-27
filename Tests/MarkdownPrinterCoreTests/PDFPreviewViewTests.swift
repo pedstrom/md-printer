@@ -67,6 +67,38 @@ final class PDFPreviewViewTests: XCTestCase {
         withExtendedLifetime(publication) { }
     }
 
+    func testDismantlingDefersViewingStatePublicationUntilAfterSwiftUITeardown() async throws {
+        let rendered = try makeDocument(markdown: "# Viewing\n\nA preview page.")
+        let controller = PDFViewingController()
+        let container = PDFPreviewContainerView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        let preview = container.previewView
+        preview.viewingController = controller
+        preview.display(rendered.document, data: rendered.data, revision: 1)
+        XCTAssertTrue(controller.isAvailable)
+
+        var publicationCount = 0
+        let publication = controller.objectWillChange.sink {
+            publicationCount += 1
+        }
+        let coordinator = PDFPreviewView.Coordinator(
+            openURL: { _ in },
+            onDragError: { _ in }
+        )
+
+        PDFPreviewView.dismantleNSView(container, coordinator: coordinator)
+
+        XCTAssertNil(preview.viewingController)
+        XCTAssertEqual(publicationCount, 0)
+
+        await nextMainQueueTurn()
+
+        XCTAssertGreaterThan(publicationCount, 0)
+        XCTAssertEqual(controller.state, .unavailable)
+        withExtendedLifetime(publication) { }
+    }
+
     func testSwiftUIUpdateDefersSearchControllerAttachmentAndPublication() async throws {
         let rendered = try makeDocument(markdown: "# Search\n\nAn attachment needle.")
         let controller = PDFSearchController()
@@ -88,6 +120,34 @@ final class PDFPreviewViewTests: XCTestCase {
 
         XCTAssertTrue(container.searchController === controller)
         XCTAssertTrue(controller.canPresent)
+        XCTAssertGreaterThan(publicationCount, 0)
+        withExtendedLifetime(publication) { }
+    }
+
+    func testSwiftUIUpdateDefersViewingControllerAttachmentAndPublication() async throws {
+        let rendered = try makeDocument(markdown: "# Viewing\n\nAn attachment page.")
+        let controller = PDFViewingController()
+        let container = BufferedPDFPreviewView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        container.display(rendered.document, data: rendered.data, revision: 1)
+        var publicationCount = 0
+        let publication = controller.objectWillChange.sink {
+            publicationCount += 1
+        }
+
+        container.deferControllerUpdate(
+            searchController: nil,
+            viewingController: controller
+        )
+
+        XCTAssertNil(container.viewingController)
+        XCTAssertEqual(publicationCount, 0)
+
+        await nextMainQueueTurn()
+
+        XCTAssertTrue(container.viewingController === controller)
+        XCTAssertTrue(controller.isAvailable)
         XCTAssertGreaterThan(publicationCount, 0)
         withExtendedLifetime(publication) { }
     }
@@ -323,6 +383,87 @@ final class PDFPreviewViewTests: XCTestCase {
 
         XCTAssertTrue(view.performKeyEquivalent(with: optionUp))
         XCTAssertEqual(document.index(for: try XCTUnwrap(view.currentPage)), 0)
+    }
+
+    func testViewingStateAndShortcutsRespectPageAndZoomBoundaries() async throws {
+        let document = try makeMultiPageDocument()
+        let container = BufferedPDFPreviewView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        let controller = PDFViewingController()
+        container.viewingController = controller
+        container.display(
+            document,
+            data: try XCTUnwrap(document.dataRepresentation()),
+            revision: 1
+        )
+        container.layoutSubtreeIfNeeded()
+        await nextMainQueueTurn()
+        await nextMainQueueTurn()
+
+        XCTAssertTrue(controller.isAvailable)
+        XCTAssertFalse(controller.canGoToPreviousPage)
+        XCTAssertTrue(controller.canGoToNextPage)
+
+        let optionUp = try keyEvent(
+            characters: String(UnicodeScalar(NSUpArrowFunctionKey)!),
+            modifiers: .option,
+            keyCode: 126
+        )
+        XCTAssertTrue(container.activeView.performKeyEquivalent(with: optionUp))
+        XCTAssertEqual(document.index(for: try XCTUnwrap(container.activeView.currentPage)), 0)
+
+        container.activeView.goToLastPage(nil)
+        XCTAssertTrue(controller.canGoToPreviousPage)
+        XCTAssertFalse(controller.canGoToNextPage)
+
+        let optionDown = try keyEvent(
+            characters: String(UnicodeScalar(NSDownArrowFunctionKey)!),
+            modifiers: .option,
+            keyCode: 125
+        )
+        XCTAssertTrue(container.activeView.performKeyEquivalent(with: optionDown))
+        XCTAssertEqual(
+            document.index(for: try XCTUnwrap(container.activeView.currentPage)),
+            document.pageCount - 1
+        )
+
+        container.activeView.scaleFactor = container.activeView.minScaleFactor
+        XCTAssertFalse(controller.canZoomOut)
+        let minimumScale = container.activeView.scaleFactor
+        container.activeView.zoomOutByStep()
+        XCTAssertEqual(container.activeView.scaleFactor, minimumScale, accuracy: 0.001)
+
+        container.activeView.scaleFactor = container.activeView.maxScaleFactor
+        XCTAssertFalse(controller.canZoomIn)
+        let maximumScale = container.activeView.scaleFactor
+        container.activeView.zoomInByStep()
+        XCTAssertEqual(container.activeView.scaleFactor, maximumScale, accuracy: 0.001)
+    }
+
+    func testViewingStateFollowsTheActiveViewAcrossBufferedRefresh() async throws {
+        let original = try makeDocument(markdown: (1...100).map {
+            "Original paragraph \($0) with enough text to paginate."
+        }.joined(separator: "\n\n"))
+        let replacement = try makeDocument(markdown: (1...120).map {
+            "Replacement paragraph \($0) with enough text to paginate."
+        }.joined(separator: "\n\n"))
+        let container = BufferedPDFPreviewView(
+            frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+        )
+        container.stagingDelay = 0
+        let controller = PDFViewingController()
+        container.viewingController = controller
+        container.display(original.document, data: original.data, revision: 1)
+        container.activeView.goToLastPage(nil)
+        XCTAssertFalse(controller.canGoToNextPage)
+
+        container.display(replacement.document, data: replacement.data, revision: 2)
+        await nextMainQueueTurn()
+        await nextMainQueueTurn()
+
+        XCTAssertEqual(controller.state, container.viewingState)
+        XCTAssertTrue(controller.isAvailable)
     }
 
     func testSettledInitialFitOverridesInterimRestoredPagePosition() async throws {
