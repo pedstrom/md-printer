@@ -7,7 +7,7 @@ final class InlineParserTests: XCTestCase {
     func testPlainTextEscapesAndLineBreaks() {
         XCTAssertEqual(
             parser.parse("plain \\* text\nnext<br>third<br/>fourth"),
-            [.text("plain * text"), .lineBreak, .text("next"), .lineBreak, .text("third"), .lineBreak, .text("fourth")]
+            [.text("plain * text"), .softBreak, .text("next"), .hardBreak, .text("third"), .hardBreak, .text("fourth")]
         )
     }
 
@@ -16,8 +16,8 @@ final class InlineParserTests: XCTestCase {
         XCTAssertEqual(parser.parse("__bold__"), [.strong([.text("bold")])])
         XCTAssertEqual(parser.parse("*italic*"), [.emphasis([.text("italic")])])
         XCTAssertEqual(parser.parse("_italic_"), [.emphasis([.text("italic")])])
-        XCTAssertEqual(parser.parse("***both***"), [.strong([.emphasis([.text("both")])])])
-        XCTAssertEqual(parser.parse("___both___"), [.strong([.emphasis([.text("both")])])])
+        XCTAssertEqual(parser.parse("***both***"), [.emphasis([.strong([.text("both")])])])
+        XCTAssertEqual(parser.parse("___both___"), [.emphasis([.strong([.text("both")])])])
     }
 
     func testUnderlineStrikeAndCode() {
@@ -61,6 +61,24 @@ final class InlineParserTests: XCTestCase {
         XCTAssertEqual(plainText(from: parser.parse(source)), source)
         XCTAssertEqual(parser.parse("trailing\\"), [.text("trailing\\")])
         XCTAssertEqual(parser.parse("![bad]"), [.text("![bad]")])
+    }
+
+    func testCommonMarkDelimiterWhitespaceAndCodeRunEdges() {
+        XCTAssertEqual(parser.parse("*\u{00a0}a\u{00a0}*"), [.text("*\u{00a0}a\u{00a0}*")])
+        XCTAssertEqual(parser.parse("*foo bar\n*"), [.text("*foo bar"), .softBreak, .text("*")])
+        XCTAssertEqual(parser.parse("` `` `"), [.code("``")])
+        XCTAssertEqual(parser.parse("```foo``"), [.text("```foo``")])
+        XCTAssertEqual(parser.parse("`foo``bar``"), [.text("`foo"), .code("bar")])
+
+        let blockParser = MarkdownParser()
+        XCTAssertEqual(
+            CommonMarkHTMLSerializer.serialize(blockParser.parse("*\u{00a0}a\u{00a0}*\n")),
+            "<p>*\u{00a0}a\u{00a0}*</p>\n"
+        )
+        XCTAssertEqual(
+            CommonMarkHTMLSerializer.serialize(blockParser.parse("*foo bar\n*\n")),
+            "<p>*foo bar\n*</p>\n"
+        )
     }
 
     private func plainText(from nodes: [InlineNode]) -> String {

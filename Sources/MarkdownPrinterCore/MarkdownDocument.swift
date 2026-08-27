@@ -5,17 +5,21 @@ public struct MarkdownDocument: Equatable, Sendable {
     public let sourceModificationDate: Date?
     public let title: String
     public let markdown: String
+    public let blocks: [MarkdownBlock]
 
     public init(
         sourceURL: URL? = nil,
         sourceModificationDate: Date? = nil,
         title: String,
-        markdown: String
+        markdown: String,
+        blocks: [MarkdownBlock]? = nil
     ) {
         self.sourceURL = sourceURL
         self.sourceModificationDate = sourceModificationDate
-        self.title = Self.markdownTitle(in: markdown) ?? title
         self.markdown = markdown
+        let parsedBlocks = blocks ?? MarkdownParser().parse(markdown)
+        self.blocks = parsedBlocks
+        self.title = Self.markdownTitle(in: parsedBlocks) ?? title
     }
 
     public static func load(from url: URL) throws -> MarkdownDocument {
@@ -62,8 +66,8 @@ public struct MarkdownDocument: Equatable, Sendable {
         sourceURL?.deletingLastPathComponent()
     }
 
-    private static func markdownTitle(in markdown: String) -> String? {
-        for block in MarkdownParser().parse(markdown) {
+    private static func markdownTitle(in blocks: [MarkdownBlock]) -> String? {
+        for block in blocks {
             guard case let .heading(level, content) = block, level == 1 else { continue }
             let title = plainText(from: content).trimmingCharacters(in: .whitespacesAndNewlines)
             if !title.isEmpty { return title }
@@ -87,7 +91,7 @@ public struct MarkdownDocument: Equatable, Sendable {
                 return ""
             case let .image(alt, _, _):
                 return alt
-            case .lineBreak:
+            case .softBreak, .hardBreak:
                 return " "
             }
         }.joined()

@@ -407,43 +407,56 @@ public final class WordExporter {
         }
 
         try FileManager.default.createDirectory(at: mediaURL, withIntermediateDirectories: true)
+        var xmlReplacements: [WordXMLReplacement] = []
+        var relationshipFragments: [String] = []
+        let nativeXML = documentXML as NSString
+        let nativeTokens = document.images.map(\.token) + document.links.map(\.token)
+            + document.footnoteLinks.map(\.token) + document.tables.map(\.token)
+            + document.quotes.map(\.token)
+        let nativeTokenRanges = tokenRanges(in: nativeXML, expectedTokens: nativeTokens)
         for (offset, image) in document.images.enumerated() {
             let index = offset + 1
             let relationshipID = "rIdMarkdownPrinterImage\(index)"
             let fileName = "markdown-printer-image-\(index).png"
-            guard replaceTextElement(
-                containing: image.token,
-                with: drawingXML(
+            guard let range = elementRange(
+                containing: nativeTokenRanges[image.token],
+                opening: "<w:t",
+                closing: "</w:t>",
+                in: nativeXML
+            ) else {
+                throw WordExporterError.packagingFailed
+            }
+            xmlReplacements.append(WordXMLReplacement(
+                range: range,
+                value: drawingXML(
                     image: image,
                     relationshipID: relationshipID,
                     fileName: fileName,
                     index: index
-                ),
-                in: &documentXML
-            ) else {
-                throw WordExporterError.packagingFailed
-            }
-            relationshipsXML = try inserting(
+                )
+            ))
+            relationshipFragments.append(
                 "<Relationship Id=\"\(relationshipID)\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"media/\(fileName)\"/>",
-                before: "</Relationships>",
-                in: relationshipsXML
             )
             try image.pngData.write(to: mediaURL.appendingPathComponent(fileName), options: .atomic)
         }
 
         for (offset, link) in document.links.enumerated() {
             let relationshipID = "rIdMarkdownPrinterLink\(offset + 1)"
-            guard replaceRunElement(
-                containing: link.token,
-                with: "<w:hyperlink r:id=\"\(relationshipID)\">\(link.runXML)</w:hyperlink>",
-                in: &documentXML
+            guard let range = elementRange(
+                containing: nativeTokenRanges[link.token],
+                opening: "<w:r>",
+                closing: "</w:r>",
+                in: nativeXML
             ) else {
                 throw WordExporterError.packagingFailed
             }
-            relationshipsXML = try inserting(
+            xmlReplacements.append(WordXMLReplacement(
+                range: range,
+                value: "<w:hyperlink r:id=\"\(relationshipID)\">\(link.runXML)</w:hyperlink>"
+            ))
+            relationshipFragments.append(
                 "<Relationship Id=\"\(relationshipID)\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"\(Self.escapeXML(link.destination))\" TargetMode=\"External\"/>",
-                before: "</Relationships>",
-                in: relationshipsXML
             )
         }
 
@@ -453,30 +466,46 @@ public final class WordExporter {
             } ?? link.runXML
             let bookmarkID = 2_000 + offset
             let replacement = "<w:bookmarkStart w:id=\"\(bookmarkID)\" w:name=\"\(link.bookmarkAnchor)\"/>\(content)<w:bookmarkEnd w:id=\"\(bookmarkID)\"/>"
-            guard replaceRunElement(
-                containing: link.token,
-                with: replacement,
-                in: &documentXML
+            guard let range = elementRange(
+                containing: nativeTokenRanges[link.token],
+                opening: "<w:r>",
+                closing: "</w:r>",
+                in: nativeXML
             ) else {
                 throw WordExporterError.packagingFailed
             }
+            xmlReplacements.append(WordXMLReplacement(range: range, value: replacement))
         }
 
         for table in document.tables {
-            guard replaceParagraph(
-                containing: table.token,
-                with: table.tableXML,
-                in: &documentXML
+            guard let range = elementRange(
+                containing: nativeTokenRanges[table.token],
+                opening: "<w:p>",
+                closing: "</w:p>",
+                in: nativeXML
             ) else {
                 throw WordExporterError.packagingFailed
             }
+            xmlReplacements.append(WordXMLReplacement(range: range, value: table.tableXML))
         }
 
-        for quote in document.quotes {
-            guard styleQuoteParagraph(containing: quote.token, in: &documentXML) else {
+        documentXML = try applying(xmlReplacements, to: documentXML)
+        let linkedXML = documentXML as NSString
+        let linkedTokenRanges = tokenRanges(
+            in: linkedXML,
+            expectedTokens: document.quotes.map(\.token)
+        )
+        let quoteReplacements = try document.quotes.map { quote in
+            guard let replacement = quoteReplacement(
+                containing: linkedTokenRanges[quote.token],
+                token: quote.token,
+                in: linkedXML
+            ) else {
                 throw WordExporterError.packagingFailed
             }
+            return replacement
         }
+        documentXML = try applying(quoteReplacements, to: documentXML)
 
         let footerRelationshipID = "rIdMarkdownPrinterFooter"
         documentXML = try applyingSectionProperties(
@@ -484,8 +513,11 @@ public final class WordExporter {
             footerRelationshipID: footerRelationshipID,
             to: documentXML
         )
-        relationshipsXML = try inserting(
+        relationshipFragments.append(
             "<Relationship Id=\"\(footerRelationshipID)\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer\" Target=\"footer1.xml\"/>",
+        )
+        relationshipsXML = try inserting(
+            relationshipFragments.joined(),
             before: "</Relationships>",
             in: relationshipsXML
         )
@@ -600,57 +632,103 @@ public final class WordExporter {
             + "<w:r>\(properties)<w:fldChar w:fldCharType=\"end\"/></w:r></w:p>"
     }
 
-    private func replaceTextElement(
-        containing token: String,
-        with replacement: String,
-        in xml: inout String
-    ) -> Bool {
-        guard let tokenRange = xml.range(of: token),
-              let start = xml[..<tokenRange.lowerBound].range(of: "<w:t", options: .backwards),
-              let end = xml[tokenRange.upperBound...].range(of: "</w:t>") else {
-            return false
+    private func tokenRanges(
+        in xml: NSString,
+        expectedTokens: [String]
+    ) -> [String: NSRange] {
+        guard !expectedTokens.isEmpty else { return [:] }
+        let expected = Set(expectedTokens)
+        let minimumLength = expectedTokens.map(\.utf16.count).min() ?? 0
+        let maximumLength = expectedTokens.map(\.utf16.count).max() ?? 0
+        var result: [String: NSRange] = [:]
+        var searchLocation = 0
+        while searchLocation < xml.length {
+            let marker = xml.range(
+                of: "MDPRINTER",
+                range: NSRange(
+                    location: searchLocation,
+                    length: xml.length - searchLocation
+                )
+            )
+            guard marker.location != NSNotFound else { break }
+
+            let available = min(maximumLength, xml.length - marker.location)
+            if available >= minimumLength {
+                for length in stride(from: available, through: minimumLength, by: -1) {
+                    let range = NSRange(location: marker.location, length: length)
+                    let candidate = xml.substring(with: range)
+                    if expected.contains(candidate) {
+                        result[candidate] = range
+                        break
+                    }
+                }
+            }
+            searchLocation = NSMaxRange(marker)
         }
-        xml.replaceSubrange(start.lowerBound..<end.upperBound, with: replacement)
-        return true
+        return result
     }
 
-    private func replaceRunElement(
-        containing token: String,
-        with replacement: String,
-        in xml: inout String
-    ) -> Bool {
-        guard let tokenRange = xml.range(of: token),
-              let start = xml[..<tokenRange.lowerBound].range(of: "<w:r>", options: .backwards),
-              let end = xml[tokenRange.upperBound...].range(of: "</w:r>") else {
-            return false
-        }
-        xml.replaceSubrange(start.lowerBound..<end.upperBound, with: replacement)
-        return true
+    private func elementRange(
+        containing tokenRange: NSRange?,
+        opening: String,
+        closing: String,
+        in xml: NSString
+    ) -> NSRange? {
+        guard let tokenRange else { return nil }
+        let backwardStart = max(0, tokenRange.location - 16_384)
+        let start = xml.range(
+            of: opening,
+            options: .backwards,
+            range: NSRange(
+                location: backwardStart,
+                length: tokenRange.location - backwardStart
+            )
+        )
+        let afterToken = NSMaxRange(tokenRange)
+        let end = xml.range(
+            of: closing,
+            range: NSRange(location: afterToken, length: xml.length - afterToken)
+        )
+        guard start.location != NSNotFound, end.location != NSNotFound else { return nil }
+        return NSRange(location: start.location, length: NSMaxRange(end) - start.location)
     }
 
-    private func replaceParagraph(
-        containing token: String,
-        with replacement: String,
-        in xml: inout String
-    ) -> Bool {
-        guard let tokenRange = xml.range(of: token),
-              let start = xml[..<tokenRange.lowerBound].range(of: "<w:p>", options: .backwards),
-              let end = xml[tokenRange.upperBound...].range(of: "</w:p>") else {
-            return false
+    private func applying(
+        _ replacements: [WordXMLReplacement],
+        to xml: String
+    ) throws -> String {
+        let sorted = replacements.sorted { lhs, rhs in
+            if lhs.range.location != rhs.range.location {
+                return lhs.range.location > rhs.range.location
+            }
+            return lhs.range.length > rhs.range.length
         }
-        xml.replaceSubrange(start.lowerBound..<end.upperBound, with: replacement)
-        return true
+        var nextEnd = Int.max
+        let result = NSMutableString(string: xml)
+        for replacement in sorted {
+            guard NSMaxRange(replacement.range) <= nextEnd,
+                  NSMaxRange(replacement.range) <= result.length else {
+                throw WordExporterError.packagingFailed
+            }
+            result.replaceCharacters(in: replacement.range, with: replacement.value)
+            nextEnd = replacement.range.location
+        }
+        return result as String
     }
 
-    private func styleQuoteParagraph(containing token: String, in xml: inout String) -> Bool {
-        guard let tokenRange = xml.range(of: token),
-              let start = xml[..<tokenRange.lowerBound].range(of: "<w:p>", options: .backwards),
-              let end = xml[tokenRange.upperBound...].range(of: "</w:p>") else {
-            return false
-        }
-
-        var paragraph = String(xml[start.lowerBound..<end.upperBound])
-        guard paragraph.contains(token) else { return false }
+    private func quoteReplacement(
+        containing tokenRange: NSRange?,
+        token: String,
+        in xml: NSString
+    ) -> WordXMLReplacement? {
+        guard let range = elementRange(
+            containing: tokenRange,
+            opening: "<w:p>",
+            closing: "</w:p>",
+            in: xml
+        ) else { return nil }
+        var paragraph = xml.substring(with: range)
+        guard paragraph.contains(token) else { return nil }
         paragraph = paragraph.replacingOccurrences(of: token, with: "")
         let border = "<w:pBdr><w:left w:val=\"single\" w:sz=\"12\" w:space=\"8\" w:color=\"7F7F7F\"/></w:pBdr>"
         let indent = "<w:ind w:left=\"360\"/>"
@@ -658,18 +736,17 @@ public final class WordExporter {
            paragraph.range(of: "</w:pPr>") != nil {
             paragraph.insert(contentsOf: border, at: propertiesStart.upperBound)
             guard let updatedPropertiesEnd = paragraph.range(of: "</w:pPr>") else {
-                return false
+                return nil
             }
             paragraph.insert(contentsOf: indent, at: updatedPropertiesEnd.lowerBound)
         } else {
-            guard let openingParagraph = paragraph.range(of: "<w:p>") else { return false }
+            guard let openingParagraph = paragraph.range(of: "<w:p>") else { return nil }
             paragraph.insert(
                 contentsOf: "<w:pPr>\(border)\(indent)</w:pPr>",
                 at: openingParagraph.upperBound
             )
         }
-        xml.replaceSubrange(start.lowerBound..<end.upperBound, with: paragraph)
-        return true
+        return WordXMLReplacement(range: range, value: paragraph)
     }
 
     private func tableXML(for cells: [WordTableCell]) -> String {
@@ -791,6 +868,11 @@ private struct WordReplacement {
     let token: String
     let removedAttribute: NSAttributedString.Key?
     let preservesParagraphStyle: Bool
+}
+
+private struct WordXMLReplacement {
+    let range: NSRange
+    let value: String
 }
 
 private struct RenderedWordQuote {

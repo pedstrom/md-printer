@@ -1,5 +1,14 @@
 # Product Development Log
 
+## 2026-08-27 — Broader CommonMark compatibility and performance guardrails
+
+- Expanded the parser from the seven previously missing feature families into the high-frequency CommonMark interactions around delimiter runs, exact code-span fences, hard and soft breaks, ATX closing sequences, tabs, lazy block-quote continuation, nested lists, list marker identity, tight and loose lists, and inline-link precedence.
+- Pinned all 652 normative CommonMark 0.31.2 examples in the test target with a shared normalized serializer and raised the non-regression floor to 620 examples; the current implementation matches 641 examples (98.3%), with the remaining gaps isolated to unusual block-quote, link-label, list-item, and deeply nested-list cases.
+- Parsed each opened document once and reused its block tree for the app, PDF/Word export, and Finder Quick Look instead of reparsing independently for each rendering surface.
+- Moved parsing and attributed rendering off the main actor for document-window preparation, kept AppKit TextKit pagination on its required actor, and divided pagination and drawing into cancellation-aware yielding units so large documents do not freeze interaction.
+- Replaced repeated whole-document Word XML scans and mutations with indexed token lookup and reverse-ordered batch replacement, removing the dominant large-document export bottleneck.
+- Added a deterministic release benchmark and verification gate for 100 KB and 1 MB feature-heavy documents, covering absolute parser/render/export latency, main-actor stalls, peak resident memory, and bounded 10× scaling. The gate keeps 100 KB PDF and Word preparation below one and 1.5 seconds respectively, 1 MB output below six and eight seconds, and sampled main-actor stalls below 150 ms at the stress size.
+
 ## 2026-08-26 — Export-backed Save As command
 
 - Removed the read-only Markdown source document's generated **Save** command and replaced the generated **Save As…** behavior with the same PDF/Microsoft Word export flow used by the toolbar Save button.

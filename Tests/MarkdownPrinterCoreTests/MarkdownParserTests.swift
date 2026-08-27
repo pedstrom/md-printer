@@ -11,7 +11,7 @@ final class MarkdownParserTests: XCTestCase {
             .heading(level: 6, content: [.text("Six")]),
             .paragraph([.text("####### Not heading")]),
             .thematicBreak,
-            .paragraph([.text("Paragraph"), .lineBreak, .text("continues")])
+            .paragraph([.text("Paragraph"), .softBreak, .text("continues")])
         ])
     }
 
@@ -28,12 +28,22 @@ final class MarkdownParserTests: XCTestCase {
     func testBlockquoteAndMixedLists() {
         let blocks = parser.parse("> first\n> second\n\n- apple\n* [x] done\n+ [ ] todo\n\n3. third\n4. fourth")
         XCTAssertEqual(blocks, [
-            .blockquote([.paragraph([.text("first"), .lineBreak, .text("second")])]),
-            .list(items: [
-                MarkdownListItem(content: [.text("apple")]),
-                MarkdownListItem(content: [.text("done")], checked: true),
-                MarkdownListItem(content: [.text("todo")], checked: false)
-            ], ordered: false, start: 1),
+            .blockquote([.paragraph([.text("first"), .softBreak, .text("second")])]),
+            .list(
+                items: [MarkdownListItem(content: [.text("apple")])],
+                ordered: false,
+                start: 1
+            ),
+            .list(
+                items: [MarkdownListItem(content: [.text("done")], checked: true)],
+                ordered: false,
+                start: 1
+            ),
+            .list(
+                items: [MarkdownListItem(content: [.text("todo")], checked: false)],
+                ordered: false,
+                start: 1
+            ),
             .list(items: [
                 MarkdownListItem(content: [.text("third")]),
                 MarkdownListItem(content: [.text("fourth")])
@@ -63,7 +73,7 @@ final class MarkdownParserTests: XCTestCase {
     func testNonTableDelimiterAndCarriageReturns() {
         XCTAssertEqual(
             parser.parse("A|B\r\n--|---\rNext\r"),
-            [.paragraph([.text("A|B"), .lineBreak, .text("--|---"), .lineBreak, .text("Next")])]
+            [.paragraph([.text("A|B"), .softBreak, .text("--|---"), .softBreak, .text("Next")])]
         )
     }
 
@@ -71,8 +81,7 @@ final class MarkdownParserTests: XCTestCase {
         XCTAssertEqual(parser.parse("* * *\n\n___\n\n1.no\n0. yes"), [
             .thematicBreak,
             .thematicBreak,
-            .paragraph([.text("1.no")]),
-            .list(items: [MarkdownListItem(content: [.text("yes")])], ordered: true, start: 0)
+            .paragraph([.text("1.no"), .softBreak, .text("0. yes")])
         ])
     }
 
@@ -93,10 +102,10 @@ final class MarkdownParserTests: XCTestCase {
                 .text("First line with "),
                 .strong([.text("emphasis")]),
                 .text("."),
-                .lineBreak,
+                .softBreak,
                 .text("Continued line."),
-                .lineBreak,
-                .lineBreak,
+                .softBreak,
+                .softBreak,
                 .text("Final paragraph.")
             ]),
             .paragraph([.text("Afterward.")])

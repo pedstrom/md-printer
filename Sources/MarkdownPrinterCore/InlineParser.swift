@@ -9,20 +9,21 @@ public struct InlineParser: Sendable {
     public init() {}
 
     public func parse(_ source: String) -> [InlineNode] {
-        parse(source, references: [:])
+        parse(source.replacingOccurrences(of: "\0", with: "\u{FFFD}"), references: [:])
     }
 
     func parse(
         _ source: String,
-        references: [String: LinkReferenceDefinition]
+        references: [String: LinkReferenceDefinition],
+        trimFinalWhitespace: Bool = true
     ) -> [InlineNode] {
-        var nodes: [InlineNode] = []
+        let builder = InlineBuilder()
         var text = ""
         var index = source.startIndex
 
         func flushText() {
             guard !text.isEmpty else { return }
-            nodes.append(.text(CommonMarkEntityDecoder.decode(text)))
+            builder.append(.text(CommonMarkEntityDecoder.decode(text)))
             text = ""
         }
 
@@ -31,22 +32,63 @@ public struct InlineParser: Sendable {
                 let next = source.index(after: index)
                 if next < source.endIndex, Self.isEscapable(source[next]) {
                     flushText()
-                    nodes.append(.text(String(source[next])))
+                    builder.append(.text(String(source[next])))
                     index = source.index(after: next)
                     continue
                 }
             }
 
             if source[index] == "\n" {
+                let hardBreak: Bool
+                if text.last == "\\" {
+                    text.removeLast()
+                    hardBreak = true
+                } else {
+                    let trailingSpaces = text.reversed().prefix(while: { $0 == " " || $0 == "\t" }).count
+                    if trailingSpaces > 0 { text.removeLast(trailingSpaces) }
+                    hardBreak = trailingSpaces >= 2
+                }
                 flushText()
-                nodes.append(.lineBreak)
+                builder.append(hardBreak ? .hardBreak : .softBreak)
                 index = source.index(after: index)
+                while index < source.endIndex, source[index] == " " || source[index] == "\t" {
+                    index = source.index(after: index)
+                }
+                continue
+            }
+
+            if source[index] == "*" || source[index] == "_" {
+                flushText()
+                let marker = source[index]
+                let runStart = index
+                while index < source.endIndex, source[index] == marker {
+                    index = source.index(after: index)
+                }
+                let runLength = source.distance(from: runStart, to: index)
+                let before = runStart == source.startIndex ? nil : source[source.index(before: runStart)]
+                let after = index == source.endIndex ? nil : source[index]
+                let flanking = delimiterFlanking(before: before, after: after)
+                let canOpen: Bool
+                let canClose: Bool
+                if marker == "_" {
+                    canOpen = flanking.left && (!flanking.right || isPunctuation(before))
+                    canClose = flanking.right && (!flanking.left || isPunctuation(after))
+                } else {
+                    canOpen = flanking.left
+                    canClose = flanking.right
+                }
+                builder.appendDelimiter(
+                    marker: marker,
+                    length: runLength,
+                    canOpen: canOpen,
+                    canClose: canClose
+                )
                 continue
             }
 
             if let parsed = parseFootnoteReference(in: source, at: index) {
                 flushText()
-                nodes.append(.footnoteReference(label: parsed.label))
+                builder.append(.footnoteReference(label: parsed.label))
                 index = parsed.endIndex
                 continue
             }
@@ -57,15 +99,24 @@ public struct InlineParser: Sendable {
                 references: references
             ) {
                 flushText()
+                let labelNodes = parse(
+                    parsed.label,
+                    references: references,
+                    trimFinalWhitespace: false
+                )
                 if parsed.isImage {
-                    nodes.append(.image(
-                        alt: plainText(parse(parsed.label, references: references)),
+                    builder.append(.image(
+                        alt: plainText(labelNodes),
                         source: parsed.destination,
                         title: parsed.title
                     ))
+                } else if containsLink(labelNodes) {
+                    builder.append(.text("["))
+                    index = source.index(after: index)
+                    continue
                 } else {
-                    nodes.append(.link(
-                        children: parse(parsed.label, references: references),
+                    builder.append(.link(
+                        children: labelNodes,
                         destination: parsed.destination,
                         title: parsed.title
                     ))
@@ -74,37 +125,9 @@ public struct InlineParser: Sendable {
                 continue
             }
 
-            if let parsed = parseDelimited("***", in: source, at: index) {
-                flushText()
-                nodes.append(.strong([.emphasis(parse(parsed.content, references: references))]))
-                index = parsed.endIndex
-                continue
-            }
-
-            if let parsed = parseDelimited("___", in: source, at: index) {
-                flushText()
-                nodes.append(.strong([.emphasis(parse(parsed.content, references: references))]))
-                index = parsed.endIndex
-                continue
-            }
-
-            if let parsed = parseDelimited("**", in: source, at: index) {
-                flushText()
-                nodes.append(.strong(parse(parsed.content, references: references)))
-                index = parsed.endIndex
-                continue
-            }
-
-            if let parsed = parseDelimited("__", in: source, at: index) {
-                flushText()
-                nodes.append(.strong(parse(parsed.content, references: references)))
-                index = parsed.endIndex
-                continue
-            }
-
             if let parsed = parseDelimited("~~", in: source, at: index) {
                 flushText()
-                nodes.append(.strikethrough(parse(parsed.content, references: references)))
+                builder.append(.strikethrough(parse(parsed.content, references: references, trimFinalWhitespace: false)))
                 index = parsed.endIndex
                 continue
             }
@@ -116,9 +139,10 @@ public struct InlineParser: Sendable {
                ) {
                 flushText()
                 let contentStart = source.index(index, offsetBy: 3)
-                nodes.append(.underline(parse(
+                builder.append(.underline(parse(
                     String(source[contentStart..<closing.lowerBound]),
-                    references: references
+                    references: references,
+                    trimFinalWhitespace: false
                 )))
                 index = closing.upperBound
                 continue
@@ -126,35 +150,41 @@ public struct InlineParser: Sendable {
 
             if source[index...].hasPrefix("<br>") {
                 flushText()
-                nodes.append(.lineBreak)
+                builder.append(.hardBreak)
                 index = source.index(index, offsetBy: 4)
                 continue
             }
 
             if source[index...].hasPrefix("<br/>") {
                 flushText()
-                nodes.append(.lineBreak)
+                builder.append(.hardBreak)
                 index = source.index(index, offsetBy: 5)
                 continue
             }
 
             if source[index...].hasPrefix("<br />") {
                 flushText()
-                nodes.append(.lineBreak)
+                builder.append(.hardBreak)
                 index = source.index(index, offsetBy: 6)
                 continue
             }
 
-            if source[index] == "`", let parsed = parseCodeSpan(in: source, at: index) {
+            if source[index] == "`" {
                 flushText()
-                nodes.append(.code(parsed.content))
-                index = parsed.endIndex
+                if let parsed = parseCodeSpan(in: source, at: index) {
+                    builder.append(.code(parsed.content))
+                    index = parsed.endIndex
+                } else {
+                    let markerLength = source[index...].prefix(while: { $0 == "`" }).count
+                    builder.append(.text(String(repeating: "`", count: markerLength)))
+                    index = source.index(index, offsetBy: markerLength)
+                }
                 continue
             }
 
             if source[index] == "<", let parsed = parseAutolink(in: source, at: index) {
                 flushText()
-                nodes.append(.link(
+                builder.append(.link(
                     children: [.text(parsed.label)],
                     destination: parsed.destination,
                     title: nil
@@ -165,21 +195,7 @@ public struct InlineParser: Sendable {
 
             if source[index] == "<", let parsed = parseRawHTML(in: source, at: index) {
                 flushText()
-                nodes.append(.rawHTML(parsed.source))
-                index = parsed.endIndex
-                continue
-            }
-
-            if let parsed = parseDelimited("*", in: source, at: index), !parsed.content.isEmpty {
-                flushText()
-                nodes.append(.emphasis(parse(parsed.content, references: references)))
-                index = parsed.endIndex
-                continue
-            }
-
-            if let parsed = parseDelimited("_", in: source, at: index), !parsed.content.isEmpty {
-                flushText()
-                nodes.append(.emphasis(parse(parsed.content, references: references)))
+                builder.append(.rawHTML(parsed.source))
                 index = parsed.endIndex
                 continue
             }
@@ -188,8 +204,12 @@ public struct InlineParser: Sendable {
             index = source.index(after: index)
         }
 
+        if trimFinalWhitespace {
+            while text.last == " " || text.last == "\t" { text.removeLast() }
+        }
         flushText()
-        return coalescingText(nodes)
+        builder.resolveEmphasis()
+        return builder.nodes
     }
 
     static func normalizedReferenceLabel(_ source: String) -> String? {
@@ -241,12 +261,27 @@ public struct InlineParser: Sendable {
         at index: String.Index
     ) -> (content: String, endIndex: String.Index)? {
         let markerLength = source[index...].prefix(while: { $0 == "`" }).count
-        let marker = String(repeating: "`", count: markerLength)
         let contentStart = source.index(index, offsetBy: markerLength)
-        guard let closing = source.range(of: marker, range: contentStart..<source.endIndex) else {
-            return nil
+        var cursor = contentStart
+        var closingStart: String.Index?
+        var closingEnd: String.Index?
+        while cursor < source.endIndex {
+            guard source[cursor] == "`" else {
+                cursor = source.index(after: cursor)
+                continue
+            }
+            let runStart = cursor
+            while cursor < source.endIndex, source[cursor] == "`" {
+                cursor = source.index(after: cursor)
+            }
+            if source.distance(from: runStart, to: cursor) == markerLength {
+                closingStart = runStart
+                closingEnd = cursor
+                break
+            }
         }
-        var content = String(source[contentStart..<closing.lowerBound])
+        guard let closingStart, let closingEnd else { return nil }
+        var content = String(source[contentStart..<closingStart])
             .replacingOccurrences(of: "\n", with: " ")
         if content.count >= 2,
            content.first == " ", content.last == " ",
@@ -254,7 +289,7 @@ public struct InlineParser: Sendable {
             content.removeFirst()
             content.removeLast()
         }
-        return (content, closing.upperBound)
+        return (content, closingEnd)
     }
 
     private func parseFootnoteReference(
@@ -335,6 +370,25 @@ public struct InlineParser: Sendable {
                 index = next < source.endIndex ? source.index(after: next) : next
                 continue
             }
+            if source[index] == "`" {
+                if let code = parseCodeSpan(in: source, at: index) {
+                    index = code.endIndex
+                } else {
+                    let length = source[index...].prefix(while: { $0 == "`" }).count
+                    index = source.index(index, offsetBy: length)
+                }
+                continue
+            }
+            if source[index] == "<" {
+                if let autolink = parseAutolink(in: source, at: index) {
+                    index = autolink.endIndex
+                    continue
+                }
+                if let rawHTML = parseRawHTML(in: source, at: index) {
+                    index = rawHTML.endIndex
+                    continue
+                }
+            }
             if source[index] == "[" { depth += 1 }
             if source[index] == "]" {
                 if depth == 0 { return index }
@@ -350,7 +404,7 @@ public struct InlineParser: Sendable {
         at openParenthesis: String.Index
     ) -> (destination: String, title: String?, endIndex: String.Index)? {
         var index = source.index(after: openParenthesis)
-        skipWhitespace(in: source, index: &index)
+        skipLinkWhitespace(in: source, index: &index)
 
         let destination: String
         if index < source.endIndex, source[index] == "<" {
@@ -383,7 +437,7 @@ public struct InlineParser: Sendable {
                 } else if character == ")" {
                     if depth == 0 { break }
                     depth -= 1
-                } else if character.isWhitespace {
+                } else if isLinkWhitespace(character) {
                     break
                 }
                 index = source.index(after: index)
@@ -393,7 +447,7 @@ public struct InlineParser: Sendable {
         }
 
         let beforeWhitespace = index
-        skipWhitespace(in: source, index: &index)
+        skipLinkWhitespace(in: source, index: &index)
         var title: String?
         if index < source.endIndex, "\"'( ".contains(source[index]), source[index] != " " {
             let opener = source[index]
@@ -411,7 +465,7 @@ public struct InlineParser: Sendable {
             guard cursor < source.endIndex else { return nil }
             title = String(source[titleStart..<cursor])
             index = source.index(after: cursor)
-            skipWhitespace(in: source, index: &index)
+            skipLinkWhitespace(in: source, index: &index)
         } else if beforeWhitespace != index, index < source.endIndex, source[index] != ")" {
             return nil
         }
@@ -596,22 +650,33 @@ public struct InlineParser: Sendable {
             case let .link(children, _, _): return plainText(children)
             case let .footnoteReference(label): return "[^\(label)]"
             case let .image(alt, _, _): return alt
-            case .lineBreak: return "\n"
+            case .softBreak, .hardBreak: return "\n"
             }
         }.joined()
     }
 
-    private func coalescingText(_ nodes: [InlineNode]) -> [InlineNode] {
-        var result: [InlineNode] = []
-        for node in nodes {
-            if case let .text(value) = node,
-               case let .text(previous)? = result.last {
-                result[result.count - 1] = .text(previous + value)
-            } else {
-                result.append(node)
+    private func containsLink(_ nodes: [InlineNode]) -> Bool {
+        nodes.contains { node in
+            switch node {
+            case .link:
+                return true
+            case let .emphasis(children), let .strong(children), let .underline(children),
+                 let .strikethrough(children):
+                return containsLink(children)
+            case .text, .code, .footnoteReference, .image, .rawHTML, .softBreak, .hardBreak:
+                return false
             }
         }
-        return result
+    }
+
+    private func skipLinkWhitespace(in source: String, index: inout String.Index) {
+        while index < source.endIndex, isLinkWhitespace(source[index]) {
+            index = source.index(after: index)
+        }
+    }
+
+    private func isLinkWhitespace(_ character: Character) -> Bool {
+        character == " " || character == "\t" || character == "\n"
     }
 
     private func skipWhitespace(in source: String, index: inout String.Index) {
@@ -630,6 +695,238 @@ public struct InlineParser: Sendable {
 
     fileprivate static func isEscapable(_ character: Character) -> Bool {
         character.isASCII && "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".contains(character)
+    }
+}
+
+private final class InlineItem {
+    var node: InlineNode
+    weak var previous: InlineItem?
+    var next: InlineItem?
+
+    init(node: InlineNode) {
+        self.node = node
+    }
+}
+
+private final class InlineDelimiter {
+    let marker: Character
+    var length: Int
+    let canOpen: Bool
+    let canClose: Bool
+    let item: InlineItem
+    weak var previous: InlineDelimiter?
+    var next: InlineDelimiter?
+
+    init(
+        marker: Character,
+        length: Int,
+        canOpen: Bool,
+        canClose: Bool,
+        item: InlineItem
+    ) {
+        self.marker = marker
+        self.length = length
+        self.canOpen = canOpen
+        self.canClose = canClose
+        self.item = item
+    }
+}
+
+private final class InlineBuilder {
+    private var firstItem: InlineItem?
+    private var lastItem: InlineItem?
+    private var firstDelimiter: InlineDelimiter?
+    private var lastDelimiter: InlineDelimiter?
+
+    var nodes: [InlineNode] {
+        normalizedNodes(from: firstItem, until: nil)
+    }
+
+    func append(_ node: InlineNode) {
+        appendItem(InlineItem(node: node))
+    }
+
+    func appendDelimiter(
+        marker: Character,
+        length: Int,
+        canOpen: Bool,
+        canClose: Bool
+    ) {
+        let item = InlineItem(node: .text(String(repeating: String(marker), count: length)))
+        appendItem(item)
+
+        let delimiter = InlineDelimiter(
+            marker: marker,
+            length: length,
+            canOpen: canOpen,
+            canClose: canClose,
+            item: item
+        )
+        delimiter.previous = lastDelimiter
+        lastDelimiter?.next = delimiter
+        if firstDelimiter == nil { firstDelimiter = delimiter }
+        lastDelimiter = delimiter
+    }
+
+    func resolveEmphasis() {
+        var closer = firstDelimiter
+        while let currentCloser = closer {
+            guard currentCloser.canClose,
+                  let opener = matchingOpener(for: currentCloser) else {
+                closer = currentCloser.next
+                continue
+            }
+
+            let markersUsed = opener.length >= 2 && currentCloser.length >= 2 ? 2 : 1
+            opener.length -= markersUsed
+            currentCloser.length -= markersUsed
+
+            let children = normalizedNodes(
+                from: opener.item.next,
+                until: currentCloser.item
+            )
+            let wrapper = InlineItem(node: markersUsed == 2 ? .strong(children) : .emphasis(children))
+            replaceItems(between: opener.item, and: currentCloser.item, with: wrapper)
+            removeDelimiters(between: opener, and: currentCloser)
+
+            updateLiteralItem(for: opener)
+            updateLiteralItem(for: currentCloser)
+
+            if opener.length == 0 {
+                removeItem(opener.item)
+                removeDelimiter(opener)
+            }
+            if currentCloser.length == 0 {
+                let next = currentCloser.next
+                removeItem(currentCloser.item)
+                removeDelimiter(currentCloser)
+                closer = next
+            } else {
+                closer = currentCloser
+            }
+        }
+    }
+
+    private func matchingOpener(for closer: InlineDelimiter) -> InlineDelimiter? {
+        var candidate = closer.previous
+        while let opener = candidate {
+            if opener.marker == closer.marker,
+               opener.canOpen,
+               !violatesRuleOfThree(opener: opener, closer: closer) {
+                return opener
+            }
+            candidate = opener.previous
+        }
+        return nil
+    }
+
+    private func violatesRuleOfThree(
+        opener: InlineDelimiter,
+        closer: InlineDelimiter
+    ) -> Bool {
+        guard opener.canClose || closer.canOpen else { return false }
+        return (opener.length + closer.length).isMultiple(of: 3)
+            && (!opener.length.isMultiple(of: 3) || !closer.length.isMultiple(of: 3))
+    }
+
+    private func appendItem(_ item: InlineItem) {
+        item.previous = lastItem
+        lastItem?.next = item
+        if firstItem == nil { firstItem = item }
+        lastItem = item
+    }
+
+    private func replaceItems(
+        between opener: InlineItem,
+        and closer: InlineItem,
+        with wrapper: InlineItem
+    ) {
+        opener.next = wrapper
+        wrapper.previous = opener
+        wrapper.next = closer
+        closer.previous = wrapper
+    }
+
+    private func removeDelimiters(
+        between opener: InlineDelimiter,
+        and closer: InlineDelimiter
+    ) {
+        var delimiter = opener.next
+        while let current = delimiter, current !== closer {
+            let next = current.next
+            removeDelimiter(current)
+            delimiter = next
+        }
+    }
+
+    private func updateLiteralItem(for delimiter: InlineDelimiter) {
+        delimiter.item.node = .text(
+            String(repeating: String(delimiter.marker), count: delimiter.length)
+        )
+    }
+
+    private func removeItem(_ item: InlineItem) {
+        let previous = item.previous
+        let next = item.next
+        previous?.next = next
+        next?.previous = previous
+        if firstItem === item { firstItem = next }
+        if lastItem === item { lastItem = previous }
+        item.previous = nil
+        item.next = nil
+    }
+
+    private func removeDelimiter(_ delimiter: InlineDelimiter) {
+        let previous = delimiter.previous
+        let next = delimiter.next
+        previous?.next = next
+        next?.previous = previous
+        if firstDelimiter === delimiter { firstDelimiter = next }
+        if lastDelimiter === delimiter { lastDelimiter = previous }
+        delimiter.previous = nil
+        delimiter.next = nil
+    }
+
+    private func normalizedNodes(
+        from start: InlineItem?,
+        until end: InlineItem?
+    ) -> [InlineNode] {
+        var result: [InlineNode] = []
+        var item = start
+        while let current = item, current !== end {
+            if case let .text(value) = current.node,
+               case let .text(previous)? = result.last {
+                result[result.count - 1] = .text(previous + value)
+            } else if case let .text(value) = current.node, value.isEmpty {
+                // Fully consumed delimiter items are removed after wrapping.
+            } else {
+                result.append(current.node)
+            }
+            item = current.next
+        }
+        return result
+    }
+}
+
+private func delimiterFlanking(
+    before: Character?,
+    after: Character?
+) -> (left: Bool, right: Bool) {
+    let beforeWhitespace = before?.isWhitespace ?? true
+    let afterWhitespace = after?.isWhitespace ?? true
+    let beforePunctuation = isPunctuation(before)
+    let afterPunctuation = isPunctuation(after)
+    return (
+        !afterWhitespace && (!afterPunctuation || beforeWhitespace || beforePunctuation),
+        !beforeWhitespace && (!beforePunctuation || afterWhitespace || afterPunctuation)
+    )
+}
+
+private func isPunctuation(_ character: Character?) -> Bool {
+    guard let character else { return false }
+    return character.unicodeScalars.contains { scalar in
+        CharacterSet.punctuationCharacters.contains(scalar)
+            || CharacterSet.symbols.contains(scalar)
     }
 }
 

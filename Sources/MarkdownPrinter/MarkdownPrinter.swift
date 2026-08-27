@@ -283,14 +283,12 @@ private struct MarkdownDocumentWindow: View {
             )
             .onAppear {
                 windowRestoration.activate()
-                synchronizeFileDocument()
-                session.startMonitoringSourceChanges()
             }
             .onDisappear {
                 windowRestoration.deactivate()
             }
-            .onChange(of: fileDocument.markdownDocument(sourceURL: sourceURL).markdown) {
-                synchronizeFileDocument()
+            .task(id: fileDocument.markdown) {
+                await synchronizeFileDocument()
                 session.startMonitoringSourceChanges()
             }
     }
@@ -312,19 +310,19 @@ private struct MarkdownDocumentWindow: View {
         sourceURL: URL?,
         pagePreferences: PagePreferences
     ) -> DocumentSession {
-        let session = DocumentSession(pagePreferences: pagePreferences)
-        do {
-            try session.apply(fileDocument.markdownDocument(sourceURL: sourceURL))
-        } catch {
-            session.report(error: error)
-        }
-        return session
+        DocumentSession(pagePreferences: pagePreferences)
     }
 
-    private func synchronizeFileDocument() {
+    private func synchronizeFileDocument() async {
         do {
-            try session.synchronize(with: fileDocument.markdownDocument(sourceURL: sourceURL))
+            let document = fileDocument.markdownDocument(sourceURL: sourceURL)
+            if session.hasDocument {
+                try await session.synchronizeAsync(with: document)
+            } else {
+                try await session.applyAsync(document)
+            }
         } catch {
+            guard !Task.isCancelled else { return }
             session.report(error: error)
         }
     }

@@ -11,7 +11,8 @@ public indirect enum InlineNode: Equatable, Sendable {
     case footnoteReference(label: String)
     case image(alt: String, source: String, title: String? = nil)
     case rawHTML(String)
-    case lineBreak
+    case softBreak
+    case hardBreak
 }
 
 public enum TableAlignment: Equatable, Sendable {
@@ -44,7 +45,7 @@ public indirect enum MarkdownBlock: Equatable, Sendable {
     case heading(level: Int, content: [InlineNode])
     case paragraph([InlineNode])
     case blockquote([MarkdownBlock])
-    case list(items: [MarkdownListItem], ordered: Bool, start: Int)
+    case list(items: [MarkdownListItem], ordered: Bool, start: Int, tight: Bool = true)
     case codeBlock(language: String?, code: String)
     case rawHTML(String)
     case thematicBreak

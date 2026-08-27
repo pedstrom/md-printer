@@ -48,6 +48,55 @@ final class DocumentSessionTests: XCTestCase {
         withExtendedLifetime(observation) { }
     }
 
+    func testAsyncApplyPublishesPreparedSnapshotAndBusyState() async throws {
+        let session = DocumentSession()
+        var preparationStates: [Bool] = []
+        let observation = session.$isPreparingDocument.dropFirst().sink {
+            preparationStates.append($0)
+        }
+
+        try await session.applyAsync(MarkdownDocument(
+            title: "Async",
+            markdown: "# Async\n\n" + String(repeating: "Responsive paragraph.\n\n", count: 80)
+        ))
+
+        XCTAssertEqual(session.title, "Async")
+        XCTAssertFalse(session.isPreparingDocument)
+        XCTAssertEqual(preparationStates, [true, false])
+        XCTAssertTrue(session.renderedText.string.contains("Responsive paragraph."))
+        XCTAssertNotNil(PDFDocument(data: try session.pdfData()))
+        withExtendedLifetime(observation) { }
+    }
+
+    func testAsyncSynchronizeSkipsIdenticalDocument() async throws {
+        let session = DocumentSession()
+        let document = MarkdownDocument(title: "Async", markdown: "# Async")
+        try await session.applyAsync(document)
+        let revision = try XCTUnwrap(session.renderedSnapshot?.revision)
+
+        let didSynchronize = try await session.synchronizeAsync(with: document)
+        XCTAssertFalse(didSynchronize)
+        XCTAssertEqual(session.renderedSnapshot?.revision, revision)
+    }
+
+    func testSynchronousApplySupersedesAsyncPreparationAndClearsBusyState() async throws {
+        let session = DocumentSession()
+        let preparation = Task {
+            try await session.applyAsync(MarkdownDocument(
+                title: "Large",
+                markdown: String(repeating: "A sufficiently large paragraph.\n\n", count: 5_000)
+            ))
+        }
+        while !session.isPreparingDocument { await Task.yield() }
+
+        try session.apply(MarkdownDocument(title: "Current", markdown: "# Current"))
+        try await preparation.value
+
+        XCTAssertFalse(session.isPreparingDocument)
+        XCTAssertEqual(session.title, "Current")
+        XCTAssertTrue(session.renderedText.string.contains("Current"))
+    }
+
     func testSynchronizeSkipsAnIdenticalDocumentAndPublishesAChangedDocument() throws {
         let session = DocumentSession()
         let original = MarkdownDocument(title: "Sample", markdown: "# Sample\n\nOriginal body.")

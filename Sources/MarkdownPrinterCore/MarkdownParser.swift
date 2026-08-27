@@ -8,9 +8,10 @@ public struct MarkdownParser: Sendable {
     }
 
     public func parse(_ markdown: String) -> [MarkdownBlock] {
-        let normalized = markdown.replacingOccurrences(of: "\r\n", with: "\n")
+        let normalized = markdown.replacingOccurrences(of: "\0", with: "\u{FFFD}")
+            .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-        let lines = normalized.components(separatedBy: "\n").map(expandTabs)
+        let lines = normalized.components(separatedBy: "\n")
         let references = ReferenceStore()
         var blockParser = BlockParser(lines: lines, references: references)
         let rawBlocks = blockParser.parse()
@@ -28,7 +29,7 @@ public struct MarkdownParser: Sendable {
             return .paragraph(inlineParser.parse(source, references: references))
         case let .blockquote(children):
             return .blockquote(children.map { materialize($0, references: references) })
-        case let .list(items, ordered, start):
+        case let .list(items, ordered, start, tight):
             return .list(
                 items: items.map { item in
                     MarkdownListItem(
@@ -37,7 +38,8 @@ public struct MarkdownParser: Sendable {
                     )
                 },
                 ordered: ordered,
-                start: start
+                start: start,
+                tight: tight
             )
         case let .codeBlock(language, code):
             return .codeBlock(language: language, code: code)
@@ -70,7 +72,7 @@ private indirect enum RawBlock {
     case heading(level: Int, source: String)
     case paragraph(String)
     case blockquote([RawBlock])
-    case list(items: [RawListItem], ordered: Bool, start: Int)
+    case list(items: [RawListItem], ordered: Bool, start: Int, tight: Bool)
     case codeBlock(language: String?, code: String)
     case rawHTML(String)
     case thematicBreak
@@ -94,6 +96,7 @@ private struct ListMarker {
     let ordered: Bool
     let number: Int?
     let marker: Character
+    let markerIndent: Int
     let contentIndent: Int
     let content: String
 }
@@ -114,7 +117,7 @@ private struct BlockParser {
     private var index = 0
 
     init(lines: [String], references: ReferenceStore) {
-        self.lines = lines
+        self.lines = lines.map(expandLeadingIndentation)
         self.references = references
     }
 
@@ -233,26 +236,28 @@ private struct BlockParser {
 
     private mutating func parseBlockquote(firstLine: String) -> RawBlock {
         var quoteLines = [firstLine]
-        var includesLazyContinuation = false
+        var acceptsLazyContinuation = containerLeafMayContinueParagraph(firstLine)
         index += 1
         while index < lines.count {
             if let content = blockquoteContent(in: lines[index]) {
                 quoteLines.append(content)
+                acceptsLazyContinuation = containerLeafMayContinueParagraph(content)
                 index += 1
-            } else if !isBlank(lines[index]),
+            } else if acceptsLazyContinuation,
+                      !isBlank(lines[index]),
                       !startsBlock(lines[index], mayInterruptParagraph: true) {
-                quoteLines.append(removeIndent(
+                var continuation = removeIndent(
                     lines[index],
                     columns: min(indentation(of: lines[index]), 4)
-                ))
-                includesLazyContinuation = true
+                )
+                if setextLevel(in: continuation) != nil {
+                    continuation.insert("\\", at: continuation.startIndex)
+                }
+                quoteLines.append(continuation)
                 index += 1
             } else {
                 break
             }
-        }
-        if includesLazyContinuation, !quoteLines.contains(where: isBlank) {
-            return .blockquote([.paragraph(quoteLines.joined(separator: "\n"))])
         }
         var childParser = BlockParser(lines: quoteLines, references: references)
         return .blockquote(childParser.parse())
@@ -263,22 +268,36 @@ private struct BlockParser {
         let ordered = firstMarker.ordered
         let start = firstMarker.number ?? 1
         var marker: ListMarker? = firstMarker
+        var isLoose = false
 
         while let current = marker,
               current.ordered == ordered,
-              (!ordered || current.marker == firstMarker.marker) {
+              current.marker == firstMarker.marker,
+              current.markerIndent == firstMarker.markerIndent {
             var itemLines = [current.content]
             var blankLineSeen = false
             index += 1
 
             while index < lines.count {
+                if isThematicBreak(lines[index]),
+                   indentation(of: lines[index]) < current.contentIndent {
+                    break
+                }
                 if let next = listMarker(in: lines[index], mayInterruptParagraph: false),
-                   next.ordered == ordered,
-                   (!ordered || next.marker == firstMarker.marker) {
+                   next.markerIndent == firstMarker.markerIndent {
+                    if blankLineSeen,
+                       next.ordered == ordered,
+                       next.marker == firstMarker.marker {
+                        isLoose = true
+                    }
                     break
                 }
 
                 if isBlank(lines[index]) {
+                    if current.content.isEmpty {
+                        index += 1
+                        break
+                    }
                     itemLines.append("")
                     blankLineSeen = true
                     index += 1
@@ -287,6 +306,7 @@ private struct BlockParser {
 
                 let lineIndent = indentation(of: lines[index])
                 if lineIndent >= current.contentIndent {
+                    if blankLineSeen { isLoose = true }
                     itemLines.append(removeIndent(lines[index], columns: current.contentIndent))
                     blankLineSeen = false
                     index += 1
@@ -304,12 +324,12 @@ private struct BlockParser {
             var childParser = BlockParser(lines: task.lines, references: references)
             items.append(RawListItem(blocks: childParser.parse(), checked: task.checked))
 
-            marker = index < lines.count
+            marker = index < lines.count && !isThematicBreak(lines[index])
                 ? listMarker(in: lines[index], mayInterruptParagraph: false)
                 : nil
         }
 
-        return .list(items: items, ordered: ordered, start: start)
+        return .list(items: items, ordered: ordered, start: start, tight: !isLoose)
     }
 
     private mutating func parseIndentedCode() -> RawBlock {
@@ -387,7 +407,7 @@ private struct BlockParser {
             }
             let removableIndent = paragraphLines.isEmpty
                 ? min(indentation(of: lines[index]), 3)
-                : min(indentation(of: lines[index]), 4)
+                : indentation(of: lines[index])
             paragraphLines.append(removeIndent(lines[index], columns: removableIndent))
             index += 1
         }
@@ -403,6 +423,26 @@ private struct BlockParser {
             || listMarker(in: line, mayInterruptParagraph: mayInterruptParagraph) != nil
             || footnoteDefinition(in: line) != nil
             || htmlBlockKind(in: line, mayInterruptParagraph: mayInterruptParagraph) != nil
+    }
+
+    private func containerLeafMayContinueParagraph(_ line: String) -> Bool {
+        var content = line
+        while true {
+            if let quote = blockquoteContent(in: content) {
+                content = quote
+                continue
+            }
+            if let marker = listMarker(in: content, mayInterruptParagraph: false) {
+                content = marker.content
+                continue
+            }
+            break
+        }
+        guard !isBlank(content), indentation(of: content) < 4 else { return false }
+        return fence(in: content) == nil
+            && atxHeading(in: content) == nil
+            && !isThematicBreak(content)
+            && htmlBlockKind(in: content, mayInterruptParagraph: false) == nil
     }
 
     private func parseReferenceDefinition(
@@ -541,18 +581,24 @@ private enum ReferenceDefinitionParser {
     }
 }
 
-private func expandTabs(_ line: String) -> String {
+private func expandLeadingIndentation(_ line: String) -> String {
     var result = ""
     var column = 0
-    for character in line {
+    var index = line.startIndex
+    while index < line.endIndex {
+        let character = line[index]
         if character == "\t" {
             let spaces = 4 - (column % 4)
             result += String(repeating: " ", count: spaces)
             column += spaces
-        } else {
+        } else if character == " " {
             result.append(character)
             column += 1
+        } else {
+            result.append(contentsOf: line[index...])
+            break
         }
+        index = line.index(after: index)
     }
     return result
 }
@@ -609,11 +655,11 @@ private func atxHeading(in line: String) -> (level: Int, source: String)? {
     guard (1...6).contains(level) else { return nil }
     let markerEnd = content.index(content.startIndex, offsetBy: level)
     guard markerEnd == content.endIndex || content[markerEnd].isWhitespace else { return nil }
-    var source = String(content[markerEnd...]).trimmingCharacters(in: .whitespaces)
+    var source = String(content[markerEnd...])
     if let range = source.range(of: #"[ \t]+#+[ \t]*$"#, options: .regularExpression) {
         source.removeSubrange(range)
     }
-    return (level, source)
+    return (level, source.trimmingCharacters(in: .whitespaces))
 }
 
 private func setextLevel(in line: String) -> Int? {
@@ -639,7 +685,12 @@ private func blockquoteContent(in line: String) -> String? {
     let content = removeIndent(line, columns: indent)
     guard content.first == ">" else { return nil }
     var result = String(content.dropFirst())
-    if result.first == " " { result.removeFirst() }
+    if result.first == " " {
+        result.removeFirst()
+    } else if result.first == "\t" {
+        result = expandWhitespacePrefix(result, startingColumn: indent + 1)
+        result.removeFirst()
+    }
     return result
 }
 
@@ -673,27 +724,56 @@ private func listMarker(in line: String, mayInterruptParagraph: Bool) -> ListMar
 
     let afterMarker = content.index(content.startIndex, offsetBy: markerWidth)
     if afterMarker == content.endIndex {
+        guard !mayInterruptParagraph else { return nil }
         return ListMarker(
             ordered: ordered,
             number: number,
             marker: marker,
+            markerIndent: indent,
             contentIndent: indent + markerWidth + 1,
             content: ""
         )
     }
-    guard content[afterMarker].isWhitespace else { return nil }
+    guard content[afterMarker] == " " || content[afterMarker] == "\t" else { return nil }
 
-    let remainder = content[afterMarker...]
-    let spaces = remainder.prefix(while: { $0 == " " }).count
+    if mayInterruptParagraph, ordered, number != 1 { return nil }
+
+    let remainder = expandWhitespacePrefix(
+        String(content[afterMarker...]),
+        startingColumn: indent + markerWidth
+    )
+    let spaces = remainder.prefix(while: { $0 == " " || $0 == "\t" }).count
     let padding = (1...4).contains(spaces) ? spaces : 1
-    let contentStart = content.index(afterMarker, offsetBy: min(spaces, padding))
+    let contentStart = remainder.index(remainder.startIndex, offsetBy: min(spaces, padding))
     return ListMarker(
         ordered: ordered,
         number: number,
         marker: marker,
+        markerIndent: indent,
         contentIndent: indent + markerWidth + padding,
-        content: String(content[contentStart...])
+        content: String(remainder[contentStart...])
     )
+}
+
+private func expandWhitespacePrefix(_ source: String, startingColumn: Int) -> String {
+    var result = ""
+    var column = startingColumn
+    var index = source.startIndex
+    while index < source.endIndex {
+        if source[index] == " " {
+            result.append(" ")
+            column += 1
+        } else if source[index] == "\t" {
+            let spaces = 4 - (column % 4)
+            result += String(repeating: " ", count: spaces)
+            column += spaces
+        } else {
+            result.append(contentsOf: source[index...])
+            break
+        }
+        index = source.index(after: index)
+    }
+    return result
 }
 
 private func taskListItem(from lines: [String]) -> (lines: [String], checked: Bool?) {

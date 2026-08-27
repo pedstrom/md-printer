@@ -30,8 +30,13 @@ public struct MarkdownFileDocument: FileDocument {
             sourceURL: sourceURL,
             sourceModificationDate: modificationDate,
             title: sourceURL?.deletingPathExtension().lastPathComponent ?? decodedDocument.title,
-            markdown: decodedDocument.markdown
+            markdown: decodedDocument.markdown,
+            blocks: decodedDocument.blocks
         )
+    }
+
+    public var markdown: String {
+        decodedDocument.markdown
     }
 
     public func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {

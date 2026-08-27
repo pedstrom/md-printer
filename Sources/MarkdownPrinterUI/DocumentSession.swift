@@ -7,6 +7,7 @@ import MarkdownPrinterCore
 public final class DocumentSession: ObservableObject {
     @Published public private(set) var renderedSnapshot: RenderedDocumentSnapshot?
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var isPreparingDocument = false
 
     public private(set) var renderer: MarkdownRenderer
     public private(set) var exporter: PDFExporter
@@ -20,6 +21,7 @@ public final class DocumentSession: ObservableObject {
     private var sourceMonitor: SourceChangeMonitoring?
     private var sourceMonitorLifetime: SourceMonitorLifetime?
     private var nextRenderRevision: UInt64 = 0
+    private var nextPreparationRevision: UInt64 = 0
 
     public init(
         renderer: MarkdownRenderer = MarkdownRenderer(),
@@ -142,6 +144,10 @@ public final class DocumentSession: ObservableObject {
         try rebuild(document: document, pageSetup: activePageSetup)
     }
 
+    public func applyAsync(_ document: MarkdownDocument) async throws {
+        try await rebuildAsync(document: document, pageSetup: activePageSetup)
+    }
+
     public func applyExplicitPageSetup(_ pageSetup: DocumentPageSetup) throws {
         if let document {
             try rebuild(document: document, pageSetup: pageSetup, explicit: true)
@@ -167,6 +173,8 @@ public final class DocumentSession: ObservableObject {
         explicit: Bool? = nil,
         footers: ResolvedFooterConfiguration? = nil
     ) throws {
+        nextPreparationRevision &+= 1
+        isPreparingDocument = false
         let nextConfiguration = baseRendererConfiguration.applying(pageSetup)
         let nextRenderer = MarkdownRenderer(configuration: nextConfiguration)
         let nextExporter = PDFExporter(
@@ -195,11 +203,70 @@ public final class DocumentSession: ObservableObject {
         errorMessage = nil
     }
 
+    private func rebuildAsync(
+        document: MarkdownDocument,
+        pageSetup: DocumentPageSetup,
+        explicit: Bool? = nil,
+        footers: ResolvedFooterConfiguration? = nil
+    ) async throws {
+        nextPreparationRevision &+= 1
+        let preparationRevision = nextPreparationRevision
+        isPreparingDocument = true
+        defer {
+            if preparationRevision == nextPreparationRevision {
+                isPreparingDocument = false
+            }
+        }
+        let nextConfiguration = baseRendererConfiguration.applying(pageSetup)
+        let resolvedFooters = footers ?? pagePreferences?.resolvedFooters(for: document)
+            ?? ResolvedFooterConfiguration()
+        let job = DocumentAttributedTextJob(
+            document: document,
+            configuration: nextConfiguration
+        )
+        let preparedText = try await Task.detached(priority: .userInitiated) {
+            try Task.checkCancellation()
+            return job.run()
+        }.value
+        let renderedText = preparedText.value
+        try Task.checkCancellation()
+        guard preparationRevision == nextPreparationRevision else { return }
+        let pdfData = try await PDFExporter(
+            configuration: nextConfiguration,
+            pageSetup: pageSetup
+        ).pdfDataAsync(from: renderedText, footers: resolvedFooters)
+        try Task.checkCancellation()
+        guard preparationRevision == nextPreparationRevision else { return }
+
+        nextRenderRevision &+= 1
+        renderer = MarkdownRenderer(configuration: nextConfiguration)
+        exporter = PDFExporter(configuration: nextConfiguration, pageSetup: pageSetup)
+        activePageSetup = pageSetup
+        if let explicit { hasExplicitPageSetup = explicit }
+        renderedSnapshot = RenderedDocumentSnapshot(
+            document: document,
+            renderedText: renderedText,
+            pdfData: pdfData,
+            pageSetup: pageSetup,
+            footers: resolvedFooters,
+            revision: nextRenderRevision
+        )
+        errorMessage = nil
+    }
+
     @discardableResult
     public func synchronize(with document: MarkdownDocument) throws -> Bool {
         let document = preservingKnownModificationDate(in: document)
         guard document != self.document else { return false }
         try apply(document)
+        return true
+    }
+
+    @discardableResult
+    public func synchronizeAsync(with document: MarkdownDocument) async throws -> Bool {
+        let document = preservingKnownModificationDate(in: document)
+        guard document != self.document else { return false }
+        try await applyAsync(document)
         return true
     }
 
@@ -214,7 +281,8 @@ public final class DocumentSession: ObservableObject {
             sourceURL: document.sourceURL,
             sourceModificationDate: knownDate,
             title: document.title,
-            markdown: document.markdown
+            markdown: document.markdown,
+            blocks: document.blocks
         )
     }
 
@@ -333,6 +401,24 @@ public struct RenderedDocumentSnapshot {
     public let pageSetup: DocumentPageSetup
     public let footers: ResolvedFooterConfiguration
     public let revision: UInt64
+}
+
+private struct DocumentAttributedTextJob: @unchecked Sendable {
+    let document: MarkdownDocument
+    let configuration: RendererConfiguration
+
+    func run() -> PreparedAttributedText {
+        let renderer = MarkdownRenderer(configuration: configuration)
+        return PreparedAttributedText(
+            value: NSAttributedString(
+                attributedString: renderer.render(document: document)
+            )
+        )
+    }
+}
+
+private struct PreparedAttributedText: @unchecked Sendable {
+    let value: NSAttributedString
 }
 
 private final class SourceMonitorLifetime {

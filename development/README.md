@@ -84,6 +84,12 @@ scripts/verify.sh
 
 The release gate runs all XCTest coverage, enforces at least 95% testable-production line coverage, builds the release app, validates its bundle metadata, icon, Sparkle configuration, embedded helpers, Quick Look principal class and supported content types, sandbox entitlements, runtime linkage, nested versions and signatures, and universal architectures, checks every shell script, and rejects common repository-hygiene problems.
 
+It also builds a release-mode benchmark executable and enforces latency, main-thread responsiveness, memory, and 10× input-scaling budgets for representative 100 KB and 1 MB Markdown documents across parsing, attributed rendering, PDF generation, Finder Quick Look rendering, and Word export. Run that gate alone with:
+
+```sh
+scripts/performance_check.sh
+```
+
 For native Quick Look QA, first build and open a disposable app copy so Launch Services discovers the embedded provider. Use `qlmanage -p Examples/showcase.md` for a direct provider smoke test, then verify Finder's Space and Command-Y previews, vertical scrolling, resizing, selection/copying, links, footnote jumps, tables, code, long documents, and both appearances. Keep screenshots and disposable app copies outside the repository. Extension activation is a macOS setting; production code does not call `pluginkit`, reset Quick Look, or use private registration APIs.
 
 Update QA must preserve the extension bundle ID `com.peteedstrom.markdown-printer.quicklook`, executable name `MarkdownPrinterQuickLook`, and nested `Contents/PlugIns/MarkdownPrinterQuickLook.appex` path. Exercise an app without the extension updating through Sparkle to the first Quick Look build, then exercise one more in-place Sparkle update. Confirm the provider remains registered and retains its enabled state after the second replacement, and that deleting the disposable host app removes that copy of the provider.

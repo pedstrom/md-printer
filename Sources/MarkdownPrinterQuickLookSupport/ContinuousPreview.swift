@@ -27,14 +27,9 @@ public enum ContinuousPreviewError: LocalizedError, Equatable, Sendable {
 }
 
 public struct ContinuousPreviewLoader: Sendable {
-    private let parser: MarkdownParser
-
-    public init(parser: MarkdownParser = MarkdownParser()) {
-        self.parser = parser
-    }
+    public init() {}
 
     public func load(at url: URL) async throws -> PreparedQuickLookDocument {
-        let parser = parser
         let loadTask = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             do {
@@ -48,7 +43,7 @@ public struct ContinuousPreviewLoader: Sendable {
                 }
                 let prepared = PreparedQuickLookDocument(
                     document: document,
-                    blocks: parser.parse(document.markdown)
+                    blocks: document.blocks
                 )
                 try Task.checkCancellation()
                 return prepared

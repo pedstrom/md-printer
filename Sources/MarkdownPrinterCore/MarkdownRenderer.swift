@@ -15,7 +15,7 @@ public final class MarkdownRenderer {
     }
 
     public func render(document: MarkdownDocument) -> NSAttributedString {
-        render(blocks: parser.parse(document.markdown), baseURL: document.baseURL)
+        render(blocks: document.blocks, baseURL: document.baseURL)
     }
 
     public func render(markdown: String, baseURL: URL? = nil) -> NSAttributedString {
@@ -56,7 +56,8 @@ public final class MarkdownRenderer {
         block: MarkdownBlock,
         to result: NSMutableAttributedString,
         baseURL: URL?,
-        footnotes: FootnoteCatalog
+        footnotes: FootnoteCatalog,
+        listDepth: Int = 0
     ) {
         switch block {
         case let .heading(level, content):
@@ -94,7 +95,7 @@ public final class MarkdownRenderer {
             ], range: quote.fullRange)
             result.append(quote)
 
-        case let .list(items, ordered, start):
+        case let .list(items, ordered, start, tight):
             for (offset, item) in items.enumerated() {
                 let prefix: String
                 if let checked = item.checked {
@@ -108,18 +109,35 @@ public final class MarkdownRenderer {
                     string: prefix,
                     attributes: bodyAttributes(font: fonts.bold(size: configuration.bodyFontSize))
                 )
-                let itemContent = NSMutableAttributedString()
-                for block in item.blocks {
-                    append(block: block, to: itemContent, baseURL: baseURL, footnotes: footnotes)
-                }
-                if itemContent.string.hasSuffix("\n") {
-                    itemContent.deleteCharacters(in: NSRange(location: itemContent.length - 1, length: 1))
-                }
-                line.append(itemContent)
-                let paragraph = paragraphStyle(spacingAfter: 4)
-                paragraph.firstLineHeadIndent = 8
-                paragraph.headIndent = 30
+                let paragraph = paragraphStyle(spacingAfter: tight ? 4 : 10)
+                paragraph.firstLineHeadIndent = 8 + CGFloat(listDepth * 22)
+                paragraph.headIndent = 30 + CGFloat(listDepth * 22)
                 line.addAttribute(.paragraphStyle, value: paragraph, range: line.fullRange)
+                for (childIndex, child) in item.blocks.enumerated() {
+                    let start = line.length
+                    append(
+                        block: child,
+                        to: line,
+                        baseURL: baseURL,
+                        footnotes: footnotes,
+                        listDepth: child.isList ? listDepth + 1 : listDepth
+                    )
+                    if !child.isList {
+                        let childParagraph = paragraph.mutableCopy() as? NSMutableParagraphStyle
+                            ?? paragraph
+                        if childIndex > 0 {
+                            childParagraph.firstLineHeadIndent = childParagraph.headIndent
+                        }
+                        line.addAttribute(
+                            .paragraphStyle,
+                            value: childParagraph,
+                            range: NSRange(location: start, length: line.length - start)
+                        )
+                    }
+                }
+                if line.string.hasSuffix("\n") {
+                    line.deleteCharacters(in: NSRange(location: line.length - 1, length: 1))
+                }
                 result.append(line)
                 result.append(NSAttributedString(string: "\n"))
             }
@@ -329,7 +347,7 @@ public final class MarkdownRenderer {
                 return label
             case let .image(alt, _, _):
                 return alt
-            case .lineBreak:
+            case .softBreak, .hardBreak:
                 return " "
             }
         }.joined()
@@ -407,7 +425,7 @@ public final class MarkdownRenderer {
                         .backgroundColor: configuration.codeBackgroundColor
                     ]
                 ))
-            case .lineBreak:
+            case .softBreak, .hardBreak:
                 result.append(NSAttributedString(string: "\n", attributes: bodyAttributes(font: font)))
             }
         }
@@ -543,6 +561,11 @@ private struct FootnoteEntry {
 }
 
 private extension MarkdownBlock {
+    var isList: Bool {
+        if case .list = self { return true }
+        return false
+    }
+
     var isFootnoteDefinition: Bool {
         if case .footnoteDefinition = self { return true }
         return false
@@ -556,7 +579,7 @@ private extension MarkdownBlock {
             return content.footnoteReferenceLabels
         case let .blockquote(blocks):
             return blocks.flatMap(\.footnoteReferenceLabels)
-        case let .list(items, _, _):
+        case let .list(items, _, _, _):
             return items.flatMap { $0.blocks.flatMap(\.footnoteReferenceLabels) }
         case let .table(headers, _, rows):
             return (headers + rows.flatMap { $0 }).flatMap(\.footnoteReferenceLabels)
@@ -578,7 +601,7 @@ private extension Array where Element == InlineNode {
                  let .strikethrough(children),
                  let .link(children, _, _):
                 return children.footnoteReferenceLabels
-            case .text, .code, .image, .rawHTML, .lineBreak:
+            case .text, .code, .image, .rawHTML, .softBreak, .hardBreak:
                 return []
             }
         }

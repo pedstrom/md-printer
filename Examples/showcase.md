@@ -14,9 +14,18 @@ Entities decode after Markdown structure: &copy; &AElig; &#9731;.
 - A regular bullet
 - [x] A completed task
 - [ ] An open task
+  - A nested item with **strong text**
+  - A second nested item
+
+- A loose item with its own paragraph.
+
+  Its continuation retains the looser spacing.
+- The next loose item
 
 3. An ordered item beginning at three
 4. Another ordered item
+
+Delimiter runs follow CommonMark precedence: ***strong emphasis***, **strong with *nested emphasis***, and `code containing **literal markers**`.
 
 ## Table
 

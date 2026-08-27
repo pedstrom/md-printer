@@ -202,6 +202,52 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(quoteBlock.borderColor(for: .minX), renderer.configuration.secondaryTextColor)
     }
 
+    func testLooseListsUseMoreParagraphSpacingThanTightLists() throws {
+        let tight = renderer.render(markdown: "- first\n- second")
+        let loose = renderer.render(markdown: "- first\n\n- second")
+        let tightRange = (tight.string as NSString).range(of: "first")
+        let looseRange = (loose.string as NSString).range(of: "first")
+        let tightStyle = try XCTUnwrap(
+            tight.attribute(.paragraphStyle, at: tightRange.location, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
+        let looseStyle = try XCTUnwrap(
+            loose.attribute(.paragraphStyle, at: looseRange.location, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
+
+        XCTAssertEqual(tightStyle.paragraphSpacing, 4)
+        XCTAssertEqual(looseStyle.paragraphSpacing, 10)
+    }
+
+    func testNestedListsIndentBeyondTheirParent() throws {
+        let output = renderer.render(markdown: "- parent\n  - nested")
+        let parentRange = (output.string as NSString).range(of: "parent")
+        let nestedRange = (output.string as NSString).range(of: "nested")
+        let parentStyle = try XCTUnwrap(
+            output.attribute(.paragraphStyle, at: parentRange.location, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
+        let nestedStyle = try XCTUnwrap(
+            output.attribute(.paragraphStyle, at: nestedRange.location, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
+
+        XCTAssertGreaterThan(nestedStyle.firstLineHeadIndent, parentStyle.firstLineHeadIndent)
+        XCTAssertGreaterThan(nestedStyle.headIndent, parentStyle.headIndent)
+    }
+
+    func testLooseListContinuationAlignsWithItemText() throws {
+        let output = renderer.render(markdown: "- first paragraph\n\n  continuation paragraph")
+        let continuationRange = (output.string as NSString).range(of: "continuation")
+        let continuationStyle = try XCTUnwrap(
+            output.attribute(.paragraphStyle, at: continuationRange.location, effectiveRange: nil)
+                as? NSParagraphStyle
+        )
+
+        XCTAssertEqual(continuationStyle.firstLineHeadIndent, continuationStyle.headIndent)
+    }
+
     func testTableUsesNativeTextBlocksAndAlignment() throws {
         let output = renderer.render(markdown: "| Left | Right |\n| :--- | ---: |\n| A | 2 |")
         XCTAssertEqual(output.string, "Left\nRight\nA\n2\n")

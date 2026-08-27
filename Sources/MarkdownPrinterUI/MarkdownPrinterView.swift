@@ -46,6 +46,9 @@ public struct MarkdownPrinterView: View {
         Group {
             if session.hasDocument {
                 preview
+            } else if session.isPreparingDocument {
+                ProgressView("Preparing preview…")
+                    .controlSize(.large)
             } else {
                 welcome
             }

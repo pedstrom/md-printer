@@ -10,7 +10,7 @@ final class CommonMarkFeatureTests: XCTestCase {
             .heading(level: 1, content: [
                 .text("First "),
                 .emphasis([.text("line")]),
-                .lineBreak,
+                .softBreak,
                 .text("second line")
             ]),
             .heading(level: 2, content: [.text("Next")])
@@ -24,7 +24,7 @@ final class CommonMarkFeatureTests: XCTestCase {
     func testIndentedCodePreservesChunksTabsAndExcessIndentation() {
         XCTAssertEqual(parser.parse("\talpha\n\n        beta\n\ntext\n    continuation"), [
             .codeBlock(language: nil, code: "alpha\n\n    beta"),
-            .paragraph([.text("text"), .lineBreak, .text("continuation")])
+            .paragraph([.text("text"), .softBreak, .text("continuation")])
         ])
     }
 
@@ -119,7 +119,7 @@ final class CommonMarkFeatureTests: XCTestCase {
         ])
         XCTAssertEqual(InlineParser().parse("<u>under</u><br />after"), [
             .underline([.text("under")]),
-            .lineBreak,
+            .hardBreak,
             .text("after")
         ])
     }

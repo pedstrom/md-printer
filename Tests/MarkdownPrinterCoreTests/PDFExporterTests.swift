@@ -27,6 +27,25 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertTrue(document.page(at: document.pageCount - 1)?.string?.contains("Paragraph 180") == true)
     }
 
+    func testAsyncPaginationMatchesSynchronousSearchableOutput() async throws {
+        let markdown = (1...240)
+            .map { "## Section \($0)\n\nParagraph \($0) with [a link](https://example.com/\($0))." }
+            .joined(separator: "\n\n")
+        let attributed = MarkdownRenderer().render(markdown: markdown)
+        let exporter = PDFExporter()
+
+        let synchronous = try XCTUnwrap(PDFDocument(data: exporter.pdfData(from: attributed)))
+        let asynchronousData = try await exporter.pdfDataAsync(from: attributed)
+        let asynchronous = try XCTUnwrap(PDFDocument(data: asynchronousData))
+
+        XCTAssertEqual(asynchronous.pageCount, synchronous.pageCount)
+        XCTAssertEqual(
+            asynchronous.string,
+            synchronous.string
+        )
+        XCTAssertTrue(asynchronous.string?.contains("Section 240") == true)
+    }
+
     func testEveryHeadingLevelMovesWithTwoFollowingLines() throws {
         for level in 1...6 {
             let heading = "Boundary heading \(level)"

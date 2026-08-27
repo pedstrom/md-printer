@@ -134,6 +134,8 @@ awk -v coverage="$LINE_COVERAGE" 'BEGIN { exit(coverage + 0 >= 95 ? 0 : 1) }' ||
   exit 1
 }
 
+scripts/performance_check.sh
+
 scripts/build-and-run/build_app.sh >/dev/null
 test -x "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter"
 APP_ARCHITECTURES="$(lipo -archs "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter")"

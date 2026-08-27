@@ -79,6 +79,21 @@ def generate_tests(source: Path, spec: Path, destination: Path) -> None:
     )
 
 
+def generate_all_tests(source: Path, spec: Path, destination: Path) -> None:
+    payload = {
+        "commonmarkVersion": "0.31.2",
+        "source": "https://github.com/commonmark/commonmark-spec/tree/0.31.2",
+        "specSHA256": sha256(spec),
+        "license": "CC-BY-SA-4.0",
+        "examples": json.loads(source.read_text(encoding="utf-8")),
+    }
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--entities", type=Path, required=True)
@@ -86,10 +101,13 @@ def main() -> None:
     parser.add_argument("--spec", type=Path, required=True)
     parser.add_argument("--entities-output", type=Path, required=True)
     parser.add_argument("--tests-output", type=Path, required=True)
+    parser.add_argument("--all-tests-output", type=Path)
     args = parser.parse_args()
 
     generate_entities(args.entities, args.entities_output)
     generate_tests(args.all_tests, args.spec, args.tests_output)
+    if args.all_tests_output is not None:
+        generate_all_tests(args.all_tests, args.spec, args.all_tests_output)
 
 
 if __name__ == "__main__":
