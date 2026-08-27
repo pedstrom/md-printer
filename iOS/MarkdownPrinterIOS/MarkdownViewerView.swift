@@ -348,7 +348,7 @@ struct MarkdownViewerView: View {
             do {
                 let url = try MobilePDFShareStore.write(data: data, filename: pdfFilename)
                 sharedTemporaryURL = url
-                shareItems = [url]
+                shareItems = [MobilePDFActivityItem(data: data, fileURL: url)]
                 showingShare = true
             } catch {
                 actionError = error.localizedDescription

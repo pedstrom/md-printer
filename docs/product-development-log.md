@@ -2,6 +2,7 @@
 
 ## 2026-08-27 — Preview-style Markdown viewer for iPhone
 
+- Fixed **Share PDF → Print** by giving the system Print activity the cached PDF bytes while other share destinations retain the named temporary file, avoiding iOS's erroneous protected-PDF failure.
 - Added a separate iPhone-only iOS 26 Xcode project with Apple’s native document browser, Viewer registration for `.md`, `.markdown`, `.mdown`, and `.mkd`, automatic signing without a tracked team ID, and reusable app artwork.
 - Added continuous native SwiftUI rendering for headings, inline formatting, lists and task states, quotations, footnotes, horizontal rules, raw HTML, local images and readable placeholders, horizontally scrollable code and aligned tables, Dynamic Type, adaptive appearances, selectable text, linked-document navigation, and exact-phrase search with case and whole-word options.
 - Added coordinated security-scoped document sessions, provider-aware Rename/Move/Duplicate availability, original-Markdown sharing, Info metadata, source refresh, Preview-style toolbar hiding, and one revision-cached PDF result shared by Share PDF, Export, and AirPrint.

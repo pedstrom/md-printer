@@ -63,6 +63,26 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["share-sheet"].waitForExistence(timeout: 8))
     }
 
+    func testSharePDFPrintOpensPrinterOptionsWithoutProtectedPDFError() {
+        app.buttons["share-pdf-button"].tap()
+        XCTAssertTrue(app.otherElements["share-sheet"].waitForExistence(timeout: 8))
+
+        let printAction = app.cells["Print"]
+        for _ in 0..<4 where !printAction.isHittable {
+            app.swipeLeft()
+        }
+        XCTAssertTrue(printAction.waitForExistence(timeout: 3))
+        printAction.tap()
+
+        XCTAssertFalse(
+            app.staticTexts["Protected PDF files can only be printed separately."].waitForExistence(
+                timeout: 2
+            )
+        )
+        XCTAssertTrue(app.navigationBars["Options"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["US Letter"].exists)
+    }
+
     func testShareOriginalMarkdownPresentsSystemShareSheet() {
         app.buttons["document-actions-button"].tap()
         XCTAssertTrue(app.buttons["Share Original Markdown"].waitForExistence(timeout: 2))

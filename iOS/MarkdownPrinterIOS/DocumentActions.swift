@@ -33,6 +33,38 @@ struct ActivityView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
 
+final class MobilePDFActivityItem: NSObject, UIActivityItemSource {
+    let data: Data
+    let fileURL: URL
+
+    init(data: Data, fileURL: URL) {
+        self.data = data
+        self.fileURL = fileURL
+    }
+
+    func activityViewControllerPlaceholderItem(
+        _ activityViewController: UIActivityViewController
+    ) -> Any {
+        fileURL
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        // The share-sheet Print activity may continue reading after its source sheet dismisses.
+        // Supplying the complete bytes avoids treating a cleaned-up temporary URL as protected.
+        activityType == .print ? data : fileURL
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?
+    ) -> String {
+        UTType.pdf.identifier
+    }
+}
+
 struct MoveDocumentPicker: UIViewControllerRepresentable {
     let sourceURL: URL
     let completion: (Result<URL, Error>) -> Void

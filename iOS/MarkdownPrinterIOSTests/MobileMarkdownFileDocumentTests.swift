@@ -1,6 +1,7 @@
 import XCTest
 import SwiftUI
 import MarkdownPrinterCore
+import UniformTypeIdentifiers
 @testable import MarkdownPrinterIOS
 
 final class MobileMarkdownFileDocumentTests: XCTestCase {
@@ -44,5 +45,33 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
 
         XCTAssertEqual(url.lastPathComponent, "Shared.pdf")
         XCTAssertEqual(try Data(contentsOf: url), data)
+    }
+
+    @MainActor
+    func testPDFActivityItemSuppliesBytesToPrintAndFileURLToOtherDestinations() {
+        let data = Data("%PDF-test".utf8)
+        let url = URL(fileURLWithPath: "/tmp/Shared.pdf")
+        let item = MobilePDFActivityItem(data: data, fileURL: url)
+        let controller = UIActivityViewController(activityItems: [item], applicationActivities: nil)
+
+        XCTAssertEqual(
+            item.activityViewControllerPlaceholderItem(controller) as? URL,
+            url
+        )
+        XCTAssertEqual(
+            item.activityViewController(controller, itemForActivityType: .print) as? Data,
+            data
+        )
+        XCTAssertEqual(
+            item.activityViewController(controller, itemForActivityType: .mail) as? URL,
+            url
+        )
+        XCTAssertEqual(
+            item.activityViewController(
+                controller,
+                dataTypeIdentifierForActivityType: .print
+            ),
+            UTType.pdf.identifier
+        )
     }
 }
