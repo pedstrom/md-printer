@@ -204,6 +204,9 @@ final class DocumentWindowRestorationCoordinatorTests: XCTestCase {
         originalCoordinator.activate()
         let captured = try XCTUnwrap(controller.currentWindowState(for: url))
         XCTAssertEqual(captured.explicitPageSetup, setup)
+
+        try originalSession.clearPageSetupOverride()
+        XCTAssertNil(controller.currentWindowState(for: url)?.explicitPageSetup)
         originalCoordinator.deactivate()
 
         controller.prepareWindowStates(for: WorkspaceSnapshot(groups: [

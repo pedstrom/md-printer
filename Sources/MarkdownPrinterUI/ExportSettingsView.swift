@@ -180,9 +180,9 @@ public struct PageSettingsView: View {
 
     private func changeDefaultPageSetup() {
         guard let window = NSApp.keyWindow else { return }
-        pageSetupPresenter.present(preferences.defaultPageSetup, for: window) { accepted in
-            guard let accepted else { return }
-            preferences.defaultPageSetup = accepted
+        pageSetupPresenter.present(preferences.defaultPageSetup, for: window) { result in
+            guard case let .accepted(pageSetup) = result else { return }
+            preferences.defaultPageSetup = pageSetup
         }
     }
 }

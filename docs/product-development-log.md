@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-08-27 — Immediate Page Setup inheritance reset
+
+- Added an official native Page Setup accessory for documents with explicit layout overrides, without changing the default Page Setup sheet in Settings.
+- Made Use Default Page Setup dismiss the sheet immediately, discard unconfirmed controls, regenerate from the current app default, and restore inheritance for later default changes.
+- Kept the explicit override and last valid preview intact when regeneration fails, with the existing document error presentation handling the failure.
+
 ## 2026-08-27 — State-aware PDF viewing commands
 
 - Separated page and zoom commands from PDF search into a focused per-window viewing controller backed by PDFKit's live capabilities.
