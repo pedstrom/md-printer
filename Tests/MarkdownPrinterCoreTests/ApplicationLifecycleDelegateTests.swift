@@ -33,6 +33,99 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         XCTAssertEqual(invocationCount, 1)
     }
 
+    func testGeneratedHelpIsReplacedByReusableOverviewAndShortcutActions() throws {
+        let delegate = ApplicationLifecycleDelegate()
+        var destinations: [MarkdownPrinterHelpDestination] = []
+        delegate.helpHandler = { destinations.append($0) }
+        let mainMenu = NSMenu()
+        let helpItem = NSMenuItem(title: "Help", action: nil, keyEquivalent: "")
+        let helpMenu = NSMenu(title: "Help")
+        let unrelated = NSMenuItem(title: "Support", action: nil, keyEquivalent: "")
+        helpMenu.addItem(unrelated)
+        helpMenu.addItem(
+            withTitle: "Markdown Printer Help",
+            action: #selector(NSApplication.showHelp(_:)),
+            keyEquivalent: ""
+        )
+        helpItem.submenu = helpMenu
+        mainMenu.addItem(helpItem)
+
+        delegate.configureHelpMenu(in: mainMenu)
+        delegate.configureHelpMenu(in: mainMenu)
+
+        XCTAssertEqual(
+            helpMenu.items.map(\.title),
+            ["Support", "Markdown Printer Help", "Keyboard Shortcuts"]
+        )
+        let overview = try XCTUnwrap(helpMenu.item(withTitle: "Markdown Printer Help"))
+        let shortcuts = try XCTUnwrap(helpMenu.item(withTitle: "Keyboard Shortcuts"))
+        XCTAssertTrue(overview.target === delegate)
+        XCTAssertTrue(shortcuts.target === delegate)
+        _ = overview.target?.perform(overview.action, with: overview)
+        _ = shortcuts.target?.perform(shortcuts.action, with: shortcuts)
+        XCTAssertEqual(destinations, [.overview, .shortcuts])
+
+        helpMenu.removeAllItems()
+        helpMenu.addItem(
+            withTitle: "Markdown Printer Help",
+            action: #selector(NSApplication.showHelp(_:)),
+            keyEquivalent: ""
+        )
+        try XCTUnwrap(helpMenu.delegate).menuWillOpen?(helpMenu)
+        XCTAssertEqual(
+            helpMenu.items.map(\.title),
+            ["Markdown Printer Help", "Keyboard Shortcuts"]
+        )
+    }
+
+    func testCloseCommandRoutesCommandWToTheFocusedClosableWindow() throws {
+        let delegate = ApplicationLifecycleDelegate()
+        let window = CloseTrackingWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.closable],
+            backing: .buffered,
+            defer: false
+        )
+        delegate.focusedWindowProvider = { window }
+        let mainMenu = NSMenu()
+        let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
+        let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(withTitle: "Open…", action: nil, keyEquivalent: "o")
+        let recent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        recent.submenu = NSMenu(title: "Open Recent")
+        fileMenu.addItem(recent)
+        fileMenu.addItem(withTitle: "Close", action: nil, keyEquivalent: "w")
+        fileMenu.addItem(withTitle: "Close", action: nil, keyEquivalent: "w")
+        fileItem.submenu = fileMenu
+        mainMenu.addItem(fileItem)
+
+        delegate.configureFileMenu(in: mainMenu)
+        delegate.configureFileMenu(in: mainMenu)
+
+        let closeItems = fileMenu.items.filter { $0.title == "Close" }
+        let close = try XCTUnwrap(closeItems.first)
+        let reopen = try XCTUnwrap(
+            fileMenu.item(withTitle: "Reopen Windows from Last Session")
+        )
+        XCTAssertEqual(closeItems.count, 1)
+        XCTAssertEqual(fileMenu.index(of: close), fileMenu.index(of: reopen) + 1)
+        XCTAssertEqual(close.identifier?.rawValue, "com.peteedstrom.markdown-printer.close-window")
+        XCTAssertTrue(close.target === delegate)
+        XCTAssertEqual(close.action, #selector(ApplicationLifecycleDelegate.closeFocusedWindow(_:)))
+        XCTAssertEqual(close.keyEquivalent, "w")
+        XCTAssertEqual(close.keyEquivalentModifierMask, .command)
+        XCTAssertTrue(close.isEnabled)
+
+        _ = close.target?.perform(close.action, with: close)
+        XCTAssertEqual(window.performCloseCount, 1)
+
+        delegate.focusedWindowProvider = { nil }
+        delegate.configureFileMenu(in: mainMenu)
+        XCTAssertFalse(close.isEnabled)
+        delegate.closeFocusedWindow(nil)
+        XCTAssertEqual(window.performCloseCount, 1)
+    }
+
     func testGeneratedNewDocumentSubmenuIsHiddenWithoutChangingOtherFileItems() throws {
         let delegate = ApplicationLifecycleDelegate()
         let mainMenu = NSMenu()
@@ -261,6 +354,15 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         fileMenu.addItem(withTitle: "Open…", action: nil, keyEquivalent: "o")
         fileItem.submenu = fileMenu
         mainMenu.addItem(fileItem)
+        let helpItem = NSMenuItem(title: "Help", action: nil, keyEquivalent: "")
+        let helpMenu = NSMenu(title: "Help")
+        helpMenu.addItem(
+            withTitle: "Markdown Printer Help",
+            action: #selector(NSApplication.showHelp(_:)),
+            keyEquivalent: ""
+        )
+        helpItem.submenu = helpMenu
+        mainMenu.addItem(helpItem)
         application.mainMenu = mainMenu
         defer { application.mainMenu = previousMainMenu }
 
@@ -274,6 +376,20 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
             Notification(name: NSApplication.didUpdateNotification, object: application)
         )
         XCTAssertTrue(newItem.isHidden)
+
+        helpMenu.removeAllItems()
+        helpMenu.addItem(
+            withTitle: "Markdown Printer Help",
+            action: #selector(NSApplication.showHelp(_:)),
+            keyEquivalent: ""
+        )
+        delegate.applicationDidBecomeActive(
+            Notification(name: NSApplication.didBecomeActiveNotification, object: application)
+        )
+        XCTAssertEqual(
+            helpMenu.items.map(\.title),
+            ["Markdown Printer Help", "Keyboard Shortcuts"]
+        )
 
         newItem.isHidden = false
         RunLoop.main.run(until: Date().addingTimeInterval(0.01))
@@ -344,5 +460,13 @@ private final class TestMenuDelegate: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         willOpenCount += 1
+    }
+}
+
+private final class CloseTrackingWindow: NSWindow {
+    private(set) var performCloseCount = 0
+
+    override func performClose(_ sender: Any?) {
+        performCloseCount += 1
     }
 }

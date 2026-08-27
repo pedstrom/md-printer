@@ -12,6 +12,7 @@ struct MarkdownPrinterApp: App {
     @StateObject private var updateController: UpdateController
     @StateObject private var defaultApplicationController: DefaultApplicationController
     @StateObject private var windowTabCoordinator: WindowTabCoordinator
+    @StateObject private var helpNavigator: MarkdownPrinterHelpNavigator
     private let quickLookNavigator: FinderQuickLookSettingsNavigator
 
     init() {
@@ -42,6 +43,7 @@ struct MarkdownPrinterApp: App {
             wrappedValue: DefaultApplicationController()
         )
         _windowTabCoordinator = StateObject(wrappedValue: windowTabCoordinator)
+        _helpNavigator = StateObject(wrappedValue: MarkdownPrinterHelpNavigator())
         quickLookNavigator = FinderQuickLookSettingsNavigator()
     }
 
@@ -53,7 +55,8 @@ struct MarkdownPrinterApp: App {
                 exportPreferences: exportPreferences,
                 activityCoordinator: activityCoordinator,
                 documentRestoration: documentRestoration,
-                windowTabCoordinator: windowTabCoordinator
+                windowTabCoordinator: windowTabCoordinator,
+                helpNavigator: helpNavigator
             )
         } defaultValue: {
             UUID()
@@ -82,7 +85,8 @@ struct MarkdownPrinterApp: App {
                 activityCoordinator: activityCoordinator,
                 documentRestoration: documentRestoration,
                 applicationDelegate: applicationDelegate,
-                windowTabCoordinator: windowTabCoordinator
+                windowTabCoordinator: windowTabCoordinator,
+                helpNavigator: helpNavigator
             )
         }
         .defaultSize(width: 760, height: 980)
@@ -93,6 +97,12 @@ struct MarkdownPrinterApp: App {
             DocumentFileCommands()
             WindowTabCommands(coordinator: windowTabCoordinator)
         }
+
+        Window("Markdown Printer Help", id: "help") {
+            MarkdownPrinterHelpView(navigator: helpNavigator)
+        }
+        .defaultSize(width: 640, height: 700)
+        .windowResizability(.contentMinSize)
 
         Settings {
             TabView {
@@ -124,6 +134,7 @@ private struct WelcomeMarkdownWindow: View {
     let activityCoordinator: ApplicationActivityCoordinator
     let documentRestoration: OpenDocumentRestorationController
     let windowTabCoordinator: WindowTabCoordinator
+    let helpNavigator: MarkdownPrinterHelpNavigator
 
     var body: some View {
         MarkdownPrinterView(
@@ -144,7 +155,8 @@ private struct WelcomeMarkdownWindow: View {
                 coordinator: windowTabCoordinator,
                 documentRestoration: documentRestoration,
                 session: session,
-                welcomeIdentifier: identifier
+                welcomeIdentifier: identifier,
+                helpNavigator: helpNavigator
             )
         )
         .task {
@@ -223,6 +235,7 @@ private struct MarkdownDocumentWindow: View {
     let documentRestoration: OpenDocumentRestorationController
     let applicationDelegate: ApplicationLifecycleDelegate
     let windowTabCoordinator: WindowTabCoordinator
+    let helpNavigator: MarkdownPrinterHelpNavigator
 
     init(
         fileDocument: MarkdownFileDocument,
@@ -232,7 +245,8 @@ private struct MarkdownDocumentWindow: View {
         activityCoordinator: ApplicationActivityCoordinator,
         documentRestoration: OpenDocumentRestorationController,
         applicationDelegate: ApplicationLifecycleDelegate,
-        windowTabCoordinator: WindowTabCoordinator
+        windowTabCoordinator: WindowTabCoordinator,
+        helpNavigator: MarkdownPrinterHelpNavigator
     ) {
         self.fileDocument = fileDocument
         self.sourceURL = sourceURL
@@ -242,6 +256,7 @@ private struct MarkdownDocumentWindow: View {
         self.documentRestoration = documentRestoration
         self.applicationDelegate = applicationDelegate
         self.windowTabCoordinator = windowTabCoordinator
+        self.helpNavigator = helpNavigator
         let session = Self.makeSession(
             fileDocument: fileDocument,
             sourceURL: sourceURL,
@@ -278,7 +293,8 @@ private struct MarkdownDocumentWindow: View {
                     coordinator: windowTabCoordinator,
                     documentRestoration: documentRestoration,
                     session: session,
-                    welcomeIdentifier: nil
+                    welcomeIdentifier: nil,
+                    helpNavigator: helpNavigator
                 )
             )
             .onAppear {
@@ -338,6 +354,7 @@ private struct WindowTabActionInstallerView: View {
     let documentRestoration: OpenDocumentRestorationController
     let session: DocumentSession
     let welcomeIdentifier: UUID?
+    let helpNavigator: MarkdownPrinterHelpNavigator
 
     var body: some View {
         Color.clear
@@ -354,6 +371,10 @@ private struct WindowTabActionInstallerView: View {
                 applicationDelegate.documentRestorationController = documentRestoration
                 applicationDelegate.normalTerminationHandler = { [weak documentRestoration] in
                     documentRestoration?.captureLastSession()
+                }
+                applicationDelegate.helpHandler = { [weak helpNavigator] destination in
+                    helpNavigator?.show(destination)
+                    openWindow(id: "help")
                 }
                 documentRestoration.reopenLastSessionHandler = {
                     [weak documentRestoration, weak coordinator, weak session] in

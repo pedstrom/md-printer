@@ -1,5 +1,16 @@
 # Product Development Log
 
+## 2026-08-27 — Restored native Command-W closing
+
+- Reconnected the File → Close command to the focused native window so Command-W closes the selected document tab when tabbed and closes standalone document, welcome, and Help windows otherwise.
+- Kept one standard Close item immediately after the session-reopening command and disabled it when no closable window is focused.
+
+## 2026-08-27 — Bundled offline Help
+
+- Added a reusable native Help window with selectable, accessible, locally bundled guidance for opening, exporting, navigating, searching, thumbnails, tabs, restoration, page setup, printing, Finder, Quick Look, local images, and privacy.
+- Added Help → Markdown Printer Help and Help → Keyboard Shortcuts, with both commands reusing the same resizable window and routing directly to the requested section.
+- Documented app-specific keyboard shortcuts, including both Space/Shift-Space and Option-arrow page navigation.
+
 ## 2026-08-27 — Consistent dark-mode canvas surfaces
 
 - Made the welcome and preparing views expand with resized windows while preserving their existing minimum size, and left their background transparent so the native window surface remains continuous in dark mode.
