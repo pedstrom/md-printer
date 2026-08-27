@@ -8,6 +8,7 @@ struct MarkdownViewerView: View {
     @ObservedObject var session: MobileDocumentSession
     @Binding var linkedDocuments: [URL]
     var onClose: (() -> Void)? = nil
+    var onNavigateBack: (() -> Void)? = nil
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var toolbarsVisible = true
@@ -54,6 +55,16 @@ struct MarkdownViewerView: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
+        .overlay(alignment: .leading) {
+            if let onNavigateBack {
+                MobileBackSwipeEdgeView(edge: .leading, onNavigateBack: onNavigateBack)
+            }
+        }
+        .overlay(alignment: .trailing) {
+            if let onNavigateBack {
+                MobileBackSwipeEdgeView(edge: .trailing, onNavigateBack: onNavigateBack)
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(toolbarsVisible || searchPresented ? .visible : .hidden, for: .navigationBar)
         .toolbar {
@@ -386,6 +397,34 @@ struct MarkdownViewerView: View {
         try? FileManager.default.removeItem(at: sharedTemporaryURL.deletingLastPathComponent())
         self.sharedTemporaryURL = nil
         shareItems = []
+    }
+}
+
+private struct MobileBackSwipeEdgeView: View {
+    let edge: MobileBackSwipeEdge
+    let onNavigateBack: () -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 30)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 14)
+                    .onEnded { value in
+                        let predicted = value.predictedEndTranslation
+                        let travel = abs(predicted.width) > abs(value.translation.width)
+                            ? predicted
+                            : value.translation
+                        guard MobileBackSwipePolicy.shouldNavigateBack(
+                            from: edge,
+                            horizontalTravel: travel.width,
+                            verticalTravel: travel.height
+                        ) else { return }
+                        onNavigateBack()
+                    }
+            )
+            .padding(.vertical, 56)
+            .accessibilityHidden(true)
     }
 }
 

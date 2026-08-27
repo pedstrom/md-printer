@@ -108,6 +108,24 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["iPhone Viewer Fixture"].waitForExistence(timeout: 5))
     }
 
+    func testLinkedMarkdownSupportsBackSwipesFromBothScreenEdges() {
+        openLinkedMarkdown()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.45))
+            .press(
+                forDuration: 0.05,
+                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.45))
+            )
+        XCTAssertTrue(app.staticTexts["iPhone Viewer Fixture"].waitForExistence(timeout: 5))
+
+        openLinkedMarkdown()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.45))
+            .press(
+                forDuration: 0.05,
+                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.45))
+            )
+        XCTAssertTrue(app.staticTexts["iPhone Viewer Fixture"].waitForExistence(timeout: 5))
+    }
+
     func testPermissionGatedLinkedDocumentRequestsExplicitFilesAccess() {
         let link = app.links["Permission-gated page"]
         XCTAssertTrue(link.waitForExistence(timeout: 4))
@@ -170,5 +188,12 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         link.tap()
         XCTAssertTrue(app.staticTexts["Couldn’t Open Markdown"].waitForExistence(timeout: 6))
         XCTAssertTrue(app.navigationBars.buttons.element(boundBy: 0).exists)
+    }
+
+    private func openLinkedMarkdown() {
+        let link = app.links["Linked page"]
+        XCTAssertTrue(link.waitForExistence(timeout: 4))
+        link.tap()
+        XCTAssertTrue(app.staticTexts["Linked Markdown Page"].waitForExistence(timeout: 5))
     }
 }

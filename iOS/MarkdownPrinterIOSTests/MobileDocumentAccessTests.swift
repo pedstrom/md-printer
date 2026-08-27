@@ -122,6 +122,51 @@ final class MobileDocumentAccessTests: XCTestCase {
         )
     }
 
+    func testBackSwipePolicySupportsBothScreenEdgesWithoutTakingVerticalSwipes() {
+        XCTAssertTrue(
+            MobileBackSwipePolicy.shouldNavigateBack(
+                from: .leading,
+                horizontalTravel: 90,
+                verticalTravel: 12
+            )
+        )
+        XCTAssertTrue(
+            MobileBackSwipePolicy.shouldNavigateBack(
+                from: .trailing,
+                horizontalTravel: -90,
+                verticalTravel: 12
+            )
+        )
+        XCTAssertFalse(
+            MobileBackSwipePolicy.shouldNavigateBack(
+                from: .leading,
+                horizontalTravel: -90,
+                verticalTravel: 12
+            )
+        )
+        XCTAssertFalse(
+            MobileBackSwipePolicy.shouldNavigateBack(
+                from: .trailing,
+                horizontalTravel: 90,
+                verticalTravel: 12
+            )
+        )
+        XCTAssertFalse(
+            MobileBackSwipePolicy.shouldNavigateBack(
+                from: .trailing,
+                horizontalTravel: -40,
+                verticalTravel: 2
+            )
+        )
+        XCTAssertFalse(
+            MobileBackSwipePolicy.shouldNavigateBack(
+                from: .trailing,
+                horizontalTravel: -80,
+                verticalTravel: 75
+            )
+        )
+    }
+
     func testFileActionsMetadataRenameAndDuplicate() throws {
         let source = directory.appendingPathComponent("Notes.md")
         let contents = Data("# Notes".utf8)

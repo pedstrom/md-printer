@@ -71,6 +71,32 @@ public enum MobileLinkedDocumentSelection {
     }
 }
 
+public enum MobileBackSwipeEdge: Equatable, Sendable {
+    case leading
+    case trailing
+}
+
+public enum MobileBackSwipePolicy {
+    public static let minimumHorizontalTravel = 60.0
+
+    public static func shouldNavigateBack(
+        from edge: MobileBackSwipeEdge,
+        horizontalTravel: Double,
+        verticalTravel: Double
+    ) -> Bool {
+        guard abs(horizontalTravel) >= minimumHorizontalTravel,
+              abs(horizontalTravel) > abs(verticalTravel) * 1.25 else {
+            return false
+        }
+        switch edge {
+        case .leading:
+            return horizontalTravel > 0
+        case .trailing:
+            return horizontalTravel < 0
+        }
+    }
+}
+
 public final class SecurityScopedResourceLease {
     public let url: URL
     public let isSecurityScoped: Bool

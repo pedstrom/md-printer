@@ -207,7 +207,11 @@ private struct LinkedMarkdownDocumentView: View {
     var body: some View {
         Group {
             if session.document != nil {
-                MarkdownViewerView(session: session, linkedDocuments: $linkedDocuments)
+                MarkdownViewerView(
+                    session: session,
+                    linkedDocuments: $linkedDocuments,
+                    onNavigateBack: navigateBack
+                )
             } else if let request = session.permissionRequest {
                 ContentUnavailableView {
                     Label("File Access Needed", systemImage: "folder.badge.questionmark")
@@ -261,5 +265,10 @@ private struct LinkedMarkdownDocumentView: View {
         } message: {
             Text(selectionError ?? "Choose the linked Markdown file.")
         }
+    }
+
+    private func navigateBack() {
+        guard !linkedDocuments.isEmpty else { return }
+        linkedDocuments.removeLast()
     }
 }
