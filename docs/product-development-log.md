@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-08-27 — Version 1.4.3
+
+- Promoted the native tabs, thumbnail and sharing controls, workspace reopening, Page Setup and footer parity, Preview-style viewing commands, broader CommonMark compatibility, performance work, bundled Help, dark-mode refinements, and restored Command-W behavior together as version 1.4.3, build 12.
+- Framed the release around a more consistent, polished Mac experience across windows, menus, previewing, output, and session continuity.
+
 ## 2026-08-27 — Restored native Command-W closing
 
 - Reconnected the File → Close command to the focused native window so Command-W closes the selected document tab when tabbed and closes standalone document, welcome, and Help windows otherwise.
