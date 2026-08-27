@@ -108,6 +108,21 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["iPhone Viewer Fixture"].waitForExistence(timeout: 5))
     }
 
+    func testPermissionGatedLinkedDocumentRequestsExplicitFilesAccess() {
+        let link = app.links["Permission-gated page"]
+        XCTAssertTrue(link.waitForExistence(timeout: 4))
+        link.tap()
+
+        XCTAssertTrue(
+            app.otherElements["linked-document-access-picker"].waitForExistence(timeout: 8)
+        )
+        app.buttons["Cancel"].tap()
+
+        XCTAssertTrue(app.staticTexts["File Access Needed"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["Choose permission-required.md…"].exists)
+        XCTAssertFalse(app.staticTexts["Couldn’t Open Markdown"].exists)
+    }
+
     func testReadingTapHidesAndRestoresToolbars() {
         XCTAssertTrue(app.buttons["share-pdf-button"].exists)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.45)).tap()

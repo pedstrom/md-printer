@@ -106,6 +106,48 @@ struct MoveDocumentPicker: UIViewControllerRepresentable {
     }
 }
 
+struct LinkedMarkdownDocumentPicker: UIViewControllerRepresentable {
+    let requestedURL: URL
+    let completion: (URL?) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(completion: completion)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let controller = UIDocumentPickerViewController(
+            forOpeningContentTypes: [MobileMarkdownFileDocument.markdownContentType],
+            asCopy: false
+        )
+        controller.delegate = context.coordinator
+        controller.allowsMultipleSelection = false
+        controller.directoryURL = requestedURL.deletingLastPathComponent()
+        controller.view.accessibilityIdentifier = "linked-document-access-picker"
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let completion: (URL?) -> Void
+
+        init(completion: @escaping (URL?) -> Void) {
+            self.completion = completion
+        }
+
+        func documentPicker(
+            _ controller: UIDocumentPickerViewController,
+            didPickDocumentsAt urls: [URL]
+        ) {
+            completion(urls.first)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            completion(nil)
+        }
+    }
+}
+
 enum MobilePDFShareStore {
     static func write(data: Data, filename: String) throws -> URL {
         let directory = FileManager.default.temporaryDirectory

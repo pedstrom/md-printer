@@ -70,6 +70,58 @@ final class MobileDocumentAccessTests: XCTestCase {
         }
     }
 
+    func testReadPermissionFailuresRequestTheSpecificLinkedFile() {
+        let requestedURL = directory.appendingPathComponent("Linked Notes.md")
+        XCTAssertEqual(
+            MobileDocumentAccessError.readingFailure(
+                for: CocoaError(.fileReadNoPermission),
+                at: requestedURL
+            ),
+            .permissionRequired("Linked Notes.md")
+        )
+
+        let providerError = NSError(
+            domain: "FileProviderTest",
+            code: 41,
+            userInfo: [NSUnderlyingErrorKey: CocoaError(.fileReadNoPermission)]
+        )
+        XCTAssertEqual(
+            MobileDocumentAccessError.readingFailure(for: providerError, at: requestedURL),
+            .permissionRequired("Linked Notes.md")
+        )
+        XCTAssertEqual(
+            MobileDocumentAccessError.readingFailure(
+                for: CocoaError(.fileReadNoSuchFile),
+                at: requestedURL
+            ),
+            .unreadableDocument
+        )
+    }
+
+    func testLinkedDocumentSelectionRequiresTheExpectedFilename() {
+        let requestedURL = directory.appendingPathComponent("Research Map.md")
+        XCTAssertTrue(
+            MobileLinkedDocumentSelection.accepts(
+                URL(fileURLWithPath: "/provider/RESEARCH MAP.MD"),
+                for: requestedURL
+            )
+        )
+        XCTAssertFalse(
+            MobileLinkedDocumentSelection.accepts(
+                URL(fileURLWithPath: "/provider/Different.md"),
+                for: requestedURL
+            )
+        )
+        XCTAssertEqual(
+            MobileLinkedDocumentSelection.rejectionMessage(for: requestedURL),
+            "Choose “Research Map.md” to follow this link."
+        )
+        XCTAssertEqual(
+            MobileDocumentPermissionRequest(url: requestedURL).filename,
+            "Research Map.md"
+        )
+    }
+
     func testFileActionsMetadataRenameAndDuplicate() throws {
         let source = directory.appendingPathComponent("Notes.md")
         let contents = Data("# Notes".utf8)
@@ -179,6 +231,10 @@ final class MobileDocumentAccessTests: XCTestCase {
     func testErrorsHaveReadableMessages() {
         XCTAssertNotNil(MobileDocumentAccessError.unreadableDocument.errorDescription)
         XCTAssertNotNil(MobileDocumentAccessError.unsupportedTextEncoding.errorDescription)
+        XCTAssertEqual(
+            MobileDocumentAccessError.permissionRequired("Linked.md").errorDescription,
+            "Choose “Linked.md” in Files to give Markdown Printer permission to open it."
+        )
         XCTAssertNotNil(MobileDocumentAccessError.invalidFilename.errorDescription)
         XCTAssertEqual(
             MobileDocumentAccessError.fileOperationFailed("Provider denied the request").errorDescription,

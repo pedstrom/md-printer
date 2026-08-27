@@ -142,6 +142,29 @@ final class MobileDocumentSessionTests: XCTestCase {
         XCTAssertNotNil(session.errorMessage)
     }
 
+    func testPermissionFailurePublishesARecoverableFileRequest() async {
+        let deniedLoader = MobileDocumentLoader { _ in
+            throw CocoaError(.fileReadNoPermission)
+        }
+        let session = MobileDocumentSession(
+            loader: deniedLoader,
+            pdfProvider: { _ in Data() }
+        )
+        let requestedURL = URL(fileURLWithPath: "/provider/research-integration-map.md")
+
+        await session.load(url: requestedURL)
+
+        XCTAssertNil(session.document)
+        XCTAssertEqual(
+            session.permissionRequest,
+            MobileDocumentPermissionRequest(url: requestedURL)
+        )
+        XCTAssertEqual(
+            session.errorMessage,
+            "Choose “research-integration-map.md” in Files to give Markdown Printer permission to open it."
+        )
+    }
+
     func testDefaultExporterProducesAndCachesARealPDF() async throws {
         let session = MobileDocumentSession(
             document: MarkdownDocument(title: "Default Export", markdown: "# Default Export\n\nBody")

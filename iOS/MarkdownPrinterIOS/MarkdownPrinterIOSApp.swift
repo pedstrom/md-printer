@@ -151,6 +151,13 @@ private struct UITestMarkdownDocumentContainer: View {
         """
         try? Data(linkedMarkdown.utf8).write(to: linkedURL, options: .atomic)
 
+        let permissionURL = directory.appendingPathComponent("permission-required.md")
+        try? Data("# Permission-gated Markdown".utf8).write(to: permissionURL, options: .atomic)
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0],
+            ofItemAtPath: permissionURL.path
+        )
+
         let sourceURL = directory.appendingPathComponent("fixture.md")
         let markdown = """
         # iPhone Viewer Fixture
@@ -160,6 +167,8 @@ private struct UITestMarkdownDocumentContainer: View {
         [Linked page](linked.markdown) and [Apple website](https://www.apple.com/).
 
         [Missing linked file](missing.md) demonstrates a recoverable provider error.
+
+        [Permission-gated page](permission-required.md) exercises explicit Files authorization.
 
         - [x] Render Markdown
         - [ ] Inspect PDF
@@ -192,11 +201,26 @@ private struct LinkedMarkdownDocumentView: View {
     let url: URL
     @Binding var linkedDocuments: [URL]
     @StateObject private var session = MobileDocumentSession()
+    @State private var showingPermissionPicker = false
+    @State private var selectionError: String?
 
     var body: some View {
         Group {
             if session.document != nil {
                 MarkdownViewerView(session: session, linkedDocuments: $linkedDocuments)
+            } else if let request = session.permissionRequest {
+                ContentUnavailableView {
+                    Label("File Access Needed", systemImage: "folder.badge.questionmark")
+                } description: {
+                    Text(
+                        "Choose “\(request.filename)” in Files. iOS does not automatically "
+                            + "grant access to files beside the document you opened."
+                    )
+                } actions: {
+                    Button("Choose \(request.filename)…") {
+                        showingPermissionPicker = true
+                    }
+                }
             } else if let error = session.errorMessage {
                 ContentUnavailableView(
                     "Couldn’t Open Markdown",
@@ -209,6 +233,33 @@ private struct LinkedMarkdownDocumentView: View {
         }
         .task(id: url) {
             await session.load(url: url)
+            if session.permissionRequest != nil {
+                showingPermissionPicker = true
+            }
+        }
+        .sheet(isPresented: $showingPermissionPicker) {
+            if let request = session.permissionRequest {
+                LinkedMarkdownDocumentPicker(requestedURL: request.url) { selectedURL in
+                    showingPermissionPicker = false
+                    guard let selectedURL else { return }
+                    guard MobileLinkedDocumentSelection.accepts(selectedURL, for: request.url) else {
+                        selectionError = MobileLinkedDocumentSelection.rejectionMessage(for: request.url)
+                        return
+                    }
+                    Task { await session.load(url: selectedURL) }
+                }
+            }
+        }
+        .alert(
+            "Choose Linked Markdown",
+            isPresented: Binding(
+                get: { selectionError != nil },
+                set: { if !$0 { selectionError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(selectionError ?? "Choose the linked Markdown file.")
         }
     }
 }

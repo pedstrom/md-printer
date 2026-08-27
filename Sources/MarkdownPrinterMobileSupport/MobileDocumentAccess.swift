@@ -5,6 +5,7 @@ import MarkdownPrinterCore
 public enum MobileDocumentAccessError: LocalizedError, Equatable, Sendable {
     case unreadableDocument
     case unsupportedTextEncoding
+    case permissionRequired(String)
     case invalidFilename
     case fileOperationFailed(String)
 
@@ -14,11 +15,59 @@ public enum MobileDocumentAccessError: LocalizedError, Equatable, Sendable {
             return "Markdown Printer couldn’t read this file."
         case .unsupportedTextEncoding:
             return "This Markdown file isn’t valid UTF-8 or UTF-16 text."
+        case let .permissionRequired(filename):
+            return "Choose “\(filename)” in Files to give Markdown Printer permission to open it."
         case .invalidFilename:
             return "Enter a valid filename."
         case let .fileOperationFailed(message):
             return message
         }
+    }
+
+    static func readingFailure(for error: Error, at url: URL) -> MobileDocumentAccessError {
+        isReadPermissionError(error)
+            ? .permissionRequired(url.lastPathComponent)
+            : .unreadableDocument
+    }
+
+    private static func isReadPermissionError(_ error: Error) -> Bool {
+        let cocoaError = error as NSError
+        if cocoaError.domain == NSCocoaErrorDomain,
+           cocoaError.code == CocoaError.Code.fileReadNoPermission.rawValue {
+            return true
+        }
+        if cocoaError.domain == NSPOSIXErrorDomain,
+           [Int(POSIXErrorCode.EACCES.rawValue), Int(POSIXErrorCode.EPERM.rawValue)]
+            .contains(cocoaError.code) {
+            return true
+        }
+        guard let underlying = cocoaError.userInfo[NSUnderlyingErrorKey] as? Error else {
+            return false
+        }
+        return isReadPermissionError(underlying)
+    }
+}
+
+public struct MobileDocumentPermissionRequest: Equatable, Sendable {
+    public let url: URL
+    public let filename: String
+
+    public init(url: URL) {
+        self.url = url
+        self.filename = url.lastPathComponent
+    }
+}
+
+public enum MobileLinkedDocumentSelection {
+    public static func accepts(_ selectedURL: URL, for requestedURL: URL) -> Bool {
+        selectedURL.lastPathComponent.compare(
+            requestedURL.lastPathComponent,
+            options: [.caseInsensitive, .diacriticInsensitive]
+        ) == .orderedSame
+    }
+
+    public static func rejectionMessage(for requestedURL: URL) -> String {
+        "Choose “\(requestedURL.lastPathComponent)” to follow this link."
     }
 }
 
@@ -45,24 +94,23 @@ public final class SecurityScopedResourceLease {
 }
 
 public struct MobileDocumentLoader: Sendable {
-    public init() {}
+    private let dataLoader: @Sendable (URL) throws -> Data
+
+    public init() {
+        dataLoader = Self.coordinatedData
+    }
+
+    init(dataLoader: @escaping @Sendable (URL) throws -> Data) {
+        self.dataLoader = dataLoader
+    }
 
     public func load(at url: URL) async throws -> MarkdownDocument {
-        try await Task.detached(priority: .userInitiated) {
-            try Task.checkCancellation()
-            var coordinationError: NSError?
-            var result: Result<Data, Error>?
-            let coordinator = NSFileCoordinator()
-            coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) {
-                coordinatedURL in
-                result = Result { try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe]) }
-            }
-            if let coordinationError { throw coordinationError }
-            guard let data = try result?.get() else {
-                throw MobileDocumentAccessError.unreadableDocument
-            }
+        let dataLoader = dataLoader
+        return try await Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             do {
+                let data = try dataLoader(url)
+                try Task.checkCancellation()
                 let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
                 return try MarkdownDocument.decode(
                     data: data,
@@ -74,9 +122,24 @@ public struct MobileDocumentLoader: Sendable {
             } catch let error as MobileDocumentAccessError {
                 throw error
             } catch {
-                throw MobileDocumentAccessError.unreadableDocument
+                throw MobileDocumentAccessError.readingFailure(for: error, at: url)
             }
         }.value
+    }
+
+    private static func coordinatedData(at url: URL) throws -> Data {
+        var coordinationError: NSError?
+        var result: Result<Data, Error>?
+        let coordinator = NSFileCoordinator()
+        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) {
+            coordinatedURL in
+            result = Result { try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe]) }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let data = try result?.get() else {
+            throw MobileDocumentAccessError.unreadableDocument
+        }
+        return data
     }
 }
 

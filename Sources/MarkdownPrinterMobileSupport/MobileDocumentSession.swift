@@ -26,6 +26,7 @@ public final class MobileDocumentSession: ObservableObject {
     @Published public private(set) var metadata: MobileDocumentMetadata?
     @Published public private(set) var pdfState: MobilePDFPreparationState = .idle
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var permissionRequest: MobileDocumentPermissionRequest?
     @Published public private(set) var revision: UInt64 = 0
 
     public var title: String { presentation?.title ?? sourceURL?.lastPathComponent ?? "Markdown Printer" }
@@ -75,6 +76,8 @@ public final class MobileDocumentSession: ObservableObject {
 
     public func load(url: URL) async {
         cancelPDFGeneration()
+        errorMessage = nil
+        permissionRequest = nil
         let nextLease = SecurityScopedResourceLease(url: url)
         do {
             let document = try await loader.load(at: url)
@@ -83,6 +86,10 @@ public final class MobileDocumentSession: ObservableObject {
         } catch is CancellationError {
             return
         } catch {
+            if let accessError = error as? MobileDocumentAccessError,
+               case .permissionRequired = accessError {
+                permissionRequest = MobileDocumentPermissionRequest(url: url)
+            }
             errorMessage = error.localizedDescription
         }
     }
@@ -113,6 +120,7 @@ public final class MobileDocumentSession: ObservableObject {
         cachedPDF = nil
         pdfState = .idle
         errorMessage = nil
+        permissionRequest = nil
     }
 
     public func pdfData() async throws -> Data {
