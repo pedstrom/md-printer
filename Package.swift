@@ -5,7 +5,8 @@ import PackageDescription
 let package = Package(
     name: "MarkdownPrinter",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v14),
+        .iOS("26.0")
     ],
     products: [
         .library(name: "MarkdownPrinterCore", targets: ["MarkdownPrinterCore"]),
@@ -14,6 +15,10 @@ let package = Package(
             targets: ["MarkdownPrinterQuickLookSupport"]
         ),
         .library(name: "MarkdownPrinterUI", targets: ["MarkdownPrinterUI"]),
+        .library(
+            name: "MarkdownPrinterMobileSupport",
+            targets: ["MarkdownPrinterMobileSupport"]
+        ),
         .executable(name: "MarkdownPrinter", targets: ["MarkdownPrinter"]),
         .executable(name: "MarkdownPrinterCLI", targets: ["MarkdownPrinterCLI"])
     ],
@@ -35,6 +40,10 @@ let package = Package(
                 "MarkdownPrinterCore",
                 .product(name: "Sparkle", package: "Sparkle")
             ]
+        ),
+        .target(
+            name: "MarkdownPrinterMobileSupport",
+            dependencies: ["MarkdownPrinterCore"]
         ),
         .executableTarget(
             name: "MarkdownPrinter",

@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import CoreGraphics
 import PDFKit
@@ -768,3 +769,4 @@ public enum PDFExporterError: LocalizedError, Equatable {
         "The PDF could not be rendered."
     }
 }
+#endif

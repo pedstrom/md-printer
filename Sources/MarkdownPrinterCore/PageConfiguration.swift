@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Foundation
 
@@ -214,3 +215,4 @@ public extension RendererConfiguration {
         return result
     }
 }
+#endif

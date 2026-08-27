@@ -46,6 +46,18 @@ Markdown Printer advertises itself as a viewer for Markdown without silently cha
 
 The release is signed with a Developer ID certificate and notarized by Apple, so it opens through the normal macOS security flow.
 
+### iPhone app
+
+The repository also contains an iPhone-only iOS 26 viewer in [`iOS/MarkdownPrinterIOS.xcodeproj`](iOS/MarkdownPrinterIOS.xcodeproj). It uses Apple’s native document browser for Recents, Shared, and Browse, then renders Markdown as a continuous, selectable SwiftUI document with adaptive colors, Dynamic Type, local images, horizontally scrollable code and tables, search, file information, linked-document navigation, and Preview-style toolbar hiding. Share, Export PDF, and Print all reuse one locally generated portrait US Letter PDF; remote content is never fetched.
+
+The iPhone app is currently a build-from-source target rather than an App Store release. Open the Xcode project, select the **MarkdownPrinterIOS** target, choose a paid Apple Developer team under **Signing & Capabilities**, connect an iPhone running iOS 26 or newer, and Run. A free Personal Team profile expires after seven days. The paid-team device helper refuses such a profile and reports the actual provisioning lifetime before optionally installing:
+
+```sh
+scripts/build-and-run/build_ios_device.sh --install
+```
+
+The paid team is read from the Mac’s Apple Development certificate (or `MARKDOWN_PRINTER_IOS_TEAM_ID`) and is not stored in the repository.
+
 Version 1.3.0 is the first release that includes the updater. If you have an older version, install 1.3.0 manually once; future stable releases can be installed with **Markdown Printer > Check for Updates…**.
 
 ## Privacy and update checks

@@ -28,6 +28,23 @@ required_files=(
   QuickLookExtension/MarkdownPrinterQuickLook/Info.plist
   QuickLookExtension/MarkdownPrinterQuickLook/MarkdownPrinterQuickLook.entitlements
   QuickLookExtension/MarkdownPrinterQuickLook/PreviewViewController.swift
+  iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj
+  iOS/MarkdownPrinterIOS.xcodeproj/xcshareddata/xcschemes/MarkdownPrinterIOS.xcscheme
+  iOS/MarkdownPrinterIOS/Info.plist
+  iOS/MarkdownPrinterIOS/MarkdownPrinterIOSApp.swift
+  iOS/MarkdownPrinterIOS/MobileMarkdownFileDocument.swift
+  iOS/MarkdownPrinterIOS/MobileMarkdownContentView.swift
+  iOS/MarkdownPrinterIOS/MarkdownViewerView.swift
+  iOS/MarkdownPrinterIOS/DocumentActions.swift
+  iOS/MarkdownPrinterIOS/Assets.xcassets/AppIcon.appiconset/Contents.json
+  iOS/MarkdownPrinterIOS/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
+  iOS/MarkdownPrinterIOSTests/MobilePresentationTests.swift
+  iOS/MarkdownPrinterIOSTests/MarkdownSearchIndexTests.swift
+  iOS/MarkdownPrinterIOSTests/MobileDocumentAccessTests.swift
+  iOS/MarkdownPrinterIOSTests/MobileDocumentSessionTests.swift
+  iOS/MarkdownPrinterIOSTests/MobilePDFExporterTests.swift
+  iOS/MarkdownPrinterIOSTests/MobileMarkdownFileDocumentTests.swift
+  iOS/MarkdownPrinterIOSUITests/MarkdownPrinterIOSUITests.swift
   release-notes/1.0.md
   release-notes/1.0.1.md
   release-notes/1.0.2.md
@@ -45,6 +62,8 @@ required_files=(
   scripts/build-and-run/sign_sparkle.sh
   scripts/build-and-run/verify_published_release.sh
   scripts/build-and-run/verify_update_assets.sh
+  scripts/build-and-run/test_ios.sh
+  scripts/build-and-run/build_ios_device.sh
   .codex/skills/md-printer-macos/SKILL.md
   .codex/skills/md-printer-change-gate/SKILL.md
 )
@@ -75,6 +94,7 @@ while IFS= read -r script; do
 done < <(find scripts -type f -name '*.sh' -print | sort)
 plutil -lint Resources/Info.plist >/dev/null
 plutil -lint QuickLookExtension/MarkdownPrinterQuickLook/Info.plist >/dev/null
+plutil -lint iOS/MarkdownPrinterIOS/Info.plist >/dev/null
 plutil -lint \
   QuickLookExtension/MarkdownPrinterQuickLook/MarkdownPrinterQuickLook.entitlements \
   >/dev/null
@@ -113,6 +133,31 @@ fi
 grep -q '"identity" : "sparkle"' Package.resolved
 grep -q '"version" : "2.9.2"' Package.resolved
 
+[[ "$(plutil -extract CFBundleDisplayName raw iOS/MarkdownPrinterIOS/Info.plist)" \
+  == "Markdown Printer" ]]
+[[ "$(plutil -extract CFBundleShortVersionString raw iOS/MarkdownPrinterIOS/Info.plist)" \
+  == '$(MARKETING_VERSION)' ]]
+[[ "$(plutil -extract CFBundleVersion raw iOS/MarkdownPrinterIOS/Info.plist)" \
+  == '$(CURRENT_PROJECT_VERSION)' ]]
+[[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeRole raw \
+  iOS/MarkdownPrinterIOS/Info.plist)" == "Viewer" ]]
+[[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeExtensions json -o - \
+  iOS/MarkdownPrinterIOS/Info.plist)" == '["md","markdown","mdown","mkd"]' ]]
+[[ "$(plutil -extract LSSupportsOpeningDocumentsInPlace raw \
+  iOS/MarkdownPrinterIOS/Info.plist)" == "true" ]]
+[[ "$(plutil -extract UISupportsDocumentBrowser raw \
+  iOS/MarkdownPrinterIOS/Info.plist)" == "true" ]]
+grep -q 'PRODUCT_BUNDLE_IDENTIFIER = "com.peteedstrom.markdown-printer.ios"' \
+  iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj
+grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 26.0' \
+  iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj
+grep -q 'TARGETED_DEVICE_FAMILY = 1' \
+  iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj
+if grep -q 'DEVELOPMENT_TEAM' iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj; then
+  echo "The iOS project must use automatic signing without a tracked development team." >&2
+  exit 1
+fi
+
 mkdir -p .build/module-cache .build/swiftpm-cache
 export CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache"
 export SWIFTPM_CUSTOM_CACHE_PATH="$ROOT/.build/swiftpm-cache"
@@ -134,6 +179,8 @@ awk -v coverage="$LINE_COVERAGE" 'BEGIN { exit(coverage + 0 >= 95 ? 0 : 1) }' ||
   echo "Testable production Swift line coverage is ${LINE_COVERAGE:-unknown}%; expected at least 95%." >&2
   exit 1
 }
+
+scripts/build-and-run/test_ios.sh
 
 scripts/performance_check.sh
 

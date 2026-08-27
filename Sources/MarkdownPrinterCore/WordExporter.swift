@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 import Foundation
 
@@ -938,3 +939,4 @@ private struct RenderedWordTable {
     let range: NSRange
     let tableXML: String
 }
+#endif

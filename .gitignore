@@ -3,6 +3,7 @@
 .swiftpm/
 build/
 DerivedData/
+**/xcuserdata/
 *.xcresult
 *.pdf
 *.swp

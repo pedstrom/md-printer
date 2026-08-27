@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 
 public struct FontBook {
@@ -34,3 +35,4 @@ public struct FontBook {
             ?? NSFont.systemFont(ofSize: size, weight: fallbackWeight)
     }
 }
+#endif

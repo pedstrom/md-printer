@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 
 public struct RendererConfiguration: Equatable {
@@ -69,3 +70,4 @@ public struct RendererConfiguration: Equatable {
             && lhs.codeBlockPadding == rhs.codeBlockPadding
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if canImport(AppKit)
 import AppKit
 
 public final class MarkdownRenderer {
@@ -620,3 +621,4 @@ extension NSAttributedString.Key {
 private extension NSMutableAttributedString {
     var fullRange: NSRange { NSRange(location: 0, length: length) }
 }
+#endif

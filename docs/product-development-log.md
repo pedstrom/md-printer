@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-08-27 — Preview-style Markdown viewer for iPhone
+
+- Added a separate iPhone-only iOS 26 Xcode project with Apple’s native document browser, Viewer registration for `.md`, `.markdown`, `.mdown`, and `.mkd`, automatic signing without a tracked team ID, and reusable app artwork.
+- Added continuous native SwiftUI rendering for headings, inline formatting, lists and task states, quotations, footnotes, horizontal rules, raw HTML, local images and readable placeholders, horizontally scrollable code and aligned tables, Dynamic Type, adaptive appearances, selectable text, linked-document navigation, and exact-phrase search with case and whole-word options.
+- Added coordinated security-scoped document sessions, provider-aware Rename/Move/Duplicate availability, original-Markdown sharing, Info metadata, source refresh, Preview-style toolbar hiding, and one revision-cached PDF result shared by Share PDF, Export, and AirPrint.
+- Added a dedicated mobile TextKit/Core Graphics exporter for searchable, linked, page-numbered portrait US Letter output with fixed 54-point margins, Avenir Next prose, monospaced code, local images, placeholders, footnotes, tables, and multi-page flow without changing macOS output.
+- Added iOS unit, structural PDF, and UI coverage plus a simulator gate enforcing at least 95% testable mobile-support line coverage, real-device paid-team signature/profile validation that rejects seven-day Personal Team builds, and local-device installation support.
+
 ## 2026-08-27 — Version 1.4.3
 
 - Promoted the native tabs, thumbnail and sharing controls, workspace reopening, Page Setup and footer parity, Preview-style viewing commands, broader CommonMark compatibility, performance work, bundled Help, dark-mode refinements, and restored Command-W behavior together as version 1.4.3, build 12.

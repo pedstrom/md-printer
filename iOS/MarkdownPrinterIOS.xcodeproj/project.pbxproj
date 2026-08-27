@@ -1,0 +1,301 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* MarkdownPrinterIOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000101 /* MarkdownPrinterIOSApp.swift */; };
+		100000000000000000000002 /* MobileMarkdownFileDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000102 /* MobileMarkdownFileDocument.swift */; };
+		100000000000000000000003 /* MobileMarkdownContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000103 /* MobileMarkdownContentView.swift */; };
+		100000000000000000000004 /* MarkdownViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000104 /* MarkdownViewerView.swift */; };
+		100000000000000000000005 /* DocumentActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000105 /* DocumentActions.swift */; };
+		100000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000106 /* Assets.xcassets */; };
+		100000000000000000000007 /* MarkdownPrinterCore in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000501 /* MarkdownPrinterCore */; };
+		100000000000000000000008 /* MarkdownPrinterMobileSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000502 /* MarkdownPrinterMobileSupport */; };
+		100000000000000000000011 /* MobilePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000111 /* MobilePresentationTests.swift */; };
+		100000000000000000000012 /* MarkdownSearchIndexTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000112 /* MarkdownSearchIndexTests.swift */; };
+		100000000000000000000013 /* MobileDocumentAccessTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000113 /* MobileDocumentAccessTests.swift */; };
+		100000000000000000000014 /* MobilePDFExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000114 /* MobilePDFExporterTests.swift */; };
+		100000000000000000000015 /* MobileDocumentSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000115 /* MobileDocumentSessionTests.swift */; };
+		100000000000000000000016 /* MobileMarkdownFileDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000116 /* MobileMarkdownFileDocumentTests.swift */; };
+		100000000000000000000017 /* MarkdownPrinterCore in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000501 /* MarkdownPrinterCore */; };
+		100000000000000000000018 /* MarkdownPrinterMobileSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000502 /* MarkdownPrinterMobileSupport */; };
+		100000000000000000000019 /* showcase.md in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000117 /* showcase.md */; };
+		100000000000000000000021 /* MarkdownPrinterIOSUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000121 /* MarkdownPrinterIOSUITests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		100000000000000000000201 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 100000000000000000000400 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 100000000000000000000301;
+			remoteInfo = MarkdownPrinterIOS;
+		};
+		100000000000000000000202 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 100000000000000000000400 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 100000000000000000000301;
+			remoteInfo = MarkdownPrinterIOS;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		100000000000000000000100 /* Markdown Printer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Markdown Printer.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000101 /* MarkdownPrinterIOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPrinterIOSApp.swift; sourceTree = "<group>"; };
+		100000000000000000000102 /* MobileMarkdownFileDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileMarkdownFileDocument.swift; sourceTree = "<group>"; };
+		100000000000000000000103 /* MobileMarkdownContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileMarkdownContentView.swift; sourceTree = "<group>"; };
+		100000000000000000000104 /* MarkdownViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownViewerView.swift; sourceTree = "<group>"; };
+		100000000000000000000105 /* DocumentActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentActions.swift; sourceTree = "<group>"; };
+		100000000000000000000106 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		100000000000000000000107 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		100000000000000000000110 /* MarkdownPrinterIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MarkdownPrinterIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000111 /* MobilePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePresentationTests.swift; sourceTree = "<group>"; };
+		100000000000000000000112 /* MarkdownSearchIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSearchIndexTests.swift; sourceTree = "<group>"; };
+		100000000000000000000113 /* MobileDocumentAccessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDocumentAccessTests.swift; sourceTree = "<group>"; };
+		100000000000000000000114 /* MobilePDFExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePDFExporterTests.swift; sourceTree = "<group>"; };
+		100000000000000000000115 /* MobileDocumentSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileDocumentSessionTests.swift; sourceTree = "<group>"; };
+		100000000000000000000116 /* MobileMarkdownFileDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileMarkdownFileDocumentTests.swift; sourceTree = "<group>"; };
+		100000000000000000000117 /* showcase.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = showcase.md; path = ../../Examples/showcase.md; sourceTree = "<group>"; };
+		100000000000000000000120 /* MarkdownPrinterIOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MarkdownPrinterIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000121 /* MarkdownPrinterIOSUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPrinterIOSUITests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		100000000000000000000211 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000007 /* MarkdownPrinterCore in Frameworks */,
+				100000000000000000000008 /* MarkdownPrinterMobileSupport in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		100000000000000000000212 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000017 /* MarkdownPrinterCore in Frameworks */,
+				100000000000000000000018 /* MarkdownPrinterMobileSupport in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		100000000000000000000213 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		100000000000000000000250 = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000251 /* MarkdownPrinterIOS */,
+				100000000000000000000252 /* MarkdownPrinterIOSTests */,
+				100000000000000000000253 /* MarkdownPrinterIOSUITests */,
+				100000000000000000000254 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		100000000000000000000251 /* MarkdownPrinterIOS */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000101 /* MarkdownPrinterIOSApp.swift */,
+				100000000000000000000102 /* MobileMarkdownFileDocument.swift */,
+				100000000000000000000103 /* MobileMarkdownContentView.swift */,
+				100000000000000000000104 /* MarkdownViewerView.swift */,
+				100000000000000000000105 /* DocumentActions.swift */,
+				100000000000000000000106 /* Assets.xcassets */,
+				100000000000000000000107 /* Info.plist */,
+			);
+			path = MarkdownPrinterIOS;
+			sourceTree = "<group>";
+		};
+		100000000000000000000252 /* MarkdownPrinterIOSTests */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000111 /* MobilePresentationTests.swift */,
+				100000000000000000000112 /* MarkdownSearchIndexTests.swift */,
+				100000000000000000000113 /* MobileDocumentAccessTests.swift */,
+				100000000000000000000114 /* MobilePDFExporterTests.swift */,
+				100000000000000000000115 /* MobileDocumentSessionTests.swift */,
+				100000000000000000000116 /* MobileMarkdownFileDocumentTests.swift */,
+				100000000000000000000117 /* showcase.md */,
+			);
+			path = MarkdownPrinterIOSTests;
+			sourceTree = "<group>";
+		};
+		100000000000000000000253 /* MarkdownPrinterIOSUITests */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000121 /* MarkdownPrinterIOSUITests.swift */,
+			);
+			path = MarkdownPrinterIOSUITests;
+			sourceTree = "<group>";
+		};
+		100000000000000000000254 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000100 /* Markdown Printer.app */,
+				100000000000000000000110 /* MarkdownPrinterIOSTests.xctest */,
+				100000000000000000000120 /* MarkdownPrinterIOSUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		100000000000000000000301 /* MarkdownPrinterIOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100000000000000000000601 /* Build configuration list for PBXNativeTarget "MarkdownPrinterIOS" */;
+			buildPhases = (
+				100000000000000000000221 /* Sources */,
+				100000000000000000000211 /* Frameworks */,
+				100000000000000000000231 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = MarkdownPrinterIOS;
+			packageProductDependencies = (
+				100000000000000000000501 /* MarkdownPrinterCore */,
+				100000000000000000000502 /* MarkdownPrinterMobileSupport */,
+			);
+			productName = "Markdown Printer";
+			productReference = 100000000000000000000100 /* Markdown Printer.app */;
+			productType = "com.apple.product-type.application";
+		};
+		100000000000000000000302 /* MarkdownPrinterIOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100000000000000000000602 /* Build configuration list for PBXNativeTarget "MarkdownPrinterIOSTests" */;
+			buildPhases = (
+				100000000000000000000222 /* Sources */,
+				100000000000000000000212 /* Frameworks */,
+				100000000000000000000232 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				100000000000000000000203 /* PBXTargetDependency */,
+			);
+			name = MarkdownPrinterIOSTests;
+			packageProductDependencies = (
+				100000000000000000000501 /* MarkdownPrinterCore */,
+				100000000000000000000502 /* MarkdownPrinterMobileSupport */,
+			);
+			productName = MarkdownPrinterIOSTests;
+			productReference = 100000000000000000000110 /* MarkdownPrinterIOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		100000000000000000000303 /* MarkdownPrinterIOSUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100000000000000000000603 /* Build configuration list for PBXNativeTarget "MarkdownPrinterIOSUITests" */;
+			buildPhases = (
+				100000000000000000000223 /* Sources */,
+				100000000000000000000213 /* Frameworks */,
+				100000000000000000000233 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				100000000000000000000204 /* PBXTargetDependency */,
+			);
+			name = MarkdownPrinterIOSUITests;
+			productName = MarkdownPrinterIOSUITests;
+			productReference = 100000000000000000000120 /* MarkdownPrinterIOSUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		100000000000000000000400 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					100000000000000000000301 = { CreatedOnToolsVersion = 26.6; };
+					100000000000000000000302 = { CreatedOnToolsVersion = 26.6; TestTargetID = 100000000000000000000301; };
+					100000000000000000000303 = { CreatedOnToolsVersion = 26.6; TestTargetID = 100000000000000000000301; };
+				};
+			};
+			buildConfigurationList = 100000000000000000000600 /* Build configuration list for PBXProject "MarkdownPrinterIOS" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 100000000000000000000250;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				100000000000000000000500 /* XCLocalSwiftPackageReference ".." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 100000000000000000000254 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				100000000000000000000301 /* MarkdownPrinterIOS */,
+				100000000000000000000302 /* MarkdownPrinterIOSTests */,
+				100000000000000000000303 /* MarkdownPrinterIOSUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		100000000000000000000231 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000006 /* Assets.xcassets in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+		100000000000000000000232 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000019 /* showcase.md in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+		100000000000000000000233 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		100000000000000000000221 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000001, 100000000000000000000002, 100000000000000000000003, 100000000000000000000004, 100000000000000000000005,); runOnlyForDeploymentPostprocessing = 0; };
+		100000000000000000000222 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000011, 100000000000000000000012, 100000000000000000000013, 100000000000000000000014, 100000000000000000000015, 100000000000000000000016,); runOnlyForDeploymentPostprocessing = 0; };
+		100000000000000000000223 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000021,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		100000000000000000000203 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 100000000000000000000301 /* MarkdownPrinterIOS */; targetProxy = 100000000000000000000201 /* PBXContainerItemProxy */; };
+		100000000000000000000204 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = 100000000000000000000301 /* MarkdownPrinterIOS */; targetProxy = 100000000000000000000202 /* PBXContainerItemProxy */; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		100000000000000000000701 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; COPY_PHASE_STRIP = NO; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_C_LANGUAGE_STANDARD = gnu17; GCC_OPTIMIZATION_LEVEL = 0; ONLY_ACTIVE_ARCH = YES; SDKROOT = iphoneos; SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; name = Debug; };
+		100000000000000000000702 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; ENABLE_NS_ASSERTIONS = NO; GCC_C_LANGUAGE_STANDARD = gnu17; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; VALIDATE_PRODUCT = YES; }; name = Release; };
+		100000000000000000000711 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = MarkdownPrinterIOS/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 26.0; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = "com.peteedstrom.markdown-printer.ios"; PRODUCT_MODULE_NAME = MarkdownPrinterIOS; PRODUCT_NAME = "Markdown Printer"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 1; }; name = Debug; };
+		100000000000000000000712 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ASSETCATALOG_COMPILER_ACCENT_COLOR_NAME = AccentColor; ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon; CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; ENABLE_PREVIEWS = YES; GENERATE_INFOPLIST_FILE = NO; INFOPLIST_FILE = MarkdownPrinterIOS/Info.plist; IPHONEOS_DEPLOYMENT_TARGET = 26.0; MARKETING_VERSION = 1.0; PRODUCT_BUNDLE_IDENTIFIER = "com.peteedstrom.markdown-printer.ios"; PRODUCT_MODULE_NAME = MarkdownPrinterIOS; PRODUCT_NAME = "Markdown Printer"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO; SWIFT_EMIT_LOC_STRINGS = YES; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 1; }; name = Release; };
+		100000000000000000000721 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = "com.peteedstrom.markdown-printer.ios.tests"; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 1; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Markdown Printer.app/Markdown Printer"; }; name = Debug; };
+		100000000000000000000722 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {BUNDLE_LOADER = "$(TEST_HOST)"; CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = "com.peteedstrom.markdown-printer.ios.tests"; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 1; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Markdown Printer.app/Markdown Printer"; }; name = Release; };
+		100000000000000000000731 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = "com.peteedstrom.markdown-printer.ios.uitests"; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 1; TEST_TARGET_NAME = MarkdownPrinterIOS; }; name = Debug; };
+		100000000000000000000732 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 26.0; PRODUCT_BUNDLE_IDENTIFIER = "com.peteedstrom.markdown-printer.ios.uitests"; PRODUCT_NAME = "$(TARGET_NAME)"; SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; TARGETED_DEVICE_FAMILY = 1; TEST_TARGET_NAME = MarkdownPrinterIOS; }; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		100000000000000000000600 /* Build configuration list for PBXProject "MarkdownPrinterIOS" */ = {isa = XCConfigurationList; buildConfigurations = (100000000000000000000701 /* Debug */, 100000000000000000000702 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		100000000000000000000601 /* Build configuration list for PBXNativeTarget "MarkdownPrinterIOS" */ = {isa = XCConfigurationList; buildConfigurations = (100000000000000000000711 /* Debug */, 100000000000000000000712 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		100000000000000000000602 /* Build configuration list for PBXNativeTarget "MarkdownPrinterIOSTests" */ = {isa = XCConfigurationList; buildConfigurations = (100000000000000000000721 /* Debug */, 100000000000000000000722 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		100000000000000000000603 /* Build configuration list for PBXNativeTarget "MarkdownPrinterIOSUITests" */ = {isa = XCConfigurationList; buildConfigurations = (100000000000000000000731 /* Debug */, 100000000000000000000732 /* Release */,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		100000000000000000000500 /* XCLocalSwiftPackageReference ".." */ = {isa = XCLocalSwiftPackageReference; relativePath = ..; };
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		100000000000000000000501 /* MarkdownPrinterCore */ = {isa = XCSwiftPackageProductDependency; package = 100000000000000000000500 /* XCLocalSwiftPackageReference ".." */; productName = MarkdownPrinterCore; };
+		100000000000000000000502 /* MarkdownPrinterMobileSupport */ = {isa = XCSwiftPackageProductDependency; package = 100000000000000000000500 /* XCLocalSwiftPackageReference ".." */; productName = MarkdownPrinterMobileSupport; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 100000000000000000000400 /* Project object */;
+}
