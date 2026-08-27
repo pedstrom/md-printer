@@ -1235,7 +1235,6 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         displayMode = .singlePageContinuous
         displayDirection = .vertical
         displaysPageBreaks = true
-        backgroundColor = .windowBackgroundColor
         addGestureRecognizer(outboundExportDragRecognizer)
     }
 

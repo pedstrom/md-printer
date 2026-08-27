@@ -169,6 +169,12 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertNil(MarkdownLinkTarget.fileURL(from: URL(fileURLWithPath: "/tmp/report.pdf")))
     }
 
+    func testPreviewUsesTheStandardNeutralUnderPageBackground() {
+        let view = PageAdvancingPDFView()
+
+        XCTAssertEqual(view.backgroundColor, .underPageBackgroundColor)
+    }
+
     func testInitialLayoutFitsTheCompleteFirstPage() throws {
         let document = try makeMultiPageDocument()
         let firstPage = try XCTUnwrap(document.page(at: 0))

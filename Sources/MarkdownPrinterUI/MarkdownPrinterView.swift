@@ -54,7 +54,12 @@ public struct MarkdownPrinterView: View {
                 welcome
             }
         }
-        .frame(minWidth: 680, minHeight: 560)
+        .frame(
+            minWidth: 680,
+            maxWidth: .infinity,
+            minHeight: 560,
+            maxHeight: .infinity
+        )
         .focusedSceneObject(searchController)
         .focusedSceneObject(viewingController)
         .focusedSceneObject(sidebarController)
@@ -62,7 +67,6 @@ public struct MarkdownPrinterView: View {
         .focusedSceneObject(pageActions)
         .background(StableWindowTitleView(title: session.title))
         .background(PDFSearchPanelPresenter(controller: searchController))
-        .background(Color(nsColor: .windowBackgroundColor))
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 16)

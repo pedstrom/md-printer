@@ -1,8 +1,31 @@
+import AppKit
 import Foundation
+import MarkdownPrinterCore
+import SwiftUI
 import XCTest
 @testable import MarkdownPrinterUI
 
+@MainActor
 final class MarkdownPrinterViewTests: XCTestCase {
+    func testWindowContentExpandsBeyondItsMinimumSize() {
+        let hostingController = NSHostingController(rootView: makeWelcomeView())
+        let availableSize = NSSize(width: 920, height: 720)
+
+        XCTAssertEqual(hostingController.sizeThatFits(in: availableSize), availableSize)
+    }
+
+    func testWelcomeLeavesTheNativeWindowSurfaceUnpainted() throws {
+        let hostingView = NSHostingView(rootView: makeWelcomeView())
+        hostingView.frame = NSRect(x: 0, y: 0, width: 920, height: 720)
+        hostingView.layoutSubtreeIfNeeded()
+        let bitmap = try XCTUnwrap(hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds))
+
+        hostingView.cacheDisplay(in: hostingView.bounds, to: bitmap)
+
+        let cornerColor = try XCTUnwrap(bitmap.colorAt(x: 4, y: 4))
+        XCTAssertEqual(cornerColor.alphaComponent, 0, accuracy: 0.01)
+    }
+
     func testWelcomeArtworkUsesTheDoubledDisplaySize() {
         XCTAssertEqual(
             MarkdownPrinterWelcomeArtwork.displaySize,
@@ -32,5 +55,14 @@ final class MarkdownPrinterViewTests: XCTestCase {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
+    }
+
+    private func makeWelcomeView() -> MarkdownPrinterView {
+        MarkdownPrinterView(
+            session: DocumentSession(),
+            exportPreferences: ExportPreferences(),
+            activityCoordinator: ApplicationActivityCoordinator(),
+            openFiles: { _ in }
+        )
     }
 }

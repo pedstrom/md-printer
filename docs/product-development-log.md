@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-08-27 — Consistent dark-mode canvas surfaces
+
+- Made the welcome and preparing views expand with resized windows while preserving their existing minimum size, and left their background transparent so the native window surface remains continuous in dark mode.
+- Removed the custom PDF background override so PDFKit uses its standard neutral under-page canvas instead of tinting the document surround like an ordinary window.
+- Added native layout, transparency, and PDF-view regression tests for the dark-mode surface corrections.
+
 ## 2026-08-27 — Immediate Page Setup inheritance reset
 
 - Added an official native Page Setup accessory for documents with explicit layout overrides, without changing the default Page Setup sheet in Settings.
