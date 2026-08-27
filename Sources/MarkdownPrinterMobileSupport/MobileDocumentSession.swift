@@ -36,6 +36,7 @@ public final class MobileDocumentSession: ObservableObject {
 
     private let presenter: MobileMarkdownPresenter
     private let loader: MobileDocumentLoader
+    private let directoryAccessStore: MobileDirectoryAccessStore
     private let pdfProvider: @MainActor (MarkdownDocument) async throws -> Data
     private var securityLease: SecurityScopedResourceLease?
     private var cachedPDF: (revision: UInt64, data: Data)?
@@ -46,10 +47,12 @@ public final class MobileDocumentSession: ObservableObject {
         sourceURL: URL? = nil,
         presenter: MobileMarkdownPresenter = MobileMarkdownPresenter(),
         loader: MobileDocumentLoader = MobileDocumentLoader(),
+        directoryAccessStore: MobileDirectoryAccessStore = .shared,
         pdfConfiguration: MobilePDFConfiguration = .letter
     ) {
         self.presenter = presenter
         self.loader = loader
+        self.directoryAccessStore = directoryAccessStore
         let exporter = MobilePDFExporter(configuration: pdfConfiguration)
         self.pdfProvider = { document in
             try await exporter.pdfData(for: document)
@@ -64,10 +67,12 @@ public final class MobileDocumentSession: ObservableObject {
         sourceURL: URL? = nil,
         presenter: MobileMarkdownPresenter = MobileMarkdownPresenter(),
         loader: MobileDocumentLoader = MobileDocumentLoader(),
+        directoryAccessStore: MobileDirectoryAccessStore = .shared,
         pdfProvider: @escaping @MainActor (MarkdownDocument) async throws -> Data
     ) {
         self.presenter = presenter
         self.loader = loader
+        self.directoryAccessStore = directoryAccessStore
         self.pdfProvider = pdfProvider
         if let document {
             apply(document, sourceURL: sourceURL ?? document.sourceURL)
@@ -78,6 +83,7 @@ public final class MobileDocumentSession: ObservableObject {
         cancelPDFGeneration()
         errorMessage = nil
         permissionRequest = nil
+        directoryAccessStore.activateStoredAccess(containing: url)
         let nextLease = SecurityScopedResourceLease(url: url)
         do {
             let document = try await loader.load(at: url)
@@ -121,6 +127,16 @@ public final class MobileDocumentSession: ObservableObject {
         pdfState = .idle
         errorMessage = nil
         permissionRequest = nil
+    }
+
+    public func authorizeDirectory(_ directoryURL: URL) throws {
+        guard let permissionRequest else {
+            throw MobileDirectoryAccessError.noPendingRequest
+        }
+        guard MobileDirectoryAuthorization.contains(permissionRequest.url, within: directoryURL) else {
+            throw MobileDirectoryAccessError.wrongFolder(permissionRequest.filename)
+        }
+        try directoryAccessStore.authorize(directoryURL: directoryURL)
     }
 
     public func pdfData() async throws -> Data {

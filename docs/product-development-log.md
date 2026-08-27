@@ -2,8 +2,8 @@
 
 ## 2026-08-27 — Preview-style Markdown viewer for iPhone
 
+- Replaced per-file linked-document authorization with a one-time containing-folder grant. The app keeps the folder's security scope active, persists its bookmark across launches, and then opens linked Markdown and local resources anywhere inside that user-authorized folder without another picker.
 - Added edge-swipe Back navigation for linked Markdown documents: swipe left from the right edge as requested, or use the standard inward swipe from the left edge, while preserving horizontal table and code scrolling in the document body.
-- Replaced the dead-end permission error for linked provider documents with an explicit system Files picker scoped to the expected Markdown filename; cancellation keeps a readable retry action and the existing linked-document Back stack.
 - Fixed **Share PDF → Print** by giving the system Print activity the cached PDF bytes while other share destinations retain the named temporary file, avoiding iOS's erroneous protected-PDF failure.
 - Added a separate iPhone-only iOS 26 Xcode project with Apple’s native document browser, Viewer registration for `.md`, `.markdown`, `.mdown`, and `.mkd`, automatic signing without a tracked team ID, and reusable app artwork.
 - Added continuous native SwiftUI rendering for headings, inline formatting, lists and task states, quotations, footnotes, horizontal rules, raw HTML, local images and readable placeholders, horizontally scrollable code and aligned tables, Dynamic Type, adaptive appearances, selectable text, linked-document navigation, and exact-phrase search with case and whole-word options.

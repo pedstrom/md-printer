@@ -106,8 +106,8 @@ struct MoveDocumentPicker: UIViewControllerRepresentable {
     }
 }
 
-struct LinkedMarkdownDocumentPicker: UIViewControllerRepresentable {
-    let requestedURL: URL
+struct LinkedMarkdownFolderPicker: UIViewControllerRepresentable {
+    let request: MobileDocumentPermissionRequest
     let completion: (URL?) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -116,13 +116,13 @@ struct LinkedMarkdownDocumentPicker: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
         let controller = UIDocumentPickerViewController(
-            forOpeningContentTypes: [MobileMarkdownFileDocument.markdownContentType],
+            forOpeningContentTypes: [.folder],
             asCopy: false
         )
         controller.delegate = context.coordinator
         controller.allowsMultipleSelection = false
-        controller.directoryURL = requestedURL.deletingLastPathComponent()
-        controller.view.accessibilityIdentifier = "linked-document-access-picker"
+        controller.directoryURL = request.directoryURL
+        controller.view.accessibilityIdentifier = "linked-folder-access-picker"
         return controller
     }
 

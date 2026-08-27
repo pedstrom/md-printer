@@ -3,7 +3,12 @@ import UIKit
 import MarkdownPrinterCore
 @testable import MarkdownPrinterMobileSupport
 
+@MainActor
 final class MobileDocumentAccessTests: XCTestCase {
+    private enum TestError: Error {
+        case failed
+    }
+
     private var directory: URL!
 
     override func setUpWithError() throws {
@@ -98,28 +103,143 @@ final class MobileDocumentAccessTests: XCTestCase {
         )
     }
 
-    func testLinkedDocumentSelectionRequiresTheExpectedFilename() {
+    func testDirectoryAuthorizationRequiresAContainingFolder() {
         let requestedURL = directory.appendingPathComponent("Research Map.md")
+        let parent = requestedURL.deletingLastPathComponent()
+        XCTAssertTrue(MobileDirectoryAuthorization.contains(requestedURL, within: parent))
         XCTAssertTrue(
-            MobileLinkedDocumentSelection.accepts(
-                URL(fileURLWithPath: "/provider/RESEARCH MAP.MD"),
-                for: requestedURL
+            MobileDirectoryAuthorization.contains(
+                requestedURL,
+                within: parent.deletingLastPathComponent()
             )
         )
         XCTAssertFalse(
-            MobileLinkedDocumentSelection.accepts(
-                URL(fileURLWithPath: "/provider/Different.md"),
-                for: requestedURL
+            MobileDirectoryAuthorization.contains(
+                requestedURL,
+                within: parent.appendingPathComponent("Research")
             )
         )
-        XCTAssertEqual(
-            MobileLinkedDocumentSelection.rejectionMessage(for: requestedURL),
-            "Choose “Research Map.md” to follow this link."
+        XCTAssertFalse(MobileDirectoryAuthorization.contains(parent, within: parent))
+
+        let request = MobileDocumentPermissionRequest(url: requestedURL)
+        XCTAssertEqual(request.filename, "Research Map.md")
+        XCTAssertEqual(request.directoryURL, parent)
+    }
+
+    func testDirectoryAccessStorePersistsScopeAndReplacesAnExplicitRegrant() throws {
+        let defaults = makeDefaults()
+        let key = "authorized-folders"
+        let bookmark = Data("directory-bookmark".utf8)
+        var startCount = 0
+        var stopCount = 0
+        var store: MobileDirectoryAccessStore? = MobileDirectoryAccessStore(
+            defaults: defaults,
+            bookmarkKey: key,
+            bookmarkCreator: { _ in bookmark },
+            bookmarkResolver: { _ in throw TestError.failed },
+            leaseFactory: { url in
+                SecurityScopedResourceLease(
+                    url: url,
+                    startAccessing: {
+                        startCount += 1
+                        return true
+                    },
+                    stopAccessing: { stopCount += 1 }
+                )
+            },
+            isReadableDirectory: { _ in false }
         )
-        XCTAssertEqual(
-            MobileDocumentPermissionRequest(url: requestedURL).filename,
-            "Research Map.md"
+
+        try store?.authorize(directoryURL: directory)
+        try store?.authorize(directoryURL: directory)
+        XCTAssertEqual(startCount, 2)
+        XCTAssertEqual(stopCount, 1)
+        XCTAssertTrue(
+            store?.hasAccess(to: directory.appendingPathComponent("Nested/Notes.md")) == true
         )
+        XCTAssertFalse(
+            store?.hasAccess(
+                to: directory.deletingLastPathComponent().appendingPathComponent("Elsewhere.md")
+            ) == true
+        )
+        XCTAssertEqual(defaults.array(forKey: key) as? [Data], [bookmark])
+
+        store = nil
+        XCTAssertEqual(stopCount, 2)
+    }
+
+    func testDirectoryAccessStoreRestoresAndRefreshesAStaleBookmark() {
+        let defaults = makeDefaults()
+        let key = "authorized-folders"
+        let original = Data("old-bookmark".utf8)
+        let refreshed = Data("new-bookmark".utf8)
+        defaults.set([original], forKey: key)
+        var scopeAvailable = false
+        var resolutionCount = 0
+        let store = MobileDirectoryAccessStore(
+            defaults: defaults,
+            bookmarkKey: key,
+            bookmarkCreator: { _ in refreshed },
+            bookmarkResolver: { data in
+                XCTAssertEqual(data, original)
+                resolutionCount += 1
+                return (self.directory, true)
+            },
+            leaseFactory: { url in
+                SecurityScopedResourceLease(
+                    url: url,
+                    startAccessing: { scopeAvailable },
+                    stopAccessing: {}
+                )
+            },
+            isReadableDirectory: { _ in false }
+        )
+
+        XCTAssertFalse(store.hasAccess(to: directory.appendingPathComponent("Linked.md")))
+        scopeAvailable = true
+        XCTAssertTrue(store.activateStoredAccess(containing: directory.appendingPathComponent("Linked.md")))
+        XCTAssertTrue(store.activateStoredAccess(containing: directory.appendingPathComponent("Other.md")))
+        XCTAssertEqual(resolutionCount, 2)
+        XCTAssertEqual(defaults.array(forKey: key) as? [Data], [refreshed])
+    }
+
+    func testDirectoryAccessStoreMapsGrantFailures() {
+        let defaults = makeDefaults()
+        let denied = MobileDirectoryAccessStore(
+            defaults: defaults,
+            bookmarkKey: "denied",
+            bookmarkCreator: { _ in Data() },
+            bookmarkResolver: { _ in throw TestError.failed },
+            leaseFactory: { url in
+                SecurityScopedResourceLease(
+                    url: url,
+                    startAccessing: { false },
+                    stopAccessing: {}
+                )
+            },
+            isReadableDirectory: { _ in false }
+        )
+        XCTAssertThrowsError(try denied.authorize(directoryURL: directory)) { error in
+            XCTAssertEqual(error as? MobileDirectoryAccessError, .accessDenied)
+        }
+
+        let bookmarkFailure = MobileDirectoryAccessStore(
+            defaults: defaults,
+            bookmarkKey: "bookmark-failure",
+            bookmarkCreator: { _ in throw TestError.failed },
+            bookmarkResolver: { _ in throw TestError.failed },
+            leaseFactory: { url in
+                SecurityScopedResourceLease(
+                    url: url,
+                    startAccessing: { true },
+                    stopAccessing: {}
+                )
+            },
+            isReadableDirectory: { _ in false }
+        )
+        XCTAssertThrowsError(try bookmarkFailure.authorize(directoryURL: directory)) { error in
+            XCTAssertEqual(error as? MobileDirectoryAccessError, .bookmarkFailed)
+        }
     }
 
     func testBackSwipePolicySupportsBothScreenEdgesWithoutTakingVerticalSwipes() {
@@ -278,7 +398,7 @@ final class MobileDocumentAccessTests: XCTestCase {
         XCTAssertNotNil(MobileDocumentAccessError.unsupportedTextEncoding.errorDescription)
         XCTAssertEqual(
             MobileDocumentAccessError.permissionRequired("Linked.md").errorDescription,
-            "Choose “Linked.md” in Files to give Markdown Printer permission to open it."
+            "Allow access to the folder containing “Linked.md” so Markdown Printer can open it."
         )
         XCTAssertNotNil(MobileDocumentAccessError.invalidFilename.errorDescription)
         XCTAssertEqual(
@@ -289,5 +409,16 @@ final class MobileDocumentAccessTests: XCTestCase {
         XCTAssertEqual(MobileImagePlaceholderReason.missing.message, "Image not found")
         XCTAssertEqual(MobileImagePlaceholderReason.corrupt.message, "Image could not be displayed")
         XCTAssertEqual(MobileImagePlaceholderReason.inaccessible.message, "Image unavailable from this file provider")
+        XCTAssertNotNil(MobileDirectoryAccessError.wrongFolder("Linked.md").errorDescription)
+        XCTAssertNotNil(MobileDirectoryAccessError.accessDenied.errorDescription)
+        XCTAssertNotNil(MobileDirectoryAccessError.bookmarkFailed.errorDescription)
+        XCTAssertNotNil(MobileDirectoryAccessError.noPendingRequest.errorDescription)
+    }
+
+    private func makeDefaults() -> UserDefaults {
+        let suiteName = "MobileDocumentAccessTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 }

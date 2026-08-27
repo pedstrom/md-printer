@@ -214,14 +214,14 @@ private struct LinkedMarkdownDocumentView: View {
                 )
             } else if let request = session.permissionRequest {
                 ContentUnavailableView {
-                    Label("File Access Needed", systemImage: "folder.badge.questionmark")
+                    Label("Folder Access Needed", systemImage: "folder.badge.questionmark")
                 } description: {
                     Text(
-                        "Choose “\(request.filename)” in Files. iOS does not automatically "
-                            + "grant access to files beside the document you opened."
+                        "Allow access to the folder containing “\(request.filename)” once. "
+                            + "Markdown Printer will remember it and open links inside that folder directly."
                     )
                 } actions: {
-                    Button("Choose \(request.filename)…") {
+                    Button("Allow Folder Access…") {
                         showingPermissionPicker = true
                     }
                 }
@@ -243,19 +243,21 @@ private struct LinkedMarkdownDocumentView: View {
         }
         .sheet(isPresented: $showingPermissionPicker) {
             if let request = session.permissionRequest {
-                LinkedMarkdownDocumentPicker(requestedURL: request.url) { selectedURL in
+                LinkedMarkdownFolderPicker(request: request) { selectedURL in
                     showingPermissionPicker = false
                     guard let selectedURL else { return }
-                    guard MobileLinkedDocumentSelection.accepts(selectedURL, for: request.url) else {
-                        selectionError = MobileLinkedDocumentSelection.rejectionMessage(for: request.url)
+                    do {
+                        try session.authorizeDirectory(selectedURL)
+                    } catch {
+                        selectionError = error.localizedDescription
                         return
                     }
-                    Task { await session.load(url: selectedURL) }
+                    Task { await session.load(url: request.url) }
                 }
             }
         }
         .alert(
-            "Choose Linked Markdown",
+            "Choose Containing Folder",
             isPresented: Binding(
                 get: { selectionError != nil },
                 set: { if !$0 { selectionError = nil } }
@@ -263,7 +265,7 @@ private struct LinkedMarkdownDocumentView: View {
         ) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(selectionError ?? "Choose the linked Markdown file.")
+            Text(selectionError ?? "Choose a folder containing the linked Markdown file.")
         }
     }
 

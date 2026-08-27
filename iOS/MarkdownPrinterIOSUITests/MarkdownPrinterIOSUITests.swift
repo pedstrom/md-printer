@@ -126,18 +126,23 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["iPhone Viewer Fixture"].waitForExistence(timeout: 5))
     }
 
-    func testPermissionGatedLinkedDocumentRequestsExplicitFilesAccess() {
+    func testPermissionGatedLinkedDocumentRequestsReusableFolderAccess() {
         let link = app.links["Permission-gated page"]
         XCTAssertTrue(link.waitForExistence(timeout: 4))
         link.tap()
 
         XCTAssertTrue(
-            app.otherElements["linked-document-access-picker"].waitForExistence(timeout: 8)
+            app.otherElements["linked-folder-access-picker"].waitForExistence(timeout: 8)
         )
-        app.buttons["Cancel"].tap()
+        app.swipeDown()
 
-        XCTAssertTrue(app.staticTexts["File Access Needed"].waitForExistence(timeout: 4))
-        XCTAssertTrue(app.buttons["Choose permission-required.md…"].exists)
+        XCTAssertTrue(app.staticTexts["Folder Access Needed"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.buttons["Allow Folder Access…"].exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS %@", "open links inside that folder directly")
+            ).firstMatch.exists
+        )
         XCTAssertFalse(app.staticTexts["Couldn’t Open Markdown"].exists)
     }
 

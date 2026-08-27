@@ -161,8 +161,51 @@ final class MobileDocumentSessionTests: XCTestCase {
         )
         XCTAssertEqual(
             session.errorMessage,
-            "Choose “research-integration-map.md” in Files to give Markdown Printer permission to open it."
+            "Allow access to the folder containing “research-integration-map.md” so Markdown Printer can open it."
         )
+    }
+
+    func testPermissionRequestCanAuthorizeContainingDirectoryOnce() async throws {
+        let suiteName = "MobileDocumentSessionTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = MobileDirectoryAccessStore(
+            defaults: defaults,
+            bookmarkKey: "authorized-folders",
+            bookmarkCreator: { _ in Data("bookmark".utf8) },
+            bookmarkResolver: { _ in throw CocoaError(.fileReadUnknown) },
+            leaseFactory: { url in
+                SecurityScopedResourceLease(
+                    url: url,
+                    startAccessing: { true },
+                    stopAccessing: {}
+                )
+            },
+            isReadableDirectory: { _ in false }
+        )
+        let deniedLoader = MobileDocumentLoader { _ in
+            throw CocoaError(.fileReadNoPermission)
+        }
+        let session = MobileDocumentSession(
+            loader: deniedLoader,
+            directoryAccessStore: store,
+            pdfProvider: { _ in Data() }
+        )
+        let requestedURL = URL(fileURLWithPath: "/provider/project/research.md")
+
+        XCTAssertThrowsError(try session.authorizeDirectory(URL(fileURLWithPath: "/provider"))) { error in
+            XCTAssertEqual(error as? MobileDirectoryAccessError, .noPendingRequest)
+        }
+        await session.load(url: requestedURL)
+        XCTAssertThrowsError(
+            try session.authorizeDirectory(URL(fileURLWithPath: "/provider/elsewhere"))
+        ) { error in
+            XCTAssertEqual(error as? MobileDirectoryAccessError, .wrongFolder("research.md"))
+        }
+
+        try session.authorizeDirectory(URL(fileURLWithPath: "/provider/project", isDirectory: true))
+        XCTAssertTrue(store.hasAccess(to: requestedURL))
+        XCTAssertEqual(defaults.array(forKey: "authorized-folders") as? [Data], [Data("bookmark".utf8)])
     }
 
     func testDefaultExporterProducesAndCachesARealPDF() async throws {
