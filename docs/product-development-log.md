@@ -1,5 +1,15 @@
 # Product Development Log
 
+## 2026-08-27 — iPhone App Store submission readiness
+
+- Added an Apple privacy manifest declaring no tracking or collected data and the required reasons for local preferences and user-selected file timestamps, plus the non-exempt-encryption declaration used by App Store Connect.
+- Added an always-available About, Privacy, and Support screen with public policy and support destinations from both the Files browser and document viewer.
+- Added a local, non-destructive sample document action to the Files browser so first-time users and App Review can exercise rendering, search, PDF sharing, export, and printing without bringing a test file.
+- Added public iPhone support and privacy-policy documents describing local processing, remembered folder permissions, user-directed sharing, and the remote-image boundary.
+- Added a paid-team App Store archive and IPA-export workflow that keeps the Apple team ID out of source control and validates the bundle identifier, privacy manifest, signature, and encryption metadata before handoff.
+- Kept the duplicate-copy hygiene gate focused on source-area files and resolved coverage artifacts from SwiftPM's reported binary directory, avoiding multi-minute scans of disposable simulator and SwiftPM caches without weakening repository or coverage checks.
+- Made iOS verification retain Xcode's resolved package checkout while clearing build, profile, and test-result products for each run, and run unit/coverage and UI targets separately. This preserves clean coverage inputs while avoiding repeated Sparkle checkout creation and intermittent combined-harness waits.
+
 ## 2026-08-27 — Preview-style Markdown viewer for iPhone
 
 - Replaced per-file linked-document authorization with a one-time containing-folder grant. The app keeps the folder's security scope active, persists its bookmark across launches, and then opens linked Markdown and local resources anywhere inside that user-authorized folder without another picker.

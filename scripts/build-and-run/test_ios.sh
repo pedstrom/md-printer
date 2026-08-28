@@ -9,6 +9,9 @@ SCHEME="MarkdownPrinterIOS"
 DERIVED_DATA="$ROOT/.build/ios-verification"
 SIMULATOR_ID="${MARKDOWN_PRINTER_IOS_SIMULATOR_ID:-}"
 
+mkdir -p "$DERIVED_DATA"
+rm -rf "$DERIVED_DATA/Build" "$DERIVED_DATA/Logs/Test"
+
 if [[ -z "$SIMULATOR_ID" ]]; then
   SIMULATOR_ID="$(xcrun simctl list devices available --json \
     | jq -r '[.devices[][] | select(.isAvailable == true and (.name | startswith("iPhone")))] | (map(select(.state == "Booted")) + .) | first | .udid // empty')"
@@ -18,15 +21,27 @@ if [[ -z "$SIMULATOR_ID" ]]; then
   exit 1
 fi
 
-rm -rf "$DERIVED_DATA"
-xcodebuild -quiet \
-  -project "$PROJECT" \
-  -scheme "$SCHEME" \
-  -destination "id=$SIMULATOR_ID" \
-  -derivedDataPath "$DERIVED_DATA" \
-  -parallel-testing-enabled NO \
-  CODE_SIGNING_ALLOWED=NO \
-  test
+run_test_target() {
+  local target="$1"
+  xcodebuild -quiet \
+    -project "$PROJECT" \
+    -scheme "$SCHEME" \
+    -destination "id=$SIMULATOR_ID" \
+    -derivedDataPath "$DERIVED_DATA" \
+    -disableAutomaticPackageResolution \
+    -onlyUsePackageVersionsFromResolvedFile \
+    -skipPackageUpdates \
+    -parallel-testing-enabled NO \
+    "-only-testing:$target" \
+    CODE_SIGNING_ALLOWED=NO \
+    test
+}
+
+run_test_target MarkdownPrinterIOSTests
+
+APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/Markdown Printer.app"
+test -s "$APP_PATH/PrivacyInfo.xcprivacy"
+[[ "$(plutil -extract ITSAppUsesNonExemptEncryption raw "$APP_PATH/Info.plist")" == "false" ]]
 
 MOBILE_SUPPORT_BINARY="$(find \
   "$DERIVED_DATA/Build/Products/Debug-iphonesimulator/PackageFrameworks" \
@@ -50,5 +65,7 @@ awk -v coverage="$LINE_COVERAGE" 'BEGIN { exit(coverage + 0 >= 95 ? 0 : 1) }' ||
   echo "Mobile-support Swift line coverage is ${LINE_COVERAGE:-unknown}%; expected at least 95%." >&2
   exit 1
 }
+
+run_test_target MarkdownPrinterIOSUITests
 
 echo "iOS verification passed on simulator $SIMULATOR_ID with ${LINE_COVERAGE}% mobile-support line coverage."

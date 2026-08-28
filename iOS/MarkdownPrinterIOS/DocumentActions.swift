@@ -215,3 +215,79 @@ struct DocumentInfoView: View {
         .presentationDetents([.medium])
     }
 }
+
+enum MarkdownPrinterAppInformation {
+    static let privacyPolicyURL = URL(
+        string: "https://github.com/pedstrom/md-printer/blob/main/docs/privacy-policy.md"
+    )!
+    static let supportURL = URL(
+        string: "https://github.com/pedstrom/md-printer/blob/main/docs/ios-support.md"
+    )!
+    static let sourceURL = URL(string: "https://github.com/pedstrom/md-printer")!
+
+    static var versionDescription: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
+            as? String ?? "Unknown"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion")
+            as? String ?? "Unknown"
+        return "Version \(version) (\(build))"
+    }
+}
+
+struct MarkdownPrinterInformationView: View {
+    var onDone: (() -> Void)?
+    @Environment(\.dismiss) private var dismiss
+
+    init(onDone: (() -> Void)? = nil) {
+        self.onDone = onDone
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("About") {
+                    Label("Markdown Printer", systemImage: "doc.richtext")
+                        .font(.headline)
+                    Text("A local-first Markdown reader for creating polished, searchable PDFs on iPhone.")
+                    LabeledContent("App", value: MarkdownPrinterAppInformation.versionDescription)
+                }
+
+                Section("Getting Started") {
+                    Text("Choose a Markdown file from Files, or tap Sample in the document browser for a ready-made tour.")
+                    Text("Use the document title menu to rename, move, duplicate, share, export, or print.")
+                }
+
+                Section("Privacy") {
+                    Text("Documents are processed on this iPhone. Markdown Printer does not collect analytics, track you, upload document contents, or fetch remote images.")
+                    Text("Folder permissions you grant are remembered only on this device so linked local files can open again.")
+                    Link(destination: MarkdownPrinterAppInformation.privacyPolicyURL) {
+                        Label("Privacy Policy", systemImage: "hand.raised")
+                    }
+                }
+
+                Section("Help") {
+                    Link(destination: MarkdownPrinterAppInformation.supportURL) {
+                        Label("Support", systemImage: "questionmark.circle")
+                    }
+                    Link(destination: MarkdownPrinterAppInformation.sourceURL) {
+                        Label("Source Code", systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
+                }
+            }
+            .navigationTitle("Markdown Printer")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        if let onDone {
+                            onDone()
+                        } else {
+                            dismiss()
+                        }
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}

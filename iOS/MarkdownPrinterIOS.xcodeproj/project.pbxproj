@@ -13,6 +13,7 @@
 		100000000000000000000004 /* MarkdownViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000104 /* MarkdownViewerView.swift */; };
 		100000000000000000000005 /* DocumentActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000105 /* DocumentActions.swift */; };
 		100000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000106 /* Assets.xcassets */; };
+		100000000000000000000009 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000108 /* PrivacyInfo.xcprivacy */; };
 		100000000000000000000007 /* MarkdownPrinterCore in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000501 /* MarkdownPrinterCore */; };
 		100000000000000000000008 /* MarkdownPrinterMobileSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 100000000000000000000502 /* MarkdownPrinterMobileSupport */; };
 		100000000000000000000011 /* MobilePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000111 /* MobilePresentationTests.swift */; };
@@ -53,6 +54,7 @@
 		100000000000000000000105 /* DocumentActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentActions.swift; sourceTree = "<group>"; };
 		100000000000000000000106 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		100000000000000000000107 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		100000000000000000000108 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		100000000000000000000110 /* MarkdownPrinterIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MarkdownPrinterIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000111 /* MobilePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobilePresentationTests.swift; sourceTree = "<group>"; };
 		100000000000000000000112 /* MarkdownSearchIndexTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownSearchIndexTests.swift; sourceTree = "<group>"; };
@@ -114,6 +116,7 @@
 				100000000000000000000105 /* DocumentActions.swift */,
 				100000000000000000000106 /* Assets.xcassets */,
 				100000000000000000000107 /* Info.plist */,
+				100000000000000000000108 /* PrivacyInfo.xcprivacy */,
 			);
 			path = MarkdownPrinterIOS;
 			sourceTree = "<group>";
@@ -254,7 +257,7 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		100000000000000000000231 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000006 /* Assets.xcassets in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+		100000000000000000000231 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000006 /* Assets.xcassets in Resources */, 100000000000000000000009 /* PrivacyInfo.xcprivacy in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
 		100000000000000000000232 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (100000000000000000000019 /* showcase.md in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
 		100000000000000000000233 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */

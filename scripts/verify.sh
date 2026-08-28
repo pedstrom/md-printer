@@ -31,6 +31,7 @@ required_files=(
   iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj
   iOS/MarkdownPrinterIOS.xcodeproj/xcshareddata/xcschemes/MarkdownPrinterIOS.xcscheme
   iOS/MarkdownPrinterIOS/Info.plist
+  iOS/MarkdownPrinterIOS/PrivacyInfo.xcprivacy
   iOS/MarkdownPrinterIOS/MarkdownPrinterIOSApp.swift
   iOS/MarkdownPrinterIOS/MobileMarkdownFileDocument.swift
   iOS/MarkdownPrinterIOS/MobileMarkdownContentView.swift
@@ -64,6 +65,10 @@ required_files=(
   scripts/build-and-run/verify_update_assets.sh
   scripts/build-and-run/test_ios.sh
   scripts/build-and-run/build_ios_device.sh
+  scripts/build-and-run/archive_ios_app_store.sh
+  scripts/build-and-run/ExportOptions-AppStore.plist
+  docs/privacy-policy.md
+  docs/ios-support.md
   .codex/skills/md-printer-macos/SKILL.md
   .codex/skills/md-printer-change-gate/SKILL.md
 )
@@ -74,7 +79,10 @@ for file in "${required_files[@]}"; do
   fi
 done
 
-duplicate_copy_files="$({ git ls-files --others --exclude-standard; git ls-files --others -i --exclude-standard; } \
+duplicate_copy_files="$(find . \
+  \( -path './.git' -o -path './.build' -o -path './build' \) -prune -o \
+  -type f -print \
+  | sed 's#^\./##' \
   | grep -E '(^|/)[^/]+ [0-9]+(\.[^/]+)?$' || true)"
 if [[ -n "$duplicate_copy_files" ]]; then
   echo "Found Finder/sync duplicate-copy files:"
@@ -95,6 +103,8 @@ done < <(find scripts -type f -name '*.sh' -print | sort)
 plutil -lint Resources/Info.plist >/dev/null
 plutil -lint QuickLookExtension/MarkdownPrinterQuickLook/Info.plist >/dev/null
 plutil -lint iOS/MarkdownPrinterIOS/Info.plist >/dev/null
+plutil -lint iOS/MarkdownPrinterIOS/PrivacyInfo.xcprivacy >/dev/null
+plutil -lint scripts/build-and-run/ExportOptions-AppStore.plist >/dev/null
 plutil -lint \
   QuickLookExtension/MarkdownPrinterQuickLook/MarkdownPrinterQuickLook.entitlements \
   >/dev/null
@@ -147,6 +157,21 @@ grep -q '"version" : "2.9.2"' Package.resolved
   iOS/MarkdownPrinterIOS/Info.plist)" == "true" ]]
 [[ "$(plutil -extract UISupportsDocumentBrowser raw \
   iOS/MarkdownPrinterIOS/Info.plist)" == "true" ]]
+[[ "$(plutil -extract ITSAppUsesNonExemptEncryption raw \
+  iOS/MarkdownPrinterIOS/Info.plist)" == "false" ]]
+[[ "$(plutil -extract NSPrivacyTracking raw \
+  iOS/MarkdownPrinterIOS/PrivacyInfo.xcprivacy)" == "false" ]]
+[[ "$(plutil -extract NSPrivacyCollectedDataTypes json -o - \
+  iOS/MarkdownPrinterIOS/PrivacyInfo.xcprivacy)" == '[]' ]]
+grep -q 'NSPrivacyAccessedAPICategoryFileTimestamp' \
+  iOS/MarkdownPrinterIOS/PrivacyInfo.xcprivacy
+grep -q '<string>3B52.1</string>' iOS/MarkdownPrinterIOS/PrivacyInfo.xcprivacy
+grep -q '<string>DDA9.1</string>' iOS/MarkdownPrinterIOS/PrivacyInfo.xcprivacy
+grep -q 'NSPrivacyAccessedAPICategoryUserDefaults' \
+  iOS/MarkdownPrinterIOS/PrivacyInfo.xcprivacy
+grep -q '<string>CA92.1</string>' iOS/MarkdownPrinterIOS/PrivacyInfo.xcprivacy
+grep -q 'PrivacyInfo.xcprivacy in Resources' \
+  iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj
 grep -q 'PRODUCT_BUNDLE_IDENTIFIER = "com.peteedstrom.markdown-printer.ios"' \
   iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj
 grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 26.0' \
@@ -163,9 +188,10 @@ export CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache"
 export SWIFTPM_CUSTOM_CACHE_PATH="$ROOT/.build/swiftpm-cache"
 swift test --enable-code-coverage
 
-TEST_BINARY="$(find .build -type f -path '*MarkdownPrinterPackageTests.xctest/Contents/MacOS/MarkdownPrinterPackageTests' | head -n 1)"
-PROFDATA="$(find .build -type f -path '*/codecov/default.profdata' | head -n 1)"
-if [[ -z "$TEST_BINARY" || -z "$PROFDATA" ]]; then
+TEST_BIN_DIRECTORY="$(swift build --show-bin-path)"
+TEST_BINARY="$TEST_BIN_DIRECTORY/MarkdownPrinterPackageTests.xctest/Contents/MacOS/MarkdownPrinterPackageTests"
+PROFDATA="$TEST_BIN_DIRECTORY/codecov/default.profdata"
+if [[ ! -x "$TEST_BINARY" || ! -s "$PROFDATA" ]]; then
   echo "Coverage artifacts were not produced." >&2
   exit 1
 fi

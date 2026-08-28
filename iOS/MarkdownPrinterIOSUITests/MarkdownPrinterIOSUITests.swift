@@ -92,10 +92,68 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
 
     func testFilenameMenuProvidesLocalFileActions() {
         app.buttons["document-actions-button"].tap()
-        for name in ["Rename", "Move", "Duplicate", "Share Original Markdown", "Export PDF", "Print"] {
+        for name in [
+            "Rename",
+            "Move",
+            "Duplicate",
+            "Share Original Markdown",
+            "Export PDF",
+            "Print",
+            "About, Privacy & Support",
+        ] {
             XCTAssertTrue(app.buttons[name].exists, "Missing \(name) action")
             XCTAssertTrue(app.buttons[name].isEnabled, "Expected \(name) to be available for the local fixture")
         }
+    }
+
+    func testAboutPrivacyAndSupportAreAvailableInsideViewer() {
+        app.buttons["document-actions-button"].tap()
+        app.buttons["About, Privacy & Support"].tap()
+
+        XCTAssertTrue(app.navigationBars["Markdown Printer"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["About"].exists)
+        for _ in 0..<3 where !app.staticTexts["Privacy"].exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(app.staticTexts["Privacy"].exists)
+        XCTAssertTrue(app.buttons["Privacy Policy"].exists)
+        for _ in 0..<3 where !app.buttons["Support"].exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(app.buttons["Support"].exists)
+
+        let information = XCTAttachment(screenshot: app.screenshot())
+        information.name = "About privacy and support"
+        information.lifetime = .keepAlways
+        add(information)
+
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.buttons["document-actions-button"].waitForExistence(timeout: 3))
+    }
+
+    func testFirstLaunchOffersInformationAndAWorkingSample() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["-ui-testing-store-readiness"]
+        app.launch()
+
+        let sampleButton = app.buttons["Open Markdown Printer sample"]
+        let informationButton = app.buttons["About, privacy, and support"]
+        XCTAssertTrue(sampleButton.waitForExistence(timeout: 8))
+        XCTAssertTrue(informationButton.exists)
+
+        let browser = XCTAttachment(screenshot: app.screenshot())
+        browser.name = "First-launch document browser"
+        browser.lifetime = .keepAlways
+        add(browser)
+
+        informationButton.tap()
+        XCTAssertTrue(app.navigationBars["Markdown Printer"].waitForExistence(timeout: 3))
+        app.buttons["Done"].tap()
+
+        sampleButton.tap()
+        XCTAssertTrue(app.staticTexts["Welcome to Markdown Printer"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["browser-back-button"].exists)
     }
 
     func testLinkedMarkdownPushesAndBackReturnsToOriginalDocument() {

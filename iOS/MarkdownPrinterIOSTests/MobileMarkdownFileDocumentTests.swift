@@ -47,6 +47,35 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: url), data)
     }
 
+    func testStoreSampleCreatesLocalMarkdownWithoutOverwritingIt() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MarkdownPrinterSampleTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let firstURL = try AppStoreSampleDocument.ensureExists(in: directory)
+        XCTAssertEqual(firstURL.lastPathComponent, "Markdown Printer Sample.md")
+        XCTAssertEqual(try String(contentsOf: firstURL, encoding: .utf8), AppStoreSampleDocument.markdown)
+        XCTAssertTrue(AppStoreSampleDocument.markdown.contains("# Welcome to Markdown Printer"))
+        XCTAssertTrue(AppStoreSampleDocument.markdown.contains("does not upload"))
+
+        try Data("User-edited sample".utf8).write(to: firstURL, options: .atomic)
+        let secondURL = try AppStoreSampleDocument.ensureExists(in: directory)
+        XCTAssertEqual(secondURL, firstURL)
+        XCTAssertEqual(try String(contentsOf: secondURL, encoding: .utf8), "User-edited sample")
+    }
+
+    func testAppInformationUsesPublicHTTPSDestinations() {
+        XCTAssertEqual(MarkdownPrinterAppInformation.privacyPolicyURL.scheme, "https")
+        XCTAssertEqual(MarkdownPrinterAppInformation.supportURL.scheme, "https")
+        XCTAssertEqual(MarkdownPrinterAppInformation.sourceURL.host, "github.com")
+        XCTAssertTrue(
+            MarkdownPrinterAppInformation.privacyPolicyURL.path.hasSuffix("docs/privacy-policy.md")
+        )
+        XCTAssertTrue(
+            MarkdownPrinterAppInformation.supportURL.path.hasSuffix("docs/ios-support.md")
+        )
+    }
+
     @MainActor
     func testPDFActivityItemSuppliesBytesToPrintAndFileURLToOtherDestinations() {
         let data = Data("%PDF-test".utf8)

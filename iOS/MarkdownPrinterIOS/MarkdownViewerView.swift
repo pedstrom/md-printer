@@ -17,6 +17,7 @@ struct MarkdownViewerView: View {
     @State private var selectedMatchIndex = 0
     @State private var requestedAnchor: String?
     @State private var showingInfo = false
+    @State private var showingAppInformation = false
     @State private var showingRename = false
     @State private var renameValue = ""
     @State private var showingMove = false
@@ -123,6 +124,9 @@ struct MarkdownViewerView: View {
         .sheet(isPresented: $showingInfo) {
             DocumentInfoView(metadata: session.metadata)
         }
+        .sheet(isPresented: $showingAppInformation) {
+            MarkdownPrinterInformationView()
+        }
         .sheet(isPresented: $showingShare, onDismiss: cleanUpSharedFile) {
             ActivityView(items: shareItems)
                 .accessibilityIdentifier("share-sheet")
@@ -205,6 +209,13 @@ struct MarkdownViewerView: View {
                 .disabled(session.sourceURL == nil)
             Button("Export PDF", systemImage: "square.and.arrow.down") { exportPDF() }
             Button("Print", systemImage: "printer") { printPDF() }
+
+            Divider()
+
+            Button("About, Privacy & Support", systemImage: "info.circle") {
+                showingAppInformation = true
+            }
+            .accessibilityIdentifier("app-information-menu-item")
         } label: {
             HStack(spacing: 4) {
                 Text(session.sourceURL?.lastPathComponent ?? session.title)

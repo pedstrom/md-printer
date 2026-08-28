@@ -41,6 +41,7 @@ private struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
         controller.allowsDocumentCreation = false
         controller.allowsPickingMultipleItems = false
         context.coordinator.controller = controller
+        context.coordinator.installStoreReadinessItems(on: controller)
         return controller
     }
 
@@ -49,11 +50,61 @@ private struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
     final class Coordinator: NSObject, UIDocumentBrowserViewControllerDelegate {
         weak var controller: UIDocumentBrowserViewController?
 
+        func installStoreReadinessItems(on controller: UIDocumentBrowserViewController) {
+            let sampleButton = UIBarButtonItem(
+                title: "Sample",
+                style: .plain,
+                target: self,
+                action: #selector(openSample)
+            )
+            sampleButton.tintColor = .systemBlue
+            sampleButton.accessibilityLabel = "Open Markdown Printer sample"
+            sampleButton.accessibilityIdentifier = "open-sample-button"
+            controller.additionalLeadingNavigationBarButtonItems = [sampleButton]
+
+            let informationButton = UIBarButtonItem(
+                image: UIImage(systemName: "info.circle"),
+                style: .plain,
+                target: self,
+                action: #selector(showInformation)
+            )
+            informationButton.tintColor = .systemBlue
+            informationButton.accessibilityLabel = "About, privacy, and support"
+            informationButton.accessibilityIdentifier = "app-information-button"
+            controller.additionalTrailingNavigationBarButtonItems = [informationButton]
+        }
+
         func documentBrowser(
             _ controller: UIDocumentBrowserViewController,
             didPickDocumentsAt documentURLs: [URL]
         ) {
             guard let url = documentURLs.first else { return }
+            presentDocument(at: url, from: controller)
+        }
+
+        @objc private func openSample() {
+            guard let controller else { return }
+            do {
+                let url = try AppStoreSampleDocument.ensureExists()
+                presentDocument(at: url, from: controller)
+            } catch {
+                presentError(error, from: controller)
+            }
+        }
+
+        @objc private func showInformation() {
+            guard let controller else { return }
+            let hosting = UIHostingController(
+                rootView: MarkdownPrinterInformationView {
+                    controller.dismiss(animated: true)
+                }
+            )
+            hosting.modalPresentationStyle = .pageSheet
+            hosting.sheetPresentationController?.detents = [.medium(), .large()]
+            controller.present(hosting, animated: true)
+        }
+
+        private func presentDocument(at url: URL, from controller: UIDocumentBrowserViewController) {
             let hosting = UIHostingController(
                 rootView: BrowserMarkdownDocumentContainer(url: url) { [weak controller] in
                     controller?.dismiss(animated: true)
@@ -61,6 +112,16 @@ private struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
             )
             hosting.modalPresentationStyle = .fullScreen
             controller.present(hosting, animated: true)
+        }
+
+        private func presentError(_ error: Error, from controller: UIViewController) {
+            let alert = UIAlertController(
+                title: "Couldn’t Open Sample",
+                message: error.localizedDescription,
+                preferredStyle: .alert
+            )
+            alert.addAction(UIAlertAction(title: "OK", style: .cancel))
+            controller.present(alert, animated: true)
         }
 
         func documentBrowser(
@@ -76,6 +137,54 @@ private struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
             alert.addAction(UIAlertAction(title: "OK", style: .cancel))
             controller.present(alert, animated: true)
         }
+    }
+}
+
+enum AppStoreSampleDocument {
+    static let filename = "Markdown Printer Sample.md"
+    static let markdown = """
+    # Welcome to Markdown Printer
+
+    This local sample gives you something useful to open immediately. Markdown Printer reads files in place and does not upload their contents.
+
+    ## A quick tour
+
+    - **Formatted Markdown** with headings, lists, links, and tables
+    - [x] Search the document
+    - [ ] Share, export, or print its PDF
+
+    | Output | Behavior |
+    | :--- | :--- |
+    | Preview | Continuous and selectable |
+    | PDF | Searchable and paginated |
+
+    > Your original Markdown remains unchanged.
+
+    ```swift
+    let document = "local and private"
+    ```
+
+    Tap **Markdown Printer Sample** in the title bar to explore the document actions. You can delete this sample from Files whenever you like.
+    """
+
+    static func ensureExists() throws -> URL {
+        guard let directory = FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        ).first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        return try ensureExists(in: directory)
+    }
+
+    static func ensureExists(in directory: URL) throws -> URL {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(filename)
+        if !fileManager.fileExists(atPath: url.path) {
+            try Data(markdown.utf8).write(to: url, options: .atomic)
+        }
+        return url
     }
 }
 
