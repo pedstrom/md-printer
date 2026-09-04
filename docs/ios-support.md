@@ -11,6 +11,8 @@ Markdown Printer opens local Markdown files and turns them into polished, search
 
 The filename in the top bar identifies the open document. Manage the source Markdown file in Files. About, privacy, and support remain available from the information button in the document browser.
 
+If iCloud or another file provider needs time to download a selected document, the opening screen keeps a **Back** button available immediately. Going back returns to the document browser and cancels Markdown Printer's pending read; it does not remove or change the source file.
+
 ## iCloud status
 
 The document browser immediately shows files that iOS already has available, then checks iCloud without blocking browsing. The compact message above the browser means:

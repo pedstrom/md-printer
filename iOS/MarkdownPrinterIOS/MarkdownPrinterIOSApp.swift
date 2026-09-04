@@ -24,10 +24,16 @@ private struct MarkdownPrinterRootView: View {
         ProcessInfo.processInfo.arguments.contains("-ui-testing")
     }
 
+    private var isOpeningUITesting: Bool {
+        ProcessInfo.processInfo.arguments.contains("-ui-testing-opening")
+    }
+
     var body: some View {
         Group {
             if isUITesting {
                 UITestMarkdownDocumentContainer()
+            } else if isOpeningUITesting {
+                UITestOpeningDocumentContainer()
             } else {
                 VStack(spacing: 0) {
                     MobileCloudBrowserStatusView(
@@ -695,7 +701,10 @@ private struct BrowserMarkdownDocumentContainer: View {
                         }
                     }
                 } else {
-                    ProgressView("Opening…")
+                    BrowserDocumentOpeningView(
+                        filename: url.lastPathComponent,
+                        onBack: onClose
+                    )
                 }
             }
             .navigationDestination(for: URL.self) { linkedURL in
@@ -704,6 +713,40 @@ private struct BrowserMarkdownDocumentContainer: View {
         }
         .task(id: url) {
             await session.load(url: url)
+        }
+    }
+}
+
+private struct BrowserDocumentOpeningView: View {
+    let filename: String
+    let onBack: () -> Void
+
+    var body: some View {
+        ProgressView("Opening…")
+            .navigationTitle(filename)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Back", systemImage: "chevron.backward", action: onBack)
+                        .accessibilityIdentifier("browser-back-button")
+                }
+            }
+    }
+}
+
+private struct UITestOpeningDocumentContainer: View {
+    @State private var isOpening = true
+
+    var body: some View {
+        NavigationStack {
+            if isOpening {
+                BrowserDocumentOpeningView(filename: "Waiting in iCloud.md") {
+                    isOpening = false
+                }
+            } else {
+                Text("Returned to document browser")
+                    .accessibilityIdentifier("opening-dismissed")
+            }
         }
     }
 }

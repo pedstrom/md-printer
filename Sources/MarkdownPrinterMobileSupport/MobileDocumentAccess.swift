@@ -287,7 +287,7 @@ public struct MobileDocumentLoader: Sendable {
 
     public func load(at url: URL) async throws -> MarkdownDocument {
         let dataLoader = dataLoader
-        return try await Task.detached(priority: .userInitiated) {
+        let task = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
             do {
                 let data = try dataLoader(url)
@@ -298,6 +298,8 @@ public struct MobileDocumentLoader: Sendable {
                     sourceURL: url,
                     sourceModificationDate: values?.contentModificationDate
                 )
+            } catch is CancellationError {
+                throw CancellationError()
             } catch MarkdownDocumentError.unsupportedTextEncoding {
                 throw MobileDocumentAccessError.unsupportedTextEncoding
             } catch let error as MobileDocumentAccessError {
@@ -305,7 +307,12 @@ public struct MobileDocumentLoader: Sendable {
             } catch {
                 throw MobileDocumentAccessError.readingFailure(for: error, at: url)
             }
-        }.value
+        }
+        return try await withTaskCancellationHandler {
+            try await task.value
+        } onCancel: {
+            task.cancel()
+        }
     }
 
     private static func coordinatedData(at url: URL) throws -> Data {

@@ -174,6 +174,27 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Checking iCloud…"].waitForExistence(timeout: 3))
     }
 
+    func testOpeningCloudDocumentAlwaysOffersAnImmediateWayBack() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["-ui-testing-opening"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Opening…"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.navigationBars["Waiting in iCloud.md"].exists)
+        let back = app.buttons["browser-back-button"]
+        XCTAssertTrue(back.exists)
+
+        let opening = XCTAttachment(screenshot: app.screenshot())
+        opening.name = "Cancellable iCloud document opening"
+        opening.lifetime = .keepAlways
+        add(opening)
+
+        back.tap()
+        XCTAssertTrue(app.staticTexts["opening-dismissed"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.staticTexts["Opening…"].exists)
+    }
+
     func testLinkedMarkdownPushesAndBackReturnsToOriginalDocument() {
         let link = app.links["Linked page"]
         XCTAssertTrue(link.waitForExistence(timeout: 4))

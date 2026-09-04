@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-09-04 — Cancellable iPhone document opening
+
+- Kept the filename and a top-left **Back** action visible from the first frame of the iPhone opening screen, including while iCloud or another file provider is still downloading the selected document.
+- Made cancellation propagate into the detached file-read task so leaving a stalled opening screen cannot later publish that abandoned document into its session.
+- Added deterministic cancellation and real-app UI coverage proving that a deliberately stalled open can immediately return to the document browser state.
+
 ## 2026-09-04 — Honest iCloud document-browser status
 
 - Kept Apple's native iPhone document browser as the one Recents, Shared, and Browse surface while adding one compact status strip that never blocks files already available on the device.

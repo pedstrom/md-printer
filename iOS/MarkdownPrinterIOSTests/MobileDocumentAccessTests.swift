@@ -167,6 +167,30 @@ final class MobileDocumentAccessTests: XCTestCase {
         }
     }
 
+    func testCancellingLoaderPropagatesToTheFileReadTask() async throws {
+        let started = expectation(description: "File read started")
+        let releaseRead = DispatchSemaphore(value: 0)
+        let loader = MobileDocumentLoader { _ in
+            started.fulfill()
+            releaseRead.wait()
+            return Data("# Should not open".utf8)
+        }
+        let task = Task {
+            try await loader.load(at: URL(fileURLWithPath: "/provider/Waiting.md"))
+        }
+
+        await fulfillment(of: [started], timeout: 2)
+        task.cancel()
+        releaseRead.signal()
+
+        do {
+            _ = try await task.value
+            XCTFail("Expected cancellation")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+    }
+
     func testMissingLoaderInputReportsUnreadableDocument() async {
         do {
             _ = try await MobileDocumentLoader().load(at: directory.appendingPathComponent("missing.md"))
