@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-09-04 — Honest iCloud document-browser status
+
+- Kept Apple's native iPhone document browser as the one Recents, Shared, and Browse surface while adding one compact status strip that never blocks files already available on the device.
+- Added distinct checking, successful-check timestamp, slow-network, offline, failed-check with Retry, and unavailable-account messages, with an automatic refresh after five minutes, an eight-second slow threshold, and a 30-second timeout.
+- Described successful work as **Checked for updates**, not “Synced” or “Up to date,” and left individual download state to Apple's per-file cloud indicators because iOS does not expose an authoritative provider-wide pending-item count to the app.
+- Added deterministic status-state, refresh-generation, browser-return, and visible browser/error coverage so simulator tests do not depend on an iCloud account or network timing.
+
 ## 2026-09-04 — Focused iPhone document controls
 
 - Simplified the document viewer to one clear action area: a static filename in the top navigation bar and only **Find** and **Share PDF** in the bottom toolbar, with the search field appearing only after **Find** is chosen.

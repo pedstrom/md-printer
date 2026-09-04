@@ -1,5 +1,7 @@
+@preconcurrency import Foundation
 import MarkdownPrinterCore
 import MarkdownPrinterMobileSupport
+import Network
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
@@ -14,7 +16,9 @@ struct MarkdownPrinterIOSApp: App {
 }
 
 private struct MarkdownPrinterRootView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var incomingDocuments = MobileIncomingDocumentQueue()
+    @StateObject private var cloudStatus = MobileCloudBrowserStatusMonitor()
 
     private var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains("-ui-testing")
@@ -25,14 +29,295 @@ private struct MarkdownPrinterRootView: View {
             if isUITesting {
                 UITestMarkdownDocumentContainer()
             } else {
-                MarkdownDocumentBrowser(
-                    incomingDocument: incomingDocuments.current,
-                    onIncomingDocumentHandled: incomingDocuments.complete
-                )
-                .ignoresSafeArea()
+                VStack(spacing: 0) {
+                    MobileCloudBrowserStatusView(
+                        status: cloudStatus.status,
+                        onRetry: cloudStatus.retry
+                    )
+
+                    MarkdownDocumentBrowser(
+                        incomingDocument: incomingDocuments.current,
+                        onIncomingDocumentHandled: incomingDocuments.complete,
+                        onBrowserDidAppear: cloudStatus.refreshIfNeeded
+                    )
+                }
+                .ignoresSafeArea(edges: .bottom)
+                .onAppear(perform: cloudStatus.start)
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        cloudStatus.refreshIfNeeded()
+                    }
+                }
             }
         }
         .onOpenURL(perform: incomingDocuments.receive)
+    }
+}
+
+private struct MobileCloudBrowserStatusView: View {
+    let status: MobileCloudBrowserStatus
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if status.showsProgress {
+                ProgressView()
+                    .controlSize(.mini)
+            } else {
+                Image(systemName: status.systemImageName)
+            }
+
+            Text(status.message)
+                .lineLimit(2)
+
+            Spacer(minLength: 4)
+
+            if status.offersRetry {
+                Button("Retry", action: onRetry)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .background(.bar)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .accessibilityIdentifier("icloud-status")
+    }
+}
+
+@MainActor
+final class MobileCloudBrowserStatusMonitor: ObservableObject {
+    @Published private(set) var status: MobileCloudBrowserStatus
+
+    private static let freshnessInterval: TimeInterval = 5 * 60
+    private static let slowDelay: UInt64 = 8_000_000_000
+    private static let timeoutDelay: UInt64 = 30_000_000_000
+
+    private var stateMachine: MobileCloudBrowserStatusStateMachine
+    private let forcedStatus: MobileCloudBrowserStatus?
+    private let networkMonitor = NWPathMonitor()
+    private let networkQueue = DispatchQueue(
+        label: "com.peteedstrom.markdown-printer.icloud-status"
+    )
+    private var networkAvailable: Bool?
+    private var metadataQuery: NSMetadataQuery?
+    private var queryObserver: NSObjectProtocol?
+    private var identityObserver: NSObjectProtocol?
+    private var slowTask: Task<Void, Never>?
+    private var timeoutTask: Task<Void, Never>?
+    private var started = false
+
+    init(arguments: [String] = ProcessInfo.processInfo.arguments) {
+        let forcedStatus = Self.forcedStatus(in: arguments)
+        self.forcedStatus = forcedStatus
+        let initialStatus = forcedStatus ?? .checking
+        stateMachine = MobileCloudBrowserStatusStateMachine(status: initialStatus)
+        status = initialStatus
+    }
+
+    deinit {
+        networkMonitor.cancel()
+        if let queryObserver {
+            NotificationCenter.default.removeObserver(queryObserver)
+        }
+        if let identityObserver {
+            NotificationCenter.default.removeObserver(identityObserver)
+        }
+        metadataQuery?.stop()
+        slowTask?.cancel()
+        timeoutTask?.cancel()
+    }
+
+    func start() {
+        guard !started else { return }
+        started = true
+        guard forcedStatus == nil else { return }
+
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in
+                self?.networkPathChanged(isAvailable: path.status == .satisfied)
+            }
+        }
+        networkMonitor.start(queue: networkQueue)
+
+        identityObserver = NotificationCenter.default.addObserver(
+            forName: FileManager.UbiquityIdentityDidChangeMessage.name,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.beginCheck(force: true)
+            }
+        }
+
+        beginCheck(force: true)
+    }
+
+    func refreshIfNeeded() {
+        guard forcedStatus == nil else { return }
+        beginCheck(force: false)
+    }
+
+    func retry() {
+        if forcedStatus != nil {
+            stateMachine = MobileCloudBrowserStatusStateMachine(status: .checking)
+            publishStatus()
+        } else {
+            beginCheck(force: true)
+        }
+    }
+
+    private func beginCheck(force: Bool) {
+        if !force,
+           !stateMachine.needsRefresh(
+               at: Date(),
+               freshnessInterval: Self.freshnessInterval
+           ) {
+            return
+        }
+
+        cancelMetadataQuery()
+        let iCloudAvailable = FileManager.default.ubiquityIdentityToken != nil
+        guard let checkID = stateMachine.beginCheck(
+            networkAvailable: networkAvailable,
+            iCloudAvailable: iCloudAvailable
+        ) else {
+            publishStatus()
+            return
+        }
+        publishStatus()
+
+        let query = NSMetadataQuery()
+        query.searchScopes = [NSMetadataQueryAccessibleUbiquitousExternalDocumentsScope]
+        query.predicate = Self.markdownFilenamePredicate
+        metadataQuery = query
+        queryObserver = NotificationCenter.default.addObserver(
+            forName: .NSMetadataQueryDidFinishGathering,
+            object: query,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.completeActiveQuery(checkID: checkID)
+            }
+        }
+
+        guard query.start() else {
+            fail(query: query, checkID: checkID)
+            return
+        }
+        scheduleDelays(for: checkID)
+    }
+
+    private func scheduleDelays(for checkID: UInt64) {
+        slowTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: Self.slowDelay)
+            } catch {
+                return
+            }
+            guard let self else { return }
+            stateMachine.markSlow(for: checkID)
+            publishStatus()
+        }
+        timeoutTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: Self.timeoutDelay)
+            } catch {
+                return
+            }
+            guard let self, let query = metadataQuery else { return }
+            fail(query: query, checkID: checkID)
+        }
+    }
+
+    private func complete(query: NSMetadataQuery, checkID: UInt64) {
+        guard metadataQuery === query else { return }
+        cancelMetadataQuery()
+        stateMachine.complete(checkID, at: Date())
+        publishStatus()
+    }
+
+    private func completeActiveQuery(checkID: UInt64) {
+        guard let query = metadataQuery else { return }
+        complete(query: query, checkID: checkID)
+    }
+
+    private func fail(query: NSMetadataQuery, checkID: UInt64) {
+        guard metadataQuery === query else { return }
+        cancelMetadataQuery()
+        stateMachine.fail(checkID)
+        publishStatus()
+    }
+
+    private func cancelMetadataQuery() {
+        slowTask?.cancel()
+        slowTask = nil
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        if let queryObserver {
+            NotificationCenter.default.removeObserver(queryObserver)
+            self.queryObserver = nil
+        }
+        metadataQuery?.stop()
+        metadataQuery = nil
+    }
+
+    private func networkPathChanged(isAvailable: Bool) {
+        let wasAvailable = networkAvailable
+        networkAvailable = isAvailable
+        guard isAvailable else {
+            cancelMetadataQuery()
+            stateMachine.setOffline()
+            publishStatus()
+            return
+        }
+        if wasAvailable == false {
+            beginCheck(force: true)
+        }
+    }
+
+    private func publishStatus() {
+        status = stateMachine.status
+    }
+
+    private static var markdownFilenamePredicate: NSPredicate {
+        let extensions = ["md", "markdown", "mdown", "mkd"]
+        return NSCompoundPredicate(orPredicateWithSubpredicates: extensions.map { fileExtension in
+            NSPredicate(
+                format: "%K ENDSWITH[c] %@",
+                NSMetadataItemFSNameKey,
+                ".\(fileExtension)"
+            )
+        })
+    }
+
+    private static func forcedStatus(in arguments: [String]) -> MobileCloudBrowserStatus? {
+        guard let argumentIndex = arguments.firstIndex(of: "-ui-testing-cloud-status"),
+              arguments.indices.contains(argumentIndex + 1) else {
+            return nil
+        }
+        switch arguments[argumentIndex + 1] {
+        case "checking":
+            return .checking
+        case "checked":
+            return .checked(Date(timeIntervalSinceReferenceDate: 0))
+        case "slow":
+            return .slow
+        case "offline":
+            return .offline
+        case "failed":
+            return .failed
+        case "unavailable":
+            return .unavailable
+        default:
+            return nil
+        }
     }
 }
 
@@ -74,13 +359,16 @@ final class MobileDocumentBrowserViewController: UIDocumentBrowserViewController
 struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
     let incomingDocument: MobileIncomingDocument?
     let onIncomingDocumentHandled: (UUID) -> Void
+    let onBrowserDidAppear: () -> Void
 
     init(
         incomingDocument: MobileIncomingDocument? = nil,
-        onIncomingDocumentHandled: @escaping (UUID) -> Void = { _ in }
+        onIncomingDocumentHandled: @escaping (UUID) -> Void = { _ in },
+        onBrowserDidAppear: @escaping () -> Void = {}
     ) {
         self.incomingDocument = incomingDocument
         self.onIncomingDocumentHandled = onIncomingDocumentHandled
+        self.onBrowserDidAppear = onBrowserDidAppear
     }
 
     func makeCoordinator() -> Coordinator {
@@ -95,6 +383,7 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
         controller.allowsDocumentCreation = false
         controller.allowsPickingMultipleItems = false
         context.coordinator.controller = controller
+        context.coordinator.onBrowserDidAppear = onBrowserDidAppear
         controller.onDidAppear = { [weak coordinator = context.coordinator, weak controller] in
             guard let coordinator, let controller else { return }
             coordinator.documentBrowserDidAppear(controller)
@@ -107,6 +396,7 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
         _ controller: UIDocumentBrowserViewController,
         context: Context
     ) {
+        context.coordinator.onBrowserDidAppear = onBrowserDidAppear
         context.coordinator.openIncomingDocumentIfNeeded(
             incomingDocument,
             from: controller,
@@ -131,6 +421,7 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
         }
 
         weak var controller: UIDocumentBrowserViewController?
+        var onBrowserDidAppear: () -> Void = {}
         private var activeIncomingDocumentID: UUID?
         private var lastHandledIncomingDocumentID: UUID?
         private var pendingIncomingDocument: PendingIncomingDocument?
@@ -239,6 +530,7 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
         }
 
         func documentBrowserDidAppear(_ controller: UIDocumentBrowserViewController) {
+            onBrowserDidAppear()
             guard let pendingIncomingDocument else { return }
             openIncomingDocumentIfNeeded(
                 pendingIncomingDocument.document,

@@ -22,6 +22,107 @@ final class MobileDocumentAccessTests: XCTestCase {
         directory = nil
     }
 
+    func testCloudBrowserStatusesUseHonestMessagesAndPresentation() {
+        let checked = MobileCloudBrowserStatus.checked(Date(timeIntervalSinceReferenceDate: 0))
+
+        XCTAssertEqual(MobileCloudBrowserStatus.checking.message, "Checking iCloud…")
+        XCTAssertTrue(checked.message.hasPrefix("Checked for updates at "))
+        XCTAssertEqual(
+            MobileCloudBrowserStatus.slow.message,
+            "iCloud is taking longer than usual — showing available files"
+        )
+        XCTAssertEqual(
+            MobileCloudBrowserStatus.offline.message,
+            "Offline — showing available files"
+        )
+        XCTAssertEqual(
+            MobileCloudBrowserStatus.failed.message,
+            "Couldn’t check iCloud — showing available files"
+        )
+        XCTAssertEqual(MobileCloudBrowserStatus.unavailable.message, "iCloud Drive unavailable")
+
+        XCTAssertEqual(MobileCloudBrowserStatus.checking.systemImageName, "icloud")
+        XCTAssertEqual(MobileCloudBrowserStatus.slow.systemImageName, "icloud")
+        XCTAssertEqual(checked.systemImageName, "checkmark.icloud")
+        XCTAssertEqual(MobileCloudBrowserStatus.offline.systemImageName, "wifi.slash")
+        XCTAssertEqual(MobileCloudBrowserStatus.failed.systemImageName, "exclamationmark.icloud")
+        XCTAssertEqual(MobileCloudBrowserStatus.unavailable.systemImageName, "icloud.slash")
+        XCTAssertTrue(MobileCloudBrowserStatus.checking.showsProgress)
+        XCTAssertTrue(MobileCloudBrowserStatus.slow.showsProgress)
+        XCTAssertFalse(checked.showsProgress)
+        XCTAssertFalse(MobileCloudBrowserStatus.offline.showsProgress)
+        XCTAssertFalse(MobileCloudBrowserStatus.failed.showsProgress)
+        XCTAssertFalse(MobileCloudBrowserStatus.unavailable.showsProgress)
+        XCTAssertTrue(MobileCloudBrowserStatus.failed.offersRetry)
+        XCTAssertFalse(MobileCloudBrowserStatus.checking.offersRetry)
+        XCTAssertFalse(checked.offersRetry)
+        XCTAssertFalse(MobileCloudBrowserStatus.slow.offersRetry)
+        XCTAssertFalse(MobileCloudBrowserStatus.offline.offersRetry)
+        XCTAssertFalse(MobileCloudBrowserStatus.unavailable.offersRetry)
+    }
+
+    func testCloudBrowserStatusStateMachineTracksFreshnessAndIgnoresStaleChecks() throws {
+        let checkedAt = Date(timeIntervalSinceReferenceDate: 1_000)
+        var state = MobileCloudBrowserStatusStateMachine()
+
+        XCTAssertTrue(state.needsRefresh(at: checkedAt, freshnessInterval: 300))
+        let firstCheck = try XCTUnwrap(
+            state.beginCheck(networkAvailable: nil, iCloudAvailable: true)
+        )
+        XCTAssertEqual(state.status, .checking)
+        XCTAssertFalse(state.needsRefresh(at: checkedAt, freshnessInterval: 300))
+
+        state.markSlow(for: firstCheck + 1)
+        XCTAssertEqual(state.status, .checking)
+        state.markSlow(for: firstCheck)
+        XCTAssertEqual(state.status, .slow)
+
+        state.complete(firstCheck + 1, at: checkedAt)
+        XCTAssertEqual(state.status, .slow)
+        state.complete(firstCheck, at: checkedAt)
+        XCTAssertEqual(state.status, .checked(checkedAt))
+        XCTAssertFalse(
+            state.needsRefresh(
+                at: checkedAt.addingTimeInterval(299),
+                freshnessInterval: 300
+            )
+        )
+        XCTAssertTrue(
+            state.needsRefresh(
+                at: checkedAt.addingTimeInterval(300),
+                freshnessInterval: 300
+            )
+        )
+
+        let secondCheck = try XCTUnwrap(
+            state.beginCheck(networkAvailable: true, iCloudAvailable: true)
+        )
+        state.fail(firstCheck)
+        XCTAssertEqual(state.status, .checking)
+        state.fail(secondCheck)
+        XCTAssertEqual(state.status, .failed)
+        XCTAssertTrue(state.needsRefresh(at: checkedAt, freshnessInterval: 300))
+    }
+
+    func testCloudBrowserStatusStateMachineReportsOfflineAndUnavailable() {
+        var state = MobileCloudBrowserStatusStateMachine(status: .failed)
+
+        XCTAssertNil(state.beginCheck(networkAvailable: false, iCloudAvailable: true))
+        XCTAssertEqual(state.status, .offline)
+        XCTAssertTrue(state.needsRefresh(at: Date(), freshnessInterval: 300))
+
+        XCTAssertNil(state.beginCheck(networkAvailable: true, iCloudAvailable: false))
+        XCTAssertEqual(state.status, .unavailable)
+        XCTAssertTrue(state.needsRefresh(at: Date(), freshnessInterval: 300))
+
+        _ = state.beginCheck(networkAvailable: true, iCloudAvailable: true)
+        state.setOffline()
+        XCTAssertEqual(state.status, .offline)
+        _ = state.beginCheck(networkAvailable: true, iCloudAvailable: true)
+        state.setUnavailable()
+        XCTAssertEqual(state.status, .unavailable)
+    }
+
     func testSecurityScopedLeaseStopsOnlyWhenAccessStarted() {
         var stopCount = 0
         autoreleasepool {

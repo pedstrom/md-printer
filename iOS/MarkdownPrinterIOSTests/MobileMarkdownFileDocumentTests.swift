@@ -68,6 +68,7 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
         var presentedURL: URL?
         var handledIDs: [UUID] = []
         var browserIsVisible = false
+        var browserAppearanceCount = 0
         let coordinator = MarkdownDocumentBrowser.Coordinator(
             revealDocument: { _, url, importIfNeeded, completion in
                 revealCount += 1
@@ -80,6 +81,9 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
             },
             isReadyToReveal: { _ in browserIsVisible }
         )
+        coordinator.onBrowserDidAppear = {
+            browserAppearanceCount += 1
+        }
 
         coordinator.openIncomingDocumentIfNeeded(document, from: browser) {
             handledIDs.append($0)
@@ -94,6 +98,7 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
         }
 
         XCTAssertEqual(revealCount, 1)
+        XCTAssertEqual(browserAppearanceCount, 1)
         XCTAssertTrue(didRequestImport)
         XCTAssertEqual(presentedURL, revealedURL)
         XCTAssertEqual(handledIDs, [document.id])

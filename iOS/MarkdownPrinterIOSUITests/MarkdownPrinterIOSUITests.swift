@@ -60,13 +60,21 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
     func testFirstLaunchOffersInformationAndAWorkingSample() {
         app.terminate()
         app = XCUIApplication()
-        app.launchArguments = ["-ui-testing-store-readiness"]
+        app.launchArguments = [
+            "-ui-testing-store-readiness",
+            "-ui-testing-cloud-status", "checked"
+        ]
         app.launch()
 
         let sampleButton = app.buttons["Open Markdown Printer sample"]
         let informationButton = app.buttons["About, privacy, and support"]
         XCTAssertTrue(sampleButton.waitForExistence(timeout: 8))
         XCTAssertTrue(informationButton.exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Checked for updates at ")
+            ).firstMatch.exists
+        )
 
         let browser = XCTAttachment(screenshot: app.screenshot())
         browser.name = "First-launch document browser"
@@ -85,7 +93,10 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
     func testFilesSentFromAnotherAppOpenOnColdAndWarmLaunches() throws {
         app.terminate()
         app = XCUIApplication()
-        app.launchArguments = ["-ui-testing-store-readiness"]
+        app.launchArguments = [
+            "-ui-testing-store-readiness",
+            "-ui-testing-cloud-status", "checked"
+        ]
         app.launch()
         XCTAssertTrue(app.buttons["Open Markdown Printer sample"].waitForExistence(timeout: 8))
         app.terminate()
@@ -121,6 +132,46 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
                 NSPredicate(format: "label BEGINSWITH %@", "Shared while Open")
             ).firstMatch.exists
         )
+    }
+
+    func testDocumentBrowserShowsCloudCheckWithoutReplacingNativeNavigation() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = [
+            "-ui-testing-store-readiness",
+            "-ui-testing-cloud-status", "checking"
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Checking iCloud…"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["Open Markdown Printer sample"].exists)
+        XCTAssertTrue(app.buttons["Recents"].exists)
+        XCTAssertTrue(app.buttons["Browse"].exists)
+
+        let status = XCTAttachment(screenshot: app.screenshot())
+        status.name = "Document browser checking iCloud"
+        status.lifetime = .keepAlways
+        add(status)
+    }
+
+    func testFailedCloudCheckKeepsFilesAvailableAndOffersRetry() {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = [
+            "-ui-testing-store-readiness",
+            "-ui-testing-cloud-status", "failed"
+        ]
+        app.launch()
+
+        XCTAssertTrue(
+            app.staticTexts["Couldn’t check iCloud — showing available files"]
+                .waitForExistence(timeout: 8)
+        )
+        XCTAssertTrue(app.buttons["Browse"].exists)
+        let retry = app.buttons["Retry"]
+        XCTAssertTrue(retry.exists)
+        retry.tap()
+        XCTAssertTrue(app.staticTexts["Checking iCloud…"].waitForExistence(timeout: 3))
     }
 
     func testLinkedMarkdownPushesAndBackReturnsToOriginalDocument() {

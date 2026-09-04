@@ -143,6 +143,7 @@ struct MarkdownPrinterInformationView: View {
 
                 Section("Getting Started") {
                     Text("Choose a Markdown file from Files, or tap Sample in the document browser for a ready-made tour.")
+                    Text("The iCloud status above the document browser says when Markdown Printer last checked for updates. Files already available on the device remain usable while a check is slow, offline, or unsuccessful.")
                     Text("Use Find to search the open document. Share PDF opens the system share sheet for sending, saving, or printing the generated PDF.")
                 }
 
