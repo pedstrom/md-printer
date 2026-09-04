@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-09-04 — Focused iPhone document controls
+
+- Simplified the document viewer to one clear action area: a static filename in the top navigation bar and only **Find** and **Share PDF** in the bottom toolbar, with the search field appearing only after **Find** is chosen.
+- Removed viewer-level Rename, Move, Duplicate, original-Markdown sharing, file information, separate PDF export, direct Print, and app-information actions. Source-file management remains in Files, while About, Privacy, and Support remain in the document browser.
+- Consolidated PDF sending, saving, and printing into the system **Share PDF** sheet and removed the now-unused mobile file-operation, metadata, direct-export, and direct-print support.
+- Kept simulator validation deterministic by testing the app-owned PDF preparation and handoff separately from Apple’s Share Sheet service, retained unit coverage for the Print payload, and moved generated iOS test products outside the file-provider-backed repository so normal simulator signing remains reliable.
+
 ## 2026-08-27 — iPhone App Store submission readiness
 
 - Added an Apple privacy manifest declaring no tracking or collected data and the required reasons for local preferences and user-selected file timestamps, plus the non-exempt-encryption declaration used by App Store Connect.

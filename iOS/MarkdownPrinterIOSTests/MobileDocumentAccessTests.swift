@@ -287,67 +287,6 @@ final class MobileDocumentAccessTests: XCTestCase {
         )
     }
 
-    func testFileActionsMetadataRenameAndDuplicate() throws {
-        let source = directory.appendingPathComponent("Notes.md")
-        let contents = Data("# Notes".utf8)
-        try contents.write(to: source)
-
-        let actions = MobileFileActionAvailability.resolve(for: source)
-        XCTAssertTrue(actions.canRename)
-        XCTAssertTrue(actions.canMove)
-        XCTAssertTrue(actions.canDuplicate)
-        XCTAssertNil(actions.unavailableReason)
-
-        let metadata = try XCTUnwrap(MobileDocumentMetadata.load(from: source))
-        XCTAssertEqual(metadata.filename, "Notes.md")
-        XCTAssertEqual(metadata.kind, "Markdown Document")
-        XCTAssertEqual(metadata.byteSize, contents.count)
-        XCTAssertNotNil(metadata.locationName)
-
-        let duplicate = try MobileFileOperator().duplicate(source)
-        XCTAssertEqual(duplicate.lastPathComponent, "Notes copy.md")
-        XCTAssertEqual(try Data(contentsOf: duplicate), contents)
-        let secondDuplicate = try MobileFileOperator().duplicate(source)
-        XCTAssertEqual(secondDuplicate.lastPathComponent, "Notes copy 2.md")
-
-        let renamed = try MobileFileOperator().rename(source, to: "Renamed")
-        XCTAssertEqual(renamed.lastPathComponent, "Renamed.md")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: source.path))
-        XCTAssertEqual(try Data(contentsOf: renamed), contents)
-        XCTAssertEqual(try MobileFileOperator().rename(renamed, to: "Renamed.md"), renamed)
-    }
-
-    func testFileActionUnavailableStatesAndInvalidNames() {
-        let noLocation = MobileFileActionAvailability.resolve(for: nil)
-        XCTAssertFalse(noLocation.canRename)
-        XCTAssertFalse(noLocation.canMove)
-        XCTAssertFalse(noLocation.canDuplicate)
-        XCTAssertEqual(noLocation.unavailableReason, "This document doesn’t have a file location.")
-
-        let directoryActions = MobileFileActionAvailability.resolve(for: directory)
-        XCTAssertFalse(directoryActions.canRename)
-        XCTAssertFalse(directoryActions.canMove)
-        XCTAssertFalse(directoryActions.canDuplicate)
-
-        let source = directory.appendingPathComponent("file.md")
-        XCTAssertThrowsError(try MobileFileOperator().rename(source, to: "   "))
-        XCTAssertThrowsError(try MobileFileOperator().rename(source, to: "bad/name"))
-    }
-
-    func testFileOperationsMapProviderFailuresToReadableErrors() {
-        let missing = directory.appendingPathComponent("missing.md")
-        XCTAssertThrowsError(try MobileFileOperator().duplicate(missing)) { error in
-            guard case .fileOperationFailed = error as? MobileDocumentAccessError else {
-                return XCTFail("Expected a mapped duplicate failure, got \(error)")
-            }
-        }
-        XCTAssertThrowsError(try MobileFileOperator().rename(missing, to: "renamed.md")) { error in
-            guard case .fileOperationFailed = error as? MobileDocumentAccessError else {
-                return XCTFail("Expected a mapped rename failure, got \(error)")
-            }
-        }
-    }
-
     func testImageResolverNeverFetchesRemoteContentAndClassifiesLocalFailures() throws {
         let resolver = MobileImageResolver()
         XCTAssertEqual(
@@ -399,11 +338,6 @@ final class MobileDocumentAccessTests: XCTestCase {
         XCTAssertEqual(
             MobileDocumentAccessError.permissionRequired("Linked.md").errorDescription,
             "Allow access to the folder containing “Linked.md” so Markdown Printer can open it."
-        )
-        XCTAssertNotNil(MobileDocumentAccessError.invalidFilename.errorDescription)
-        XCTAssertEqual(
-            MobileDocumentAccessError.fileOperationFailed("Provider denied the request").errorDescription,
-            "Provider denied the request"
         )
         XCTAssertEqual(MobileImagePlaceholderReason.remote.message, "Remote image not loaded")
         XCTAssertEqual(MobileImagePlaceholderReason.missing.message, "Image not found")

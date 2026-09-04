@@ -9,7 +9,7 @@ final class MobileDocumentSessionTests: XCTestCase {
         var errorDescription: String? { "Test export failed." }
     }
 
-    func testInitialDocumentBuildsPresentationMetadataAndRevision() throws {
+    func testInitialDocumentBuildsPresentationAndRevision() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Session.md")
         try Data("# Session\n\nBody".utf8).write(to: url)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -19,10 +19,8 @@ final class MobileDocumentSessionTests: XCTestCase {
         XCTAssertEqual(session.title, "Session")
         XCTAssertEqual(session.presentation?.blocks.count, 2)
         XCTAssertEqual(session.sourceURL, url)
-        XCTAssertEqual(session.metadata?.filename, "Session.md")
         XCTAssertEqual(session.revision, 1)
         XCTAssertEqual(session.pdfState, .idle)
-        XCTAssertTrue(session.fileActions.canDuplicate)
     }
 
     func testPDFDataCachesByRevisionAndSharesAnInFlightTask() async throws {
@@ -101,7 +99,7 @@ final class MobileDocumentSessionTests: XCTestCase {
         XCTAssertEqual(cancellable.pdfState, .idle)
     }
 
-    func testLoadRefreshAndUpdateSourceURL() async throws {
+    func testLoadAndRefresh() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("MobileSessionTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -122,14 +120,6 @@ final class MobileDocumentSessionTests: XCTestCase {
         await session.refreshIfChanged()
         XCTAssertEqual(session.title, "Updated")
         XCTAssertGreaterThan(session.revision, firstRevision)
-
-        let movedURL = directory.appendingPathComponent("Moved.markdown")
-        try FileManager.default.moveItem(at: originalURL, to: movedURL)
-        let beforeMove = session.revision
-        session.updateSourceURL(movedURL)
-        XCTAssertEqual(session.sourceURL, movedURL)
-        XCTAssertEqual(session.metadata?.filename, "Moved.markdown")
-        XCTAssertGreaterThan(session.revision, beforeMove)
     }
 
     func testLoadFailurePublishesReadableError() async {

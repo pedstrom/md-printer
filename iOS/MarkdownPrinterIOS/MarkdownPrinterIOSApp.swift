@@ -151,7 +151,7 @@ enum AppStoreSampleDocument {
 
     - **Formatted Markdown** with headings, lists, links, and tables
     - [x] Search the document
-    - [ ] Share, export, or print its PDF
+    - [ ] Share, save, or print its PDF from one system sheet
 
     | Output | Behavior |
     | :--- | :--- |
@@ -164,7 +164,7 @@ enum AppStoreSampleDocument {
     let document = "local and private"
     ```
 
-    Tap **Markdown Printer Sample** in the title bar to explore the document actions. You can delete this sample from Files whenever you like.
+    Use **Find** and **Share PDF** in the bottom toolbar. Manage the source file in Files, where you can also delete this sample whenever you like.
     """
 
     static func ensureExists() throws -> URL {

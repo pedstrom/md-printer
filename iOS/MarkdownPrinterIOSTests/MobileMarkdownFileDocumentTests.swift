@@ -31,13 +31,6 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
         XCTAssertThrowsError(try MobileMarkdownFileDocument(data: Data([0x80, 0x81])))
     }
 
-    func testPDFFileDocumentRetainsData() {
-        let data = Data("%PDF-test".utf8)
-        let document = MobilePDFFileDocument(data: data)
-        XCTAssertEqual(document.data, data)
-        XCTAssertEqual(MobilePDFFileDocument.readableContentTypes, [.pdf])
-    }
-
     func testShareStoreWritesNamedTemporaryPDF() throws {
         let data = Data("%PDF-test".utf8)
         let url = try MobilePDFShareStore.write(data: data, filename: "Shared.pdf")
@@ -76,31 +69,14 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
         )
     }
 
-    @MainActor
-    func testPDFActivityItemSuppliesBytesToPrintAndFileURLToOtherDestinations() {
+    func testPDFActivityItemRoutesBytesToPrintAndFileURLToOtherDestinations() {
         let data = Data("%PDF-test".utf8)
         let url = URL(fileURLWithPath: "/tmp/Shared.pdf")
         let item = MobilePDFActivityItem(data: data, fileURL: url)
-        let controller = UIActivityViewController(activityItems: [item], applicationActivities: nil)
 
-        XCTAssertEqual(
-            item.activityViewControllerPlaceholderItem(controller) as? URL,
-            url
-        )
-        XCTAssertEqual(
-            item.activityViewController(controller, itemForActivityType: .print) as? Data,
-            data
-        )
-        XCTAssertEqual(
-            item.activityViewController(controller, itemForActivityType: .mail) as? URL,
-            url
-        )
-        XCTAssertEqual(
-            item.activityViewController(
-                controller,
-                dataTypeIdentifierForActivityType: .print
-            ),
-            UTType.pdf.identifier
-        )
+        XCTAssertEqual(item.placeholderItem as? URL, url)
+        XCTAssertEqual(item.item(for: .print) as? Data, data)
+        XCTAssertEqual(item.item(for: .mail) as? URL, url)
+        XCTAssertEqual(item.dataTypeIdentifier, UTType.pdf.identifier)
     }
 }

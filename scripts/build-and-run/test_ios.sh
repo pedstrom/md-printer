@@ -6,7 +6,8 @@ cd "$ROOT"
 
 PROJECT="iOS/MarkdownPrinterIOS.xcodeproj"
 SCHEME="MarkdownPrinterIOS"
-DERIVED_DATA="$ROOT/.build/ios-verification"
+IOS_TEST_TEMP_ROOT="${TMPDIR:-/private/tmp}"
+DERIVED_DATA="${IOS_TEST_TEMP_ROOT%/}/md-printer-ios-verification"
 SIMULATOR_ID="${MARKDOWN_PRINTER_IOS_SIMULATOR_ID:-}"
 
 mkdir -p "$DERIVED_DATA"
@@ -33,7 +34,6 @@ run_test_target() {
     -skipPackageUpdates \
     -parallel-testing-enabled NO \
     "-only-testing:$target" \
-    CODE_SIGNING_ALLOWED=NO \
     test
 }
 

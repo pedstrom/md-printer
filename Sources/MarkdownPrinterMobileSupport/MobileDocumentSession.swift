@@ -23,16 +23,12 @@ public final class MobileDocumentSession: ObservableObject {
     @Published public private(set) var document: MarkdownDocument?
     @Published public private(set) var presentation: MobileMarkdownPresentation?
     @Published public private(set) var sourceURL: URL?
-    @Published public private(set) var metadata: MobileDocumentMetadata?
     @Published public private(set) var pdfState: MobilePDFPreparationState = .idle
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var permissionRequest: MobileDocumentPermissionRequest?
     @Published public private(set) var revision: UInt64 = 0
 
     public var title: String { presentation?.title ?? sourceURL?.lastPathComponent ?? "Markdown Printer" }
-    public var fileActions: MobileFileActionAvailability {
-        MobileFileActionAvailability.resolve(for: sourceURL)
-    }
 
     private let presenter: MobileMarkdownPresenter
     private let loader: MobileDocumentLoader
@@ -122,7 +118,6 @@ public final class MobileDocumentSession: ObservableObject {
         self.document = resolvedDocument
         self.sourceURL = resolvedURL
         presentation = presenter.prepare(document: resolvedDocument)
-        metadata = MobileDocumentMetadata.load(from: resolvedURL)
         cachedPDF = nil
         pdfState = .idle
         errorMessage = nil
@@ -175,13 +170,6 @@ public final class MobileDocumentSession: ObservableObject {
         pdfTask?.cancel()
         pdfTask = nil
         if pdfState == .preparing { pdfState = .idle }
-    }
-
-    public func updateSourceURL(_ url: URL) {
-        securityLease = SecurityScopedResourceLease(url: url)
-        sourceURL = url
-        metadata = MobileDocumentMetadata.load(from: url)
-        if let document { apply(document, sourceURL: url) }
     }
 
     public func clearError() {

@@ -16,7 +16,7 @@ On iPhone, the app stores security-scoped folder permissions that you explicitly
 
 ## User-directed sharing and links
 
-When you choose Share, Export, Print, or an external link, Apple-provided system services or the destination you select may receive the item you directed the app to send or open. Their privacy policies govern those services. Markdown Printer does not perform those transfers without your action.
+When you choose Share PDF or an external link, Apple-provided system services or the destination you select may receive the item you directed the app to send or open. The system share sheet also provides saving and printing destinations. Their privacy policies govern those services. Markdown Printer does not perform those transfers without your action.
 
 ## Support
 

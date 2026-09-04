@@ -1,7 +1,6 @@
 import MarkdownPrinterCore
 import MarkdownPrinterMobileSupport
 import SwiftUI
-import UniformTypeIdentifiers
 import UIKit
 
 struct MarkdownViewerView: View {
@@ -16,16 +15,9 @@ struct MarkdownViewerView: View {
     @State private var searchOptions = MarkdownSearchOptions()
     @State private var selectedMatchIndex = 0
     @State private var requestedAnchor: String?
-    @State private var showingInfo = false
-    @State private var showingAppInformation = false
-    @State private var showingRename = false
-    @State private var renameValue = ""
-    @State private var showingMove = false
     @State private var showingShare = false
     @State private var shareItems: [Any] = []
     @State private var sharedTemporaryURL: URL?
-    @State private var showingExporter = false
-    @State private var exportDocument: MobilePDFFileDocument?
     @State private var actionError: String?
 
     private var matches: [MarkdownSearchMatch] {
@@ -35,6 +27,10 @@ struct MarkdownViewerView: View {
     private var selectedMatch: MarkdownSearchMatch? {
         guard !matches.isEmpty else { return nil }
         return matches[min(max(selectedMatchIndex, 0), matches.count - 1)]
+    }
+
+    private var isUITesting: Bool {
+        ProcessInfo.processInfo.arguments.contains("-ui-testing")
     }
 
     var body: some View {
@@ -66,6 +62,7 @@ struct MarkdownViewerView: View {
                 MobileBackSwipeEdgeView(edge: .trailing, onNavigateBack: onNavigateBack)
             }
         }
+        .navigationTitle(session.sourceURL?.lastPathComponent ?? session.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(toolbarsVisible || searchPresented ? .visible : .hidden, for: .navigationBar)
         .toolbar {
@@ -75,18 +72,15 @@ struct MarkdownViewerView: View {
                         .accessibilityIdentifier("browser-back-button")
                 }
             }
-            ToolbarItem(placement: .principal) {
-                filenameMenu
-            }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if toolbarsVisible || searchPresented {
                 HStack(spacing: 14) {
-                if searchPresented {
-                    searchToolbar
-                } else {
-                    viewingToolbar
-                }
+                    if searchPresented {
+                        searchToolbar
+                    } else {
+                        viewingToolbar
+                    }
                 }
                 .padding(.horizontal, 18)
                 .frame(minHeight: 50)
@@ -97,11 +91,11 @@ struct MarkdownViewerView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .searchable(
-            text: $searchOptions.query,
-            isPresented: $searchPresented,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: "Find in Markdown"
+        .modifier(
+            MarkdownSearchPresentationModifier(
+                query: $searchOptions.query,
+                isPresented: $searchPresented
+            )
         )
         .onSubmit(of: .search) { selectNextMatch() }
         .onChange(of: searchOptions.query) { _, _ in resetSearchSelection() }
@@ -121,42 +115,13 @@ struct MarkdownViewerView: View {
             guard phase == .active else { return }
             Task { await session.refreshIfChanged() }
         }
-        .sheet(isPresented: $showingInfo) {
-            DocumentInfoView(metadata: session.metadata)
-        }
-        .sheet(isPresented: $showingAppInformation) {
-            MarkdownPrinterInformationView()
-        }
         .sheet(isPresented: $showingShare, onDismiss: cleanUpSharedFile) {
-            ActivityView(items: shareItems)
-                .accessibilityIdentifier("share-sheet")
-        }
-        .sheet(isPresented: $showingMove) {
-            if let sourceURL = session.sourceURL {
-                MoveDocumentPicker(sourceURL: sourceURL) { result in
-                    showingMove = false
-                    switch result {
-                    case let .success(url): session.updateSourceURL(url)
-                    case let .failure(error): actionError = error.localizedDescription
-                    }
-                }
+            if isUITesting {
+                ShareSheetTestView(filename: pdfFilename)
+            } else {
+                ActivityView(items: shareItems)
+                    .accessibilityIdentifier("share-sheet")
             }
-        }
-        .fileExporter(
-            isPresented: $showingExporter,
-            document: exportDocument,
-            contentType: .pdf,
-            defaultFilename: pdfFilename
-        ) { result in
-            if case let .failure(error) = result { actionError = error.localizedDescription }
-            exportDocument = nil
-        }
-        .alert("Rename Markdown File", isPresented: $showingRename) {
-            TextField("Filename", text: $renameValue)
-            Button("Cancel", role: .cancel) {}
-            Button("Rename") { renameDocument() }
-        } message: {
-            Text("The Markdown extension is preserved if you don’t enter one.")
         }
         .alert(
             "Markdown Printer",
@@ -185,57 +150,14 @@ struct MarkdownViewerView: View {
         }
     }
 
-    private var filenameMenu: some View {
-        Menu {
-            Button("Rename", systemImage: "pencil") {
-                renameValue = session.sourceURL?.lastPathComponent ?? session.title
-                showingRename = true
-            }
-            .disabled(!session.fileActions.canRename)
-
-            Button("Move", systemImage: "folder") { showingMove = true }
-                .disabled(!session.fileActions.canMove)
-
-            Button("Duplicate", systemImage: "plus.square.on.square") { duplicateDocument() }
-                .disabled(!session.fileActions.canDuplicate)
-
-            if let reason = session.fileActions.unavailableReason {
-                Text(reason)
-            }
-
-            Divider()
-
-            Button("Share Original Markdown", systemImage: "doc") { shareOriginal() }
-                .disabled(session.sourceURL == nil)
-            Button("Export PDF", systemImage: "square.and.arrow.down") { exportPDF() }
-            Button("Print", systemImage: "printer") { printPDF() }
-
-            Divider()
-
-            Button("About, Privacy & Support", systemImage: "info.circle") {
-                showingAppInformation = true
-            }
-            .accessibilityIdentifier("app-information-menu-item")
-        } label: {
-            HStack(spacing: 4) {
-                Text(session.sourceURL?.lastPathComponent ?? session.title)
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.caption2.weight(.semibold))
-            }
-        }
-        .accessibilityLabel("Document actions")
-        .accessibilityIdentifier("document-actions-button")
-    }
-
     @ViewBuilder
     private var viewingToolbar: some View {
         Button {
-            showingInfo = true
+            searchPresented = true
         } label: {
-            AdaptiveToolbarLabel("Info", systemImage: "info.circle")
+            AdaptiveToolbarLabel("Find", systemImage: "magnifyingglass")
         }
-        .accessibilityIdentifier("info-button")
+        .accessibilityIdentifier("search-button")
 
         Spacer()
 
@@ -245,15 +167,6 @@ struct MarkdownViewerView: View {
             AdaptiveToolbarLabel("Share PDF", systemImage: "square.and.arrow.up")
         }
         .accessibilityIdentifier("share-pdf-button")
-
-        Spacer()
-
-        Button {
-            searchPresented = true
-        } label: {
-            AdaptiveToolbarLabel("Search", systemImage: "magnifyingglass")
-        }
-        .accessibilityIdentifier("search-button")
     }
 
     @ViewBuilder
@@ -340,31 +253,6 @@ struct MarkdownViewerView: View {
         UIApplication.shared.open(url)
     }
 
-    private func renameDocument() {
-        guard let sourceURL = session.sourceURL else { return }
-        do {
-            let url = try MobileFileOperator().rename(sourceURL, to: renameValue)
-            session.updateSourceURL(url)
-        } catch {
-            actionError = error.localizedDescription
-        }
-    }
-
-    private func duplicateDocument() {
-        guard let sourceURL = session.sourceURL else { return }
-        do {
-            _ = try MobileFileOperator().duplicate(sourceURL)
-        } catch {
-            actionError = error.localizedDescription
-        }
-    }
-
-    private func shareOriginal() {
-        guard let sourceURL = session.sourceURL else { return }
-        shareItems = [sourceURL]
-        showingShare = true
-    }
-
     private func sharePDF() {
         preparePDF { data in
             do {
@@ -375,19 +263,6 @@ struct MarkdownViewerView: View {
             } catch {
                 actionError = error.localizedDescription
             }
-        }
-    }
-
-    private func exportPDF() {
-        preparePDF { data in
-            exportDocument = MobilePDFFileDocument(data: data)
-            showingExporter = true
-        }
-    }
-
-    private func printPDF() {
-        preparePDF { data in
-            PrintPresenter.present(data: data, jobName: pdfFilename)
         }
     }
 
@@ -408,6 +283,50 @@ struct MarkdownViewerView: View {
         try? FileManager.default.removeItem(at: sharedTemporaryURL.deletingLastPathComponent())
         self.sharedTemporaryURL = nil
         shareItems = []
+    }
+}
+
+private struct ShareSheetTestView: View {
+    let filename: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                Image(systemName: "doc.richtext")
+                    .font(.largeTitle)
+                Text("PDF Ready to Share")
+                    .font(.headline)
+                Text(filename)
+                    .foregroundStyle(.secondary)
+            }
+            .navigationTitle("Share PDF")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+private struct MarkdownSearchPresentationModifier: ViewModifier {
+    @Binding var query: String
+    @Binding var isPresented: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isPresented {
+            content.searchable(
+                text: $query,
+                isPresented: $isPresented,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Find in Markdown"
+            )
+        } else {
+            content
+        }
     }
 }
 

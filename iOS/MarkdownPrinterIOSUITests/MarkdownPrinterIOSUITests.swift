@@ -11,28 +11,19 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["iPhone Viewer Fixture"].waitForExistence(timeout: 8))
     }
 
-    func testViewerOpensWithPreviewStyleToolbarAndInfo() {
-        XCTAssertTrue(app.buttons["info-button"].exists)
+    func testViewerUsesStaticFilenameAndFocusedFindShareToolbar() {
+        XCTAssertTrue(app.staticTexts["fixture.md"].exists)
+        XCTAssertFalse(app.buttons["document-actions-button"].exists)
+        XCTAssertFalse(app.buttons["info-button"].exists)
         XCTAssertTrue(app.buttons["share-pdf-button"].exists)
         XCTAssertTrue(app.buttons["search-button"].exists)
-        XCTAssertTrue(app.buttons["document-actions-button"].exists)
+        XCTAssertFalse(app.searchFields["Find in Markdown"].exists)
+        XCTAssertEqual(app.buttons["search-button"].label, "Find")
+        XCTAssertEqual(app.buttons["share-pdf-button"].label, "Share PDF")
         let portrait = XCTAttachment(screenshot: app.screenshot())
         portrait.name = "iPhone viewer portrait"
         portrait.lifetime = .keepAlways
         add(portrait)
-
-        app.buttons["info-button"].tap()
-        XCTAssertTrue(app.navigationBars["Info"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["fixture.md"].exists)
-        XCTAssertTrue(app.staticTexts["Name"].exists)
-        XCTAssertTrue(app.staticTexts["Kind"].exists)
-        XCTAssertTrue(app.staticTexts["Size"].exists)
-        for _ in 0..<3 where !app.staticTexts["Modified"].exists {
-            app.swipeUp()
-        }
-        XCTAssertTrue(app.staticTexts["Modified"].exists)
-        app.buttons["Done"].tap()
-        XCTAssertTrue(app.buttons["info-button"].waitForExistence(timeout: 3))
     }
 
     func testSearchNavigatesMatchesAndExposesOptions() {
@@ -58,77 +49,12 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.buttons["search-button"].waitForExistence(timeout: 3))
     }
 
-    func testSharePDFPresentsSystemShareSheet() {
+    func testSharePDFPreparesNamedPDFForSystemShare() {
         app.buttons["share-pdf-button"].tap()
-        XCTAssertTrue(app.otherElements["share-sheet"].waitForExistence(timeout: 8))
-    }
-
-    func testSharePDFPrintOpensPrinterOptionsWithoutProtectedPDFError() {
-        app.buttons["share-pdf-button"].tap()
-        XCTAssertTrue(app.otherElements["share-sheet"].waitForExistence(timeout: 8))
-
-        let printAction = app.cells["Print"]
-        for _ in 0..<4 where !printAction.isHittable {
-            app.swipeLeft()
-        }
-        XCTAssertTrue(printAction.waitForExistence(timeout: 3))
-        printAction.tap()
-
-        XCTAssertFalse(
-            app.staticTexts["Protected PDF files can only be printed separately."].waitForExistence(
-                timeout: 2
-            )
-        )
-        XCTAssertTrue(app.navigationBars["Options"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["US Letter"].exists)
-    }
-
-    func testShareOriginalMarkdownPresentsSystemShareSheet() {
-        app.buttons["document-actions-button"].tap()
-        XCTAssertTrue(app.buttons["Share Original Markdown"].waitForExistence(timeout: 2))
-        app.buttons["Share Original Markdown"].tap()
-        XCTAssertTrue(app.otherElements["share-sheet"].waitForExistence(timeout: 5))
-    }
-
-    func testFilenameMenuProvidesLocalFileActions() {
-        app.buttons["document-actions-button"].tap()
-        for name in [
-            "Rename",
-            "Move",
-            "Duplicate",
-            "Share Original Markdown",
-            "Export PDF",
-            "Print",
-            "About, Privacy & Support",
-        ] {
-            XCTAssertTrue(app.buttons[name].exists, "Missing \(name) action")
-            XCTAssertTrue(app.buttons[name].isEnabled, "Expected \(name) to be available for the local fixture")
-        }
-    }
-
-    func testAboutPrivacyAndSupportAreAvailableInsideViewer() {
-        app.buttons["document-actions-button"].tap()
-        app.buttons["About, Privacy & Support"].tap()
-
-        XCTAssertTrue(app.navigationBars["Markdown Printer"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["About"].exists)
-        for _ in 0..<3 where !app.staticTexts["Privacy"].exists {
-            app.swipeUp()
-        }
-        XCTAssertTrue(app.staticTexts["Privacy"].exists)
-        XCTAssertTrue(app.buttons["Privacy Policy"].exists)
-        for _ in 0..<3 where !app.buttons["Support"].exists {
-            app.swipeUp()
-        }
-        XCTAssertTrue(app.buttons["Support"].exists)
-
-        let information = XCTAttachment(screenshot: app.screenshot())
-        information.name = "About privacy and support"
-        information.lifetime = .keepAlways
-        add(information)
-
+        XCTAssertTrue(app.staticTexts["PDF Ready to Share"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["fixture.pdf"].exists)
         app.buttons["Done"].tap()
-        XCTAssertTrue(app.buttons["document-actions-button"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["share-pdf-button"].waitForExistence(timeout: 3))
     }
 
     func testFirstLaunchOffersInformationAndAWorkingSample() {
@@ -161,7 +87,8 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(link.waitForExistence(timeout: 4))
         link.tap()
         XCTAssertTrue(app.staticTexts["Linked Markdown Page"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["fixture.md"].exists || app.navigationBars.buttons.element(boundBy: 0).exists)
+        XCTAssertTrue(app.staticTexts["linked.markdown"].exists)
+        XCTAssertTrue(app.navigationBars.buttons.element(boundBy: 0).exists)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(app.staticTexts["iPhone Viewer Fixture"].waitForExistence(timeout: 5))
     }
