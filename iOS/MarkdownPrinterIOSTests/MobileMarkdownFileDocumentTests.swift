@@ -2,6 +2,7 @@ import XCTest
 import SwiftUI
 import MarkdownPrinterCore
 import UniformTypeIdentifiers
+import UIKit
 @testable import MarkdownPrinterIOS
 
 final class MobileMarkdownFileDocumentTests: XCTestCase {
@@ -29,6 +30,101 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
             "Read Me"
         )
         XCTAssertThrowsError(try MobileMarkdownFileDocument(data: Data([0x80, 0x81])))
+    }
+
+    @MainActor
+    func testIncomingDocumentQueueProcessesEveryReceivedURLInOrder() throws {
+        let queue = MobileIncomingDocumentQueue()
+        let firstURL = URL(fileURLWithPath: "/tmp/First.md")
+        let secondURL = URL(fileURLWithPath: "/tmp/Second.markdown")
+
+        queue.receive(firstURL)
+        let first = queue.current
+        queue.receive(secondURL)
+
+        XCTAssertEqual(first?.url, firstURL)
+        XCTAssertEqual(queue.current, first)
+
+        queue.complete(UUID())
+        XCTAssertEqual(queue.current, first)
+
+        queue.complete(try XCTUnwrap(first?.id))
+        XCTAssertEqual(queue.current?.url, secondURL)
+
+        queue.complete(try XCTUnwrap(queue.current?.id))
+        XCTAssertNil(queue.current)
+    }
+
+    @MainActor
+    func testIncomingDocumentIsImportedRevealedPresentedAndHandledOnce() {
+        let incomingURL = URL(fileURLWithPath: "/tmp/ChatGPT Export.md")
+        let revealedURL = URL(fileURLWithPath: "/tmp/Markdown Printer/ChatGPT Export.md")
+        let document = MobileIncomingDocument(url: incomingURL)
+        let browser = UIDocumentBrowserViewController(
+            forOpening: [MobileMarkdownFileDocument.markdownContentType]
+        )
+        var revealCount = 0
+        var didRequestImport = false
+        var presentedURL: URL?
+        var handledIDs: [UUID] = []
+        var browserIsVisible = false
+        let coordinator = MarkdownDocumentBrowser.Coordinator(
+            revealDocument: { _, url, importIfNeeded, completion in
+                revealCount += 1
+                XCTAssertEqual(url, incomingURL)
+                didRequestImport = importIfNeeded
+                completion(revealedURL, nil)
+            },
+            presentRevealedDocument: { url, _ in
+                presentedURL = url
+            },
+            isReadyToReveal: { _ in browserIsVisible }
+        )
+
+        coordinator.openIncomingDocumentIfNeeded(document, from: browser) {
+            handledIDs.append($0)
+        }
+        XCTAssertEqual(revealCount, 0)
+        XCTAssertNil(presentedURL)
+
+        browserIsVisible = true
+        coordinator.documentBrowserDidAppear(browser)
+        coordinator.openIncomingDocumentIfNeeded(document, from: browser) {
+            handledIDs.append($0)
+        }
+
+        XCTAssertEqual(revealCount, 1)
+        XCTAssertTrue(didRequestImport)
+        XCTAssertEqual(presentedURL, revealedURL)
+        XCTAssertEqual(handledIDs, [document.id])
+    }
+
+    @MainActor
+    func testIncomingDocumentRevealFailureFallsBackToReceivedURLAndQueueCanAdvance() {
+        let incomingURL = URL(fileURLWithPath: "/tmp/Provider Export.md")
+        let document = MobileIncomingDocument(url: incomingURL)
+        let browser = UIDocumentBrowserViewController(
+            forOpening: [MobileMarkdownFileDocument.markdownContentType]
+        )
+        let expectedError = CocoaError(.fileNoSuchFile)
+        var presentedURL: URL?
+        var handledID: UUID?
+        let coordinator = MarkdownDocumentBrowser.Coordinator(
+            revealDocument: { _, _, _, completion in
+                completion(nil, expectedError)
+            },
+            presentRevealedDocument: { url, _ in
+                presentedURL = url
+            },
+            isReadyToReveal: { _ in true }
+        )
+
+        coordinator.openIncomingDocumentIfNeeded(document, from: browser) {
+            handledID = $0
+        }
+
+        XCTAssertEqual(presentedURL, incomingURL)
+        XCTAssertEqual(handledID, document.id)
     }
 
     func testShareStoreWritesNamedTemporaryPDF() throws {

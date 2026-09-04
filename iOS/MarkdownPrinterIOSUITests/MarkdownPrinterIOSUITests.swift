@@ -82,6 +82,47 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.buttons["browser-back-button"].exists)
     }
 
+    func testFilesSentFromAnotherAppOpenOnColdAndWarmLaunches() throws {
+        app.terminate()
+        app = XCUIApplication()
+        app.launchArguments = ["-ui-testing-store-readiness"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Open Markdown Printer sample"].waitForExistence(timeout: 8))
+        app.terminate()
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "MarkdownPrinterIncomingUITest-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+
+        let firstURL = directory.appendingPathComponent("Shared from ChatGPT.md")
+        try Data("# Received from ChatGPT\n\nCold launch.".utf8).write(to: firstURL)
+        app.open(firstURL)
+
+        XCTAssertTrue(app.staticTexts["Received from ChatGPT"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.alerts["Couldn’t Open Markdown"].exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Shared from ChatGPT")
+            ).firstMatch.exists
+        )
+
+        let secondURL = directory.appendingPathComponent("Shared while Open.md")
+        try Data("# Received While Open\n\nWarm launch.".utf8).write(to: secondURL)
+        app.open(secondURL)
+
+        XCTAssertTrue(app.staticTexts["Received While Open"].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.alerts["Couldn’t Open Markdown"].exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Shared while Open")
+            ).firstMatch.exists
+        )
+    }
+
     func testLinkedMarkdownPushesAndBackReturnsToOriginalDocument() {
         let link = app.links["Linked page"]
         XCTAssertTrue(link.waitForExistence(timeout: 4))

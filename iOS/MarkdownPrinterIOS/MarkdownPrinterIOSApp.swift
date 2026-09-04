@@ -14,41 +14,154 @@ struct MarkdownPrinterIOSApp: App {
 }
 
 private struct MarkdownPrinterRootView: View {
+    @StateObject private var incomingDocuments = MobileIncomingDocumentQueue()
+
     private var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains("-ui-testing")
     }
 
     var body: some View {
-        if isUITesting {
-            UITestMarkdownDocumentContainer()
-        } else {
-            MarkdownDocumentBrowser()
+        Group {
+            if isUITesting {
+                UITestMarkdownDocumentContainer()
+            } else {
+                MarkdownDocumentBrowser(
+                    incomingDocument: incomingDocuments.current,
+                    onIncomingDocumentHandled: incomingDocuments.complete
+                )
                 .ignoresSafeArea()
+            }
         }
+        .onOpenURL(perform: incomingDocuments.receive)
     }
 }
 
-private struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
+struct MobileIncomingDocument: Identifiable, Equatable {
+    let id = UUID()
+    let url: URL
+}
+
+@MainActor
+final class MobileIncomingDocumentQueue: ObservableObject {
+    @Published private(set) var current: MobileIncomingDocument?
+    private var pending: [MobileIncomingDocument] = []
+
+    func receive(_ url: URL) {
+        let document = MobileIncomingDocument(url: url)
+        if current == nil {
+            current = document
+        } else {
+            pending.append(document)
+        }
+    }
+
+    func complete(_ id: UUID) {
+        guard current?.id == id else { return }
+        current = pending.isEmpty ? nil : pending.removeFirst()
+    }
+}
+
+@MainActor
+final class MobileDocumentBrowserViewController: UIDocumentBrowserViewController {
+    var onDidAppear: (() -> Void)?
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        onDidAppear?()
+    }
+}
+
+struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
+    let incomingDocument: MobileIncomingDocument?
+    let onIncomingDocumentHandled: (UUID) -> Void
+
+    init(
+        incomingDocument: MobileIncomingDocument? = nil,
+        onIncomingDocumentHandled: @escaping (UUID) -> Void = { _ in }
+    ) {
+        self.incomingDocument = incomingDocument
+        self.onIncomingDocumentHandled = onIncomingDocumentHandled
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
     func makeUIViewController(context: Context) -> UIDocumentBrowserViewController {
-        let controller = UIDocumentBrowserViewController(
+        let controller = MobileDocumentBrowserViewController(
             forOpening: [MobileMarkdownFileDocument.markdownContentType]
         )
         controller.delegate = context.coordinator
         controller.allowsDocumentCreation = false
         controller.allowsPickingMultipleItems = false
         context.coordinator.controller = controller
+        controller.onDidAppear = { [weak coordinator = context.coordinator, weak controller] in
+            guard let coordinator, let controller else { return }
+            coordinator.documentBrowserDidAppear(controller)
+        }
         context.coordinator.installStoreReadinessItems(on: controller)
         return controller
     }
 
-    func updateUIViewController(_ controller: UIDocumentBrowserViewController, context: Context) {}
+    func updateUIViewController(
+        _ controller: UIDocumentBrowserViewController,
+        context: Context
+    ) {
+        context.coordinator.openIncomingDocumentIfNeeded(
+            incomingDocument,
+            from: controller,
+            onHandled: onIncomingDocumentHandled
+        )
+    }
 
-    final class Coordinator: NSObject, UIDocumentBrowserViewControllerDelegate {
+    @MainActor
+    final class Coordinator: NSObject, @preconcurrency UIDocumentBrowserViewControllerDelegate {
+        typealias DocumentRevealer = (
+            UIDocumentBrowserViewController,
+            URL,
+            Bool,
+            @escaping (URL?, Error?) -> Void
+        ) -> Void
+        typealias DocumentPresenter = (URL, UIDocumentBrowserViewController) -> Void
+        typealias RevealReadiness = @MainActor (UIDocumentBrowserViewController) -> Bool
+
+        private struct PendingIncomingDocument {
+            let document: MobileIncomingDocument
+            let onHandled: (UUID) -> Void
+        }
+
         weak var controller: UIDocumentBrowserViewController?
+        private var activeIncomingDocumentID: UUID?
+        private var lastHandledIncomingDocumentID: UUID?
+        private var pendingIncomingDocument: PendingIncomingDocument?
+        private let revealDocument: DocumentRevealer
+        private let presentRevealedDocument: DocumentPresenter?
+        private let isReadyToReveal: RevealReadiness
+
+        override convenience init() {
+            self.init(
+                revealDocument: { controller, url, importIfNeeded, completion in
+                    controller.revealDocument(
+                        at: url,
+                        importIfNeeded: importIfNeeded,
+                        completion: completion
+                    )
+                }
+            )
+        }
+
+        init(
+            revealDocument: @escaping DocumentRevealer,
+            presentRevealedDocument: DocumentPresenter? = nil,
+            isReadyToReveal: @escaping RevealReadiness = {
+                $0.viewIfLoaded?.window != nil
+            }
+        ) {
+            self.revealDocument = revealDocument
+            self.presentRevealedDocument = presentRevealedDocument
+            self.isReadyToReveal = isReadyToReveal
+            super.init()
+        }
 
         func installStoreReadinessItems(on controller: UIDocumentBrowserViewController) {
             let sampleButton = UIBarButtonItem(
@@ -82,13 +195,65 @@ private struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
             presentDocument(at: url, from: controller)
         }
 
+        func openIncomingDocumentIfNeeded(
+            _ document: MobileIncomingDocument?,
+            from controller: UIDocumentBrowserViewController,
+            onHandled: @escaping (UUID) -> Void
+        ) {
+            guard let document,
+                  activeIncomingDocumentID == nil,
+                  lastHandledIncomingDocumentID != document.id else {
+                return
+            }
+            pendingIncomingDocument = PendingIncomingDocument(
+                document: document,
+                onHandled: onHandled
+            )
+            guard isReadyToReveal(controller) else { return }
+
+            pendingIncomingDocument = nil
+            activeIncomingDocumentID = document.id
+
+            let reveal = { [weak self, weak controller] in
+                guard let self, let controller else { return }
+                self.revealDocument(
+                    controller,
+                    document.url,
+                    true
+                ) { [weak self, weak controller] url, _ in
+                    guard let self, let controller else { return }
+                    self.finishIncomingDocument(
+                        document,
+                        revealedURL: url,
+                        from: controller,
+                        onHandled: onHandled
+                    )
+                }
+            }
+
+            if controller.presentedViewController == nil {
+                reveal()
+            } else {
+                controller.dismiss(animated: false, completion: reveal)
+            }
+        }
+
+        func documentBrowserDidAppear(_ controller: UIDocumentBrowserViewController) {
+            guard let pendingIncomingDocument else { return }
+            openIncomingDocumentIfNeeded(
+                pendingIncomingDocument.document,
+                from: controller,
+                onHandled: pendingIncomingDocument.onHandled
+            )
+        }
+
         @objc private func openSample() {
             guard let controller else { return }
             do {
                 let url = try AppStoreSampleDocument.ensureExists()
                 presentDocument(at: url, from: controller)
             } catch {
-                presentError(error, from: controller)
+                presentError(error, from: controller, title: "Couldn’t Open Sample")
             }
         }
 
@@ -114,9 +279,32 @@ private struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
             controller.present(hosting, animated: true)
         }
 
-        private func presentError(_ error: Error, from controller: UIViewController) {
+        private func finishIncomingDocument(
+            _ document: MobileIncomingDocument,
+            revealedURL: URL?,
+            from controller: UIDocumentBrowserViewController,
+            onHandled: (UUID) -> Void
+        ) {
+            guard activeIncomingDocumentID == document.id else { return }
+            activeIncomingDocumentID = nil
+            lastHandledIncomingDocumentID = document.id
+
+            let urlToOpen = revealedURL ?? document.url
+            if let presentRevealedDocument {
+                presentRevealedDocument(urlToOpen, controller)
+            } else {
+                presentDocument(at: urlToOpen, from: controller)
+            }
+            onHandled(document.id)
+        }
+
+        private func presentError(
+            _ error: Error,
+            from controller: UIViewController,
+            title: String
+        ) {
             let alert = UIAlertController(
-                title: "Couldn’t Open Sample",
+                title: title,
                 message: error.localizedDescription,
                 preferredStyle: .alert
             )
