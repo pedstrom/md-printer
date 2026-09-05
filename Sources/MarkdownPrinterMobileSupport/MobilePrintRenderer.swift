@@ -14,10 +14,11 @@ extension NSAttributedString.Key {
 final class MobilePrintRenderer {
     let configuration: MobilePDFConfiguration
     private let presenter = MobileMarkdownPresenter()
-    private let imageResolver = MobileImageResolver()
+    private let imageResolver: MobileImageResolver
 
-    init(configuration: MobilePDFConfiguration) {
+    init(configuration: MobilePDFConfiguration, remoteImageCache: RemoteImageCache? = nil) {
         self.configuration = configuration
+        self.imageResolver = MobileImageResolver(remoteImageCache: remoteImageCache)
     }
 
     func render(document: MarkdownDocument) throws -> NSAttributedString {
@@ -582,7 +583,12 @@ final class MobilePrintRenderer {
         switch imageResolver.resolve(source: source, relativeTo: baseURL) {
         case let .local(url):
             guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else {
-                return placeholder(alt: alt, reason: .inaccessible, font: font)
+                return placeholder(
+                    alt: alt,
+                    source: source,
+                    reason: .inaccessible,
+                    font: font
+                )
             }
             let maximumWidth = min(configuration.contentWidth, maximumWidth ?? .greatestFiniteMagnitude)
             let scale = min(1, maximumWidth / max(1, image.size.width))
@@ -596,23 +602,36 @@ final class MobilePrintRenderer {
             )
             return NSAttributedString(attachment: attachment)
         case let .placeholder(reason):
-            return placeholder(alt: alt, reason: reason, font: font)
+            return placeholder(
+                alt: alt,
+                source: source,
+                reason: reason,
+                font: font
+            )
         }
     }
 
     private func placeholder(
         alt: String,
+        source: String,
         reason: MobileImagePlaceholderReason,
         font: UIFont
     ) -> NSAttributedString {
-        let label = alt.isEmpty ? reason.message : "\(reason.message): \(alt)"
+        let offersDownload = reason == .remote && imageResolver.remoteImageCache != nil
+        let message = offersDownload ? "Remote image — tap to download" : reason.message
+        let label = alt.isEmpty ? message : "\(message): \(alt)"
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: variant(of: font, italic: true),
+            .foregroundColor: UIColor(white: 0.45, alpha: 1),
+            .backgroundColor: UIColor(white: 0.96, alpha: 1)
+        ]
+        if offersDownload {
+            attributes[.link] = RemoteImageActionURL.downloadURL(for: source)
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+        }
         return NSAttributedString(
             string: "[\(label)]",
-            attributes: [
-                .font: variant(of: font, italic: true),
-                .foregroundColor: UIColor(white: 0.45, alpha: 1),
-                .backgroundColor: UIColor(white: 0.96, alpha: 1)
-            ]
+            attributes: attributes
         )
     }
 

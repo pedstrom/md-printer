@@ -8,16 +8,19 @@ public final class DocumentSession: ObservableObject {
     @Published public private(set) var renderedSnapshot: RenderedDocumentSnapshot?
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var isPreparingDocument = false
+    @Published public private(set) var downloadingRemoteImageSources = Set<String>()
 
     public private(set) var renderer: MarkdownRenderer
     public private(set) var exporter: PDFExporter
     public let wordExporter: WordExporter
+    public let remoteImageCache: RemoteImageCache
     @Published public private(set) var activePageSetup: DocumentPageSetup
     @Published public private(set) var hasExplicitPageSetup = false
     private let baseRendererConfiguration: RendererConfiguration
     private let pagePreferences: PagePreferences?
     private var preferenceObservation: AnyCancellable?
     private let sourceMonitorFactory: (URL, @escaping () -> Void) -> SourceChangeMonitoring
+    private let remoteImageDownloader: any RemoteImageDownloading
     private var sourceMonitor: SourceChangeMonitoring?
     private var sourceMonitorLifetime: SourceMonitorLifetime?
     private var nextRenderRevision: UInt64 = 0
@@ -27,15 +30,23 @@ public final class DocumentSession: ObservableObject {
         renderer: MarkdownRenderer = MarkdownRenderer(),
         exporter: PDFExporter? = nil,
         wordExporter: WordExporter? = nil,
-        pagePreferences: PagePreferences? = nil
+        pagePreferences: PagePreferences? = nil,
+        remoteImageCache: RemoteImageCache = .applicationDefault,
+        remoteImageDownloader: (any RemoteImageDownloading)? = nil
     ) {
         baseRendererConfiguration = renderer.configuration
         self.pagePreferences = pagePreferences
+        self.remoteImageCache = remoteImageCache
+        self.remoteImageDownloader = remoteImageDownloader
+            ?? RemoteImageDownloader(cache: remoteImageCache)
         let initialPageSetup = pagePreferences?.defaultPageSetup ?? .letter
         activePageSetup = initialPageSetup
-        let configuredRenderer = pagePreferences == nil
-            ? renderer
-            : MarkdownRenderer(configuration: renderer.configuration.applying(initialPageSetup))
+        let configuredRenderer = MarkdownRenderer(
+            configuration: pagePreferences == nil
+                ? renderer.configuration
+                : renderer.configuration.applying(initialPageSetup),
+            remoteImageCache: remoteImageCache
+        )
         self.renderer = configuredRenderer
         self.exporter = exporter ?? PDFExporter(
             configuration: configuredRenderer.configuration,
@@ -53,15 +64,23 @@ public final class DocumentSession: ObservableObject {
         exporter: PDFExporter? = nil,
         wordExporter: WordExporter? = nil,
         pagePreferences: PagePreferences? = nil,
+        remoteImageCache: RemoteImageCache = .applicationDefault,
+        remoteImageDownloader: (any RemoteImageDownloading)? = nil,
         sourceMonitorFactory: @escaping (URL, @escaping () -> Void) -> SourceChangeMonitoring
     ) {
         baseRendererConfiguration = renderer.configuration
         self.pagePreferences = pagePreferences
+        self.remoteImageCache = remoteImageCache
+        self.remoteImageDownloader = remoteImageDownloader
+            ?? RemoteImageDownloader(cache: remoteImageCache)
         let initialPageSetup = pagePreferences?.defaultPageSetup ?? .letter
         activePageSetup = initialPageSetup
-        let configuredRenderer = pagePreferences == nil
-            ? renderer
-            : MarkdownRenderer(configuration: renderer.configuration.applying(initialPageSetup))
+        let configuredRenderer = MarkdownRenderer(
+            configuration: pagePreferences == nil
+                ? renderer.configuration
+                : renderer.configuration.applying(initialPageSetup),
+            remoteImageCache: remoteImageCache
+        )
         self.renderer = configuredRenderer
         self.exporter = exporter ?? PDFExporter(
             configuration: configuredRenderer.configuration,
@@ -90,6 +109,16 @@ public final class DocumentSession: ObservableObject {
 
     public var hasDocument: Bool {
         document != nil
+    }
+
+    public var remoteImageReferences: [RemoteImageReference] {
+        document.map(RemoteImageCatalog.references) ?? []
+    }
+
+    public var uncachedRemoteImageSources: [String] {
+        remoteImageReferences
+            .map(\.source)
+            .filter { remoteImageCache.cachedFileURL(for: $0) == nil }
     }
 
     public var suggestedPDFFileName: String {
@@ -176,7 +205,10 @@ public final class DocumentSession: ObservableObject {
         nextPreparationRevision &+= 1
         isPreparingDocument = false
         let nextConfiguration = baseRendererConfiguration.applying(pageSetup)
-        let nextRenderer = MarkdownRenderer(configuration: nextConfiguration)
+        let nextRenderer = MarkdownRenderer(
+            configuration: nextConfiguration,
+            remoteImageCache: remoteImageCache
+        )
         let nextExporter = PDFExporter(
             configuration: nextConfiguration,
             pageSetup: pageSetup
@@ -222,7 +254,8 @@ public final class DocumentSession: ObservableObject {
             ?? ResolvedFooterConfiguration()
         let job = DocumentAttributedTextJob(
             document: document,
-            configuration: nextConfiguration
+            configuration: nextConfiguration,
+            remoteImageCache: remoteImageCache
         )
         let preparedText = try await Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
@@ -239,7 +272,10 @@ public final class DocumentSession: ObservableObject {
         guard preparationRevision == nextPreparationRevision else { return }
 
         nextRenderRevision &+= 1
-        renderer = MarkdownRenderer(configuration: nextConfiguration)
+        renderer = MarkdownRenderer(
+            configuration: nextConfiguration,
+            remoteImageCache: remoteImageCache
+        )
         exporter = PDFExporter(configuration: nextConfiguration, pageSetup: pageSetup)
         activePageSetup = pageSetup
         if let explicit { hasExplicitPageSetup = explicit }
@@ -329,6 +365,65 @@ public final class DocumentSession: ObservableObject {
         errorMessage = nil
     }
 
+    public func downloadRemoteImage(source: String) async {
+        guard remoteImageReferences.contains(where: { $0.source == source }),
+              remoteImageCache.cachedFileURL(for: source) == nil,
+              !downloadingRemoteImageSources.contains(source) else {
+            return
+        }
+        errorMessage = nil
+        downloadingRemoteImageSources.insert(source)
+        defer { downloadingRemoteImageSources.remove(source) }
+        do {
+            _ = try await remoteImageDownloader.download(source: source)
+            guard let document else { return }
+            try rebuild(document: document, pageSetup: activePageSetup)
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func downloadAllRemoteImages() async {
+        let sources = uncachedRemoteImageSources.filter {
+            !downloadingRemoteImageSources.contains($0)
+        }
+        guard !sources.isEmpty else { return }
+        errorMessage = nil
+        downloadingRemoteImageSources.formUnion(sources)
+        let downloader = remoteImageDownloader
+        let failures = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
+            for source in sources {
+                group.addTask {
+                    do {
+                        _ = try await downloader.download(source: source)
+                        return false
+                    } catch {
+                        return true
+                    }
+                }
+            }
+            var failures = 0
+            for await failed in group where failed { failures += 1 }
+            return failures
+        }
+        downloadingRemoteImageSources.subtract(sources)
+        if failures < sources.count, let document {
+            do {
+                try rebuild(document: document, pageSetup: activePageSetup)
+            } catch {
+                errorMessage = error.localizedDescription
+                return
+            }
+        }
+        if failures > 0 {
+            errorMessage = failures == 1
+                ? "One remote image could not be downloaded."
+                : "\(failures) remote images could not be downloaded."
+        }
+    }
+
     public func report(error: Error) {
         errorMessage = error.localizedDescription
     }
@@ -406,9 +501,13 @@ public struct RenderedDocumentSnapshot {
 private struct DocumentAttributedTextJob: @unchecked Sendable {
     let document: MarkdownDocument
     let configuration: RendererConfiguration
+    let remoteImageCache: RemoteImageCache
 
     func run() -> PreparedAttributedText {
-        let renderer = MarkdownRenderer(configuration: configuration)
+        let renderer = MarkdownRenderer(
+            configuration: configuration,
+            remoteImageCache: remoteImageCache
+        )
         return PreparedAttributedText(
             value: NSAttributedString(
                 attributedString: renderer.render(document: document)

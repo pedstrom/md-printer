@@ -3,15 +3,18 @@ import AppKit
 
 public final class MarkdownRenderer {
     public let configuration: RendererConfiguration
+    public let remoteImageCache: RemoteImageCache?
     private let parser: MarkdownParser
     private let fonts: FontBook
 
     public init(
         configuration: RendererConfiguration = RendererConfiguration(),
-        parser: MarkdownParser = MarkdownParser()
+        parser: MarkdownParser = MarkdownParser(),
+        remoteImageCache: RemoteImageCache? = nil
     ) {
         self.configuration = configuration
         self.parser = parser
+        self.remoteImageCache = remoteImageCache
         self.fonts = FontBook(configuration: configuration)
     }
 
@@ -478,14 +481,17 @@ public final class MarkdownRenderer {
         font: NSFont,
         requestedWidth: CGFloat? = nil
     ) -> NSAttributedString {
-        guard let url = imageURL(source: source, baseURL: baseURL),
+        let remoteURL = RemoteImageReference.remoteURL(from: source)
+        let resolvedURL = remoteURL == nil
+            ? imageURL(source: source, baseURL: baseURL)
+            : remoteImageCache?.cachedFileURL(for: source)
+        guard let url = resolvedURL,
               let image = NSImage(contentsOf: url), image.size.width > 0, image.size.height > 0 else {
-            return NSAttributedString(
-                string: "[Image: \(alt.isEmpty ? source : alt)]",
-                attributes: [
-                    .font: fonts.italic(size: font.pointSize),
-                    .foregroundColor: configuration.secondaryTextColor
-                ]
+            return imagePlaceholder(
+                alt: alt,
+                source: source,
+                font: font,
+                offersDownload: remoteURL != nil && remoteImageCache != nil
             )
         }
 
@@ -503,6 +509,28 @@ public final class MarkdownRenderer {
             height: image.size.height * scale
         )
         return NSAttributedString(attachment: attachment)
+    }
+
+    private func imagePlaceholder(
+        alt: String,
+        source: String,
+        font: NSFont,
+        offersDownload: Bool
+    ) -> NSAttributedString {
+        let description = alt.isEmpty ? source : alt
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: fonts.italic(size: font.pointSize),
+            .foregroundColor: configuration.secondaryTextColor
+        ]
+        let label: String
+        if offersDownload {
+            label = "[Remote image — click to download: \(description)]"
+            attributes[.link] = RemoteImageActionURL.downloadURL(for: source)
+            attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+        } else {
+            label = "[Image: \(description)]"
+        }
+        return NSAttributedString(string: label, attributes: attributes)
     }
 
     private func imageURL(source: String, baseURL: URL?) -> URL? {

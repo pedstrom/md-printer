@@ -296,6 +296,21 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertTrue(annotations.contains(where: { $0.url?.absoluteString == "https://openai.com" }))
     }
 
+    func testPDFPreservesRemoteImageDownloadActionAnnotation() throws {
+        let cache = RemoteImageCache(
+            directoryURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        )
+        let source = "https://example.com/remote.png"
+        let text = MarkdownRenderer(remoteImageCache: cache).render(
+            markdown: "![Remote art](\(source))"
+        )
+        let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))
+        let actionURL = try XCTUnwrap(document.page(at: 0)?.annotations.compactMap(\.url).first)
+
+        XCTAssertEqual(RemoteImageActionURL.downloadSource(from: actionURL), source)
+    }
+
     func testPDFPreservesReferenceAndAutolinkAnnotationsWhileRawHTMLStaysInert() throws {
         let text = MarkdownRenderer().render(markdown: """
         [Guide][guide] <reader@example.com> Raw <a href="https://example.com/inert">source</a>.

@@ -123,6 +123,13 @@ public struct MarkdownPrinterView: View {
                     sidebarController: sidebarController,
                     exportData: { try session.exportData(as: exportFormat) },
                     openURL: openLink,
+                    remoteImageSources: session.uncachedRemoteImageSources,
+                    onDownloadRemoteImage: { source in
+                        Task { await session.downloadRemoteImage(source: source) }
+                    },
+                    onDownloadAllRemoteImages: {
+                        Task { await session.downloadAllRemoteImages() }
+                    },
                     onDragError: { session.report(error: $0) }
                 )
             }
@@ -150,7 +157,7 @@ public struct MarkdownPrinterView: View {
             Button("Choose Markdown File…", action: openDocument)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-            Text("Supports headings, emphasis, underlining, lists, tables, code, links, and local images.")
+            Text("Supports headings, emphasis, underlining, lists, tables, code, links, and images.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }

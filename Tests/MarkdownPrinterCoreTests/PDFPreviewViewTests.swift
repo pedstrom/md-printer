@@ -20,6 +20,68 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertEqual(openedURL, expectedURL)
     }
 
+    func testLinkCoordinatorRoutesRemoteImageActionsInsideTheApp() {
+        let source = "https://example.com/image.png"
+        var openedURL: URL?
+        var downloadedSource: String?
+        let coordinator = PDFPreviewView.Coordinator(
+            openURL: { openedURL = $0 },
+            onDownloadRemoteImage: { downloadedSource = $0 },
+            onDragError: { _ in }
+        )
+
+        coordinator.pdfViewWillClick(
+            onLink: PDFView(),
+            with: RemoteImageActionURL.downloadURL(for: source)
+        )
+
+        XCTAssertEqual(downloadedSource, source)
+        XCTAssertNil(openedURL)
+    }
+
+    func testRemoteImageContextMenuDownloadsOneOrAllImages() {
+        let source = "https://example.com/image.png"
+        var downloadedSource: String?
+        var downloadedAll = false
+        let view = PageAdvancingPDFView()
+        view.updateRemoteImageActions(
+            sources: [source, "https://example.com/other.png"],
+            downloadOne: { downloadedSource = $0 },
+            downloadAll: { downloadedAll = true }
+        )
+
+        let menu = view.remoteImageContextMenu(for: source)
+        XCTAssertEqual(menu.items.map(\.title), ["Download Image", "Download All Images"])
+        NSApp.sendAction(menu.items[0].action!, to: menu.items[0].target, from: menu.items[0])
+        NSApp.sendAction(menu.items[1].action!, to: menu.items[1].target, from: menu.items[1])
+
+        XCTAssertEqual(downloadedSource, source)
+        XCTAssertTrue(downloadedAll)
+    }
+
+    func testBufferedPreviewPropagatesRemoteImageActionsToReplacementViews() async throws {
+        let first = try makeDocument(markdown: "# First")
+        let second = try makeDocument(markdown: "# Second")
+        let source = "https://example.com/image.png"
+        var downloadedSource: String?
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.stagingDelay = 0
+        container.updateRemoteImageActions(
+            sources: [source],
+            downloadOne: { downloadedSource = $0 },
+            downloadAll: {}
+        )
+        container.display(first.document, data: first.data, revision: 1)
+        container.display(second.document, data: second.data, revision: 2)
+        await nextMainQueueTurn()
+        await nextMainQueueTurn()
+
+        let item = container.activeView.remoteImageContextMenu(for: source).items[0]
+        NSApp.sendAction(item.action!, to: item.target, from: item)
+
+        XCTAssertEqual(downloadedSource, source)
+    }
+
     func testDragErrorsAreForwarded() {
         var reportedError: PreviewTestError?
         let coordinator = PDFPreviewView.Coordinator(

@@ -20,7 +20,7 @@ final class MarkdownPrinterHelpTests: XCTestCase {
         XCTAssertEqual(navigator.requestRevision, 2)
     }
 
-    func testHelpCoversEveryRequestedOfflineTopic() {
+    func testHelpCoversEveryRequestedTopic() {
         let text = MarkdownPrinterHelpContent.searchableText
         let requiredPhrases = [
             "Open Markdown Files",
@@ -34,6 +34,9 @@ final class MarkdownPrinterHelpTests: XCTestCase {
             "Show in Finder",
             "Quick Look",
             "remote images",
+            "Download All Images",
+            "disposable cache",
+            "Quick Look stays offline",
             "Document content stays on this Mac",
             "Keyboard Shortcuts"
         ]

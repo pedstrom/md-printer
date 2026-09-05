@@ -251,6 +251,47 @@ final class MobilePDFExporterTests: XCTestCase {
         XCTAssertFalse(attributed.string.contains("<img"))
     }
 
+    func testInteractiveRemoteImagesExposeDownloadLinksAndRenderFromCache() async throws {
+        let source = "https://example.com/remote.png"
+        let cache = RemoteImageCache(directoryURL: directory.appendingPathComponent("remote-cache"))
+        let document = MarkdownDocument(
+            title: "Remote",
+            markdown: "<img src='\(source)' alt='Remote art' width='48'>"
+        )
+        let unresolved = try MobilePrintRenderer(
+            configuration: .letter,
+            remoteImageCache: cache
+        ).render(document: document)
+        XCTAssertTrue(unresolved.string.contains("Remote image — tap to download: Remote art"))
+        let action = try XCTUnwrap(unresolved.attribute(.link, at: 0, effectiveRange: nil))
+        XCTAssertEqual(RemoteImageActionURL.downloadSource(from: action), source)
+
+        let unresolvedPDF = try await MobilePDFExporter(
+            remoteImageCache: cache
+        ).pdfData(for: document)
+        let annotationURL = try XCTUnwrap(
+            PDFDocument(data: unresolvedPDF)?.page(at: 0)?.annotations.compactMap(\.url).first
+        )
+        XCTAssertEqual(RemoteImageActionURL.downloadSource(from: annotationURL), source)
+
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 96, height: 48)).image { context in
+            UIColor.systemGreen.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 96, height: 48))
+        }
+        try cache.store(try XCTUnwrap(image.pngData()), for: source)
+        let cached = try MobilePrintRenderer(
+            configuration: .letter,
+            remoteImageCache: cache
+        ).render(document: document)
+        let attachment = try XCTUnwrap(
+            (0..<cached.length).compactMap {
+                cached.attribute(.attachment, at: $0, effectiveRange: nil) as? NSTextAttachment
+            }.first
+        )
+        XCTAssertEqual(attachment.bounds.size, CGSize(width: 48, height: 24))
+        XCTAssertFalse(cached.string.contains("tap to download"))
+    }
+
     func testEmptyDocumentStillProducesOneValidPage() async throws {
         let data = try await MobilePDFExporter().pdfData(
             for: MarkdownDocument(title: "Empty", markdown: "")

@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 import MarkdownPrinterCore
 @testable import MarkdownPrinterMobileSupport
 
@@ -207,5 +208,123 @@ final class MobileDocumentSessionTests: XCTestCase {
         XCTAssertFalse(first.isEmpty)
         XCTAssertEqual(first, second)
         XCTAssertEqual(session.pdfState, .ready)
+    }
+
+    func testRemoteImageDownloadsInvalidatePDFAndDownloadOnlyUncachedSources() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MobileRemoteImages-\(UUID().uuidString)", isDirectory: true)
+        let cache = RemoteImageCache(directoryURL: directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let imageData = try makePNG()
+        let downloader = MobileTestRemoteImageDownloader(cache: cache, imageData: imageData)
+        var pdfCalls = 0
+        let first = "https://example.com/one.png"
+        let second = "https://example.com/two.png"
+        let session = MobileDocumentSession(
+            document: MarkdownDocument(
+                title: "Remote",
+                markdown: "![One](\(first))\n\n<img src='\(second)' alt='Two'>"
+            ),
+            remoteImageCache: cache,
+            remoteImageDownloader: downloader,
+            pdfProvider: { _ in
+                pdfCalls += 1
+                return Data("PDF-\(pdfCalls)".utf8)
+            }
+        )
+        _ = try await session.pdfData()
+        let initialRevision = session.revision
+        XCTAssertEqual(session.uncachedRemoteImageSources, [first, second])
+
+        await session.downloadRemoteImage(source: "https://example.com/not-present.png")
+        let requestsBeforeDownload = await downloader.requestedSources()
+        XCTAssertEqual(requestsBeforeDownload, [])
+        await session.downloadRemoteImage(source: first)
+        XCTAssertGreaterThan(session.revision, initialRevision)
+        XCTAssertEqual(session.remoteImageRevision, 1)
+        XCTAssertEqual(session.pdfState, .idle)
+        XCTAssertNotNil(cache.cachedFileURL(for: first))
+
+        _ = try await session.pdfData()
+        XCTAssertEqual(pdfCalls, 2)
+        await session.downloadRemoteImage(source: first)
+        await session.downloadAllRemoteImages()
+        let requestedSources = await downloader.requestedSources()
+        XCTAssertEqual(requestedSources, [first, second])
+        XCTAssertTrue(session.uncachedRemoteImageSources.isEmpty)
+        XCTAssertEqual(session.remoteImageRevision, 2)
+        XCTAssertTrue(session.downloadingRemoteImageSources.isEmpty)
+        XCTAssertNil(session.errorMessage)
+    }
+
+    func testRemoteImageFailuresAreReportedWithoutDiscardingSuccessfulDownloads() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MobileRemoteImageFailures-\(UUID().uuidString)", isDirectory: true)
+        let cache = RemoteImageCache(directoryURL: directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = "https://example.com/fail-one.png"
+        let second = "https://example.com/fail-two.png"
+        let downloader = MobileTestRemoteImageDownloader(
+            cache: cache,
+            imageData: try makePNG(),
+            failingSources: [first, second]
+        )
+        let session = MobileDocumentSession(
+            document: MarkdownDocument(
+                title: "Remote",
+                markdown: "![One](\(first))\n\n![Two](\(second))"
+            ),
+            remoteImageCache: cache,
+            remoteImageDownloader: downloader,
+            pdfProvider: { _ in Data() }
+        )
+
+        await session.downloadRemoteImage(source: first)
+        XCTAssertEqual(session.errorMessage, "Test remote image failure.")
+        await session.downloadAllRemoteImages()
+        XCTAssertEqual(session.errorMessage, "2 remote images could not be downloaded.")
+        XCTAssertEqual(session.remoteImageRevision, 0)
+        XCTAssertTrue(session.downloadingRemoteImageSources.isEmpty)
+    }
+
+    private func makePNG() throws -> Data {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 18, height: 12)).image { context in
+            UIColor.systemPink.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 18, height: 12))
+        }
+        return try XCTUnwrap(image.pngData())
+    }
+}
+
+private enum MobileRemoteImageTestError: LocalizedError {
+    case failed
+
+    var errorDescription: String? { "Test remote image failure." }
+}
+
+private actor MobileTestRemoteImageDownloader: RemoteImageDownloading {
+    let cache: RemoteImageCache
+    let imageData: Data
+    let failingSources: Set<String>
+    private var sources: [String] = []
+
+    init(
+        cache: RemoteImageCache,
+        imageData: Data,
+        failingSources: Set<String> = []
+    ) {
+        self.cache = cache
+        self.imageData = imageData
+        self.failingSources = failingSources
+    }
+
+    func download(source: String) async throws -> URL {
+        sources.append(source)
+        if failingSources.contains(source) { throw MobileRemoteImageTestError.failed }
+        return try cache.store(imageData, for: source)
+    }
+
+    func requestedSources() -> [String] {
+        sources
     }
 }

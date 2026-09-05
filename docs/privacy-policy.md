@@ -1,6 +1,6 @@
 # Markdown Printer Privacy Policy
 
-Effective: August 27, 2026
+Effective: September 5, 2026
 
 Markdown Printer is a local-first Markdown reader and PDF creator for iPhone and Mac.
 
@@ -10,7 +10,7 @@ Markdown Printer does not collect personal data, document contents, analytics, u
 
 ## Documents and files
 
-Documents you choose are read and processed on your device. Markdown Printer does not upload document contents. Remote images referenced by a Markdown document are not downloaded; the app shows a placeholder instead.
+Documents you choose are read and processed on your device. Markdown Printer does not upload document contents. A remote image is downloaded only after you tap or click its placeholder or choose a download command from its context menu. The secure image request goes to the host named by the document, and the result is stored in Markdown Printer's disposable app cache rather than beside the Markdown file. Finder Quick Look never downloads remote images.
 
 On iPhone, the app stores security-scoped folder permissions that you explicitly grant so linked local documents and images can open again. Those permissions stay on the device in the app's local preferences.
 

@@ -455,6 +455,17 @@ final class MobileDocumentAccessTests: XCTestCase {
             resolver.resolve(source: validURL.absoluteString, relativeTo: nil),
             .local(validURL)
         )
+
+        let remoteSource = "https://example.com/cached.png"
+        let cache = RemoteImageCache(directoryURL: directory.appendingPathComponent("cache"))
+        let cachedURL = try cache.store(try XCTUnwrap(image.pngData()), for: remoteSource)
+        XCTAssertEqual(
+            MobileImageResolver(remoteImageCache: cache).resolve(
+                source: remoteSource,
+                relativeTo: directory
+            ),
+            .local(cachedURL)
+        )
     }
 
     func testErrorsHaveReadableMessages() {

@@ -148,7 +148,7 @@ struct MarkdownPrinterInformationView: View {
                 }
 
                 Section("Privacy") {
-                    Text("Documents are processed on this iPhone. Markdown Printer does not collect analytics, track you, upload document contents, or fetch remote images.")
+                    Text("Documents are processed on this iPhone. Markdown Printer does not collect analytics, track you, or upload document contents. Remote images are downloaded only after you choose to fetch them and stay in the app cache.")
                     Text("Folder permissions you grant are remembered only on this device so linked local files can open again.")
                     Link(destination: MarkdownPrinterAppInformation.privacyPolicyURL) {
                         Label("Privacy Policy", systemImage: "hand.raised")

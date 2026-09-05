@@ -52,18 +52,25 @@ public enum MobilePDFExporterError: LocalizedError, Equatable, Sendable {
 
 public struct MobilePDFExporter: Sendable {
     public let configuration: MobilePDFConfiguration
+    public let remoteImageCache: RemoteImageCache?
 
-    public init(configuration: MobilePDFConfiguration = .letter) {
+    public init(
+        configuration: MobilePDFConfiguration = .letter,
+        remoteImageCache: RemoteImageCache? = nil
+    ) {
         self.configuration = configuration
+        self.remoteImageCache = remoteImageCache
     }
 
     public func pdfData(for document: MarkdownDocument) async throws -> Data {
         let configuration = configuration
+        let remoteImageCache = remoteImageCache
         let task = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
-            let attributed = try MobilePrintRenderer(configuration: configuration).render(
-                document: document
-            )
+            let attributed = try MobilePrintRenderer(
+                configuration: configuration,
+                remoteImageCache: remoteImageCache
+            ).render(document: document)
             try Task.checkCancellation()
             return try Self(configuration: configuration).render(
                 attributed,

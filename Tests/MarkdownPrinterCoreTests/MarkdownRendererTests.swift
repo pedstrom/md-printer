@@ -396,6 +396,24 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(absolute.string, "[Image: Nope]\n")
     }
 
+    func testRemoteImagePlaceholderOffersDownloadAndUsesCachedImage() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let cache = RemoteImageCache(directoryURL: directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = "https://example.com/remote.png"
+        let interactiveRenderer = MarkdownRenderer(remoteImageCache: cache)
+
+        let placeholder = interactiveRenderer.render(markdown: "![Remote art](\(source))")
+        XCTAssertEqual(placeholder.string, "[Remote image — click to download: Remote art]\n")
+        let link = placeholder.attribute(.link, at: 0, effectiveRange: nil)
+        XCTAssertEqual(RemoteImageActionURL.downloadSource(from: link as Any), source)
+
+        try cache.store(makePNG(size: NSSize(width: 40, height: 20)), for: source)
+        let cached = interactiveRenderer.render(markdown: "![Remote art](\(source))")
+        XCTAssertNotNil(cached.attribute(.attachment, at: 0, effectiveRange: nil))
+        XCTAssertFalse(cached.string.contains("Remote image"))
+    }
+
     private func assertAttribute(_ key: NSAttributedString.Key, text: String, in output: NSAttributedString) {
         let range = (output.string as NSString).range(of: text)
         XCTAssertNotNil(

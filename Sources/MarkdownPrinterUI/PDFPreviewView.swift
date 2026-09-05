@@ -12,6 +12,9 @@ public struct PDFPreviewView: NSViewRepresentable {
     public let fileName: String
     private let exportData: () throws -> Data
     private let openURL: (URL) -> Void
+    private let remoteImageSources: [String]
+    private let onDownloadRemoteImage: (String) -> Void
+    private let onDownloadAllRemoteImages: () -> Void
     private let onDragError: (Error) -> Void
     private let searchController: PDFSearchController?
     private let viewingController: PDFViewingController?
@@ -24,6 +27,9 @@ public struct PDFPreviewView: NSViewRepresentable {
         fileName: String,
         exportData: @escaping () throws -> Data,
         openURL: @escaping (URL) -> Void,
+        remoteImageSources: [String] = [],
+        onDownloadRemoteImage: @escaping (String) -> Void = { _ in },
+        onDownloadAllRemoteImages: @escaping () -> Void = {},
         onDragError: @escaping (Error) -> Void = { _ in }
     ) {
         self.init(
@@ -36,6 +42,9 @@ public struct PDFPreviewView: NSViewRepresentable {
             sidebarController: nil,
             exportData: exportData,
             openURL: openURL,
+            remoteImageSources: remoteImageSources,
+            onDownloadRemoteImage: onDownloadRemoteImage,
+            onDownloadAllRemoteImages: onDownloadAllRemoteImages,
             onDragError: onDragError
         )
     }
@@ -50,6 +59,9 @@ public struct PDFPreviewView: NSViewRepresentable {
         sidebarController: PDFThumbnailSidebarController,
         exportData: @escaping () throws -> Data,
         openURL: @escaping (URL) -> Void,
+        remoteImageSources: [String] = [],
+        onDownloadRemoteImage: @escaping (String) -> Void = { _ in },
+        onDownloadAllRemoteImages: @escaping () -> Void = {},
         onDragError: @escaping (Error) -> Void = { _ in }
     ) {
         self.init(
@@ -62,6 +74,9 @@ public struct PDFPreviewView: NSViewRepresentable {
             sidebarController: Optional(sidebarController),
             exportData: exportData,
             openURL: openURL,
+            remoteImageSources: remoteImageSources,
+            onDownloadRemoteImage: onDownloadRemoteImage,
+            onDownloadAllRemoteImages: onDownloadAllRemoteImages,
             onDragError: onDragError
         )
     }
@@ -76,6 +91,9 @@ public struct PDFPreviewView: NSViewRepresentable {
         sidebarController: PDFThumbnailSidebarController?,
         exportData: @escaping () throws -> Data,
         openURL: @escaping (URL) -> Void,
+        remoteImageSources: [String],
+        onDownloadRemoteImage: @escaping (String) -> Void,
+        onDownloadAllRemoteImages: @escaping () -> Void,
         onDragError: @escaping (Error) -> Void
     ) {
         self.data = data
@@ -87,6 +105,9 @@ public struct PDFPreviewView: NSViewRepresentable {
         self.sidebarController = sidebarController
         self.exportData = exportData
         self.openURL = openURL
+        self.remoteImageSources = remoteImageSources
+        self.onDownloadRemoteImage = onDownloadRemoteImage
+        self.onDownloadAllRemoteImages = onDownloadAllRemoteImages
         self.onDragError = onDragError
     }
 
@@ -104,17 +125,29 @@ public struct PDFPreviewView: NSViewRepresentable {
             fileName: fileName,
             exportData: { data },
             openURL: openURL,
+            remoteImageSources: [],
+            onDownloadRemoteImage: { _ in },
+            onDownloadAllRemoteImages: {},
             onDragError: onDragError
         )
     }
 
     public func makeCoordinator() -> Coordinator {
-        Coordinator(openURL: openURL, onDragError: onDragError)
+        Coordinator(
+            openURL: openURL,
+            onDownloadRemoteImage: onDownloadRemoteImage,
+            onDragError: onDragError
+        )
     }
 
     public func makeNSView(context: Context) -> PDFPreviewContainerView {
         let container = PDFPreviewContainerView()
         container.previewView.delegate = context.coordinator
+        container.previewView.updateRemoteImageActions(
+            sources: remoteImageSources,
+            downloadOne: onDownloadRemoteImage,
+            downloadAll: onDownloadAllRemoteImages
+        )
         container.attach(sidebarController: sidebarController)
         windowRestorationCoordinator?.attach(previewContainer: container)
         return container
@@ -123,6 +156,7 @@ public struct PDFPreviewView: NSViewRepresentable {
     public func updateNSView(_ container: PDFPreviewContainerView, context: Context) {
         let view = container.previewView
         context.coordinator.openURL = openURL
+        context.coordinator.onDownloadRemoteImage = onDownloadRemoteImage
         context.coordinator.onDragError = onDragError
         view.delegate = context.coordinator
         container.attach(sidebarController: sidebarController)
@@ -132,6 +166,11 @@ public struct PDFPreviewView: NSViewRepresentable {
             fileName: fileName,
             dataProvider: exportData,
             onError: context.coordinator.reportDragError
+        )
+        view.updateRemoteImageActions(
+            sources: remoteImageSources,
+            downloadOne: onDownloadRemoteImage,
+            downloadAll: onDownloadAllRemoteImages
         )
         guard let document = PDFDocument(data: data) else { return }
         view.display(document, data: data, revision: revision)
@@ -152,10 +191,16 @@ public struct PDFPreviewView: NSViewRepresentable {
     @MainActor
     public final class Coordinator: NSObject {
         var openURL: (URL) -> Void
+        var onDownloadRemoteImage: (String) -> Void
         var onDragError: (Error) -> Void
 
-        init(openURL: @escaping (URL) -> Void, onDragError: @escaping (Error) -> Void) {
+        init(
+            openURL: @escaping (URL) -> Void,
+            onDownloadRemoteImage: @escaping (String) -> Void = { _ in },
+            onDragError: @escaping (Error) -> Void
+        ) {
             self.openURL = openURL
+            self.onDownloadRemoteImage = onDownloadRemoteImage
             self.onDragError = onDragError
         }
 
@@ -167,7 +212,11 @@ public struct PDFPreviewView: NSViewRepresentable {
 
 extension PDFPreviewView.Coordinator: @preconcurrency PDFViewDelegate {
     public func pdfViewWillClick(onLink sender: PDFView, with url: URL) {
-        openURL(url)
+        if let source = RemoteImageActionURL.downloadSource(from: url) {
+            onDownloadRemoteImage(source)
+        } else {
+            openURL(url)
+        }
     }
 }
 
@@ -486,6 +535,9 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
     private var dragFormat = ExportFormat.pdf
     private var dragFileName = "Untitled.pdf"
     private var dragErrorHandler: ((Error) -> Void)?
+    private var remoteImageSources: [String] = []
+    private var remoteImageDownloadHandler: ((String) -> Void)?
+    private var allRemoteImagesDownloadHandler: (() -> Void)?
     var stagingDelay: TimeInterval = 0.05
     var retirementDelay: TimeInterval = 0.1
     private(set) var activeView: PageAdvancingPDFView
@@ -807,6 +859,23 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
         }
     }
 
+    func updateRemoteImageActions(
+        sources: [String],
+        downloadOne: @escaping (String) -> Void,
+        downloadAll: @escaping () -> Void
+    ) {
+        remoteImageSources = sources
+        remoteImageDownloadHandler = downloadOne
+        allRemoteImagesDownloadHandler = downloadAll
+        previewViews.forEach {
+            $0.updateRemoteImageActions(
+                sources: sources,
+                downloadOne: downloadOne,
+                downloadAll: downloadAll
+            )
+        }
+    }
+
     private var previewViews: [PageAdvancingPDFView] {
         subviews.compactMap { $0 as? PageAdvancingPDFView }
     }
@@ -823,6 +892,13 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
                 fileName: dragFileName,
                 dataProvider: dragDataProvider,
                 onError: dragErrorHandler
+            )
+        }
+        if let remoteImageDownloadHandler, let allRemoteImagesDownloadHandler {
+            view.updateRemoteImageActions(
+                sources: remoteImageSources,
+                downloadOne: remoteImageDownloadHandler,
+                downloadAll: allRemoteImagesDownloadHandler
             )
         }
         return view
@@ -1008,6 +1084,9 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     private var dragFormat = ExportFormat.pdf
     private var dragFileName = "Untitled.pdf"
     private var dragErrorHandler: ((Error) -> Void)?
+    private var remoteImageSources: [String] = []
+    private var remoteImageDownloadHandler: ((String) -> Void)?
+    private var allRemoteImagesDownloadHandler: (() -> Void)?
     private lazy var dragFileStore = ExportDragFileStore()
     private var activeDragArtifact: ExportDragArtifact?
     private var isDraggingExport = false
@@ -1098,6 +1177,67 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         dragFileName = fileName
         dragDataProvider = dataProvider
         dragErrorHandler = onError
+    }
+
+    func updateRemoteImageActions(
+        sources: [String],
+        downloadOne: @escaping (String) -> Void,
+        downloadAll: @escaping () -> Void
+    ) {
+        remoteImageSources = sources
+        remoteImageDownloadHandler = downloadOne
+        allRemoteImagesDownloadHandler = downloadAll
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let location = convert(event.locationInWindow, from: nil)
+        guard let page = page(for: location, nearest: false) else {
+            return super.menu(for: event)
+        }
+        let pageLocation = convert(location, to: page)
+        guard let source = page.annotations.compactMap({ annotation -> String? in
+            guard annotation.bounds.contains(pageLocation), let url = annotation.url else {
+                return nil
+            }
+            return RemoteImageActionURL.downloadSource(from: url)
+        }).first else {
+            return super.menu(for: event)
+        }
+        return remoteImageContextMenu(for: source)
+    }
+
+    func remoteImageContextMenu(for source: String) -> NSMenu {
+        let menu = NSMenu()
+        let one = NSMenuItem(
+            title: "Download Image",
+            action: #selector(downloadRemoteImage(_:)),
+            keyEquivalent: ""
+        )
+        one.target = self
+        one.representedObject = source
+        one.isEnabled = remoteImageDownloadHandler != nil
+        menu.addItem(one)
+
+        let all = NSMenuItem(
+            title: "Download All Images",
+            action: #selector(downloadAllRemoteImages(_:)),
+            keyEquivalent: ""
+        )
+        all.target = self
+        all.isEnabled = !remoteImageSources.isEmpty && allRemoteImagesDownloadHandler != nil
+        menu.addItem(all)
+        return menu
+    }
+
+    @objc
+    private func downloadRemoteImage(_ sender: NSMenuItem) {
+        guard let source = sender.representedObject as? String else { return }
+        remoteImageDownloadHandler?(source)
+    }
+
+    @objc
+    private func downloadAllRemoteImages(_ sender: NSMenuItem) {
+        allRemoteImagesDownloadHandler?()
     }
 
     override func layout() {

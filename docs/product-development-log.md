@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-09-05 — User-initiated remote image caching
+
+- Made remote-image placeholders actionable in the full Mac and iPhone apps without adding automatic network access. Clicking or tapping downloads one secure image; right-clicking or touching and holding also offers **Download All Images** for the current document.
+- Store validated downloads only in Markdown Printer's disposable cache, keyed by source URL, with a 25 MB per-image limit. Cached images refresh the open preview and exports without changing the Markdown file or writing into its folder; Finder Quick Look remains offline.
+- Added recursive remote-image discovery across Markdown structure and standalone HTML `<img>` tags, deduplication, in-progress and partial-failure handling, Mac PDF action links and context menus, and native iPhone placeholder controls.
+- Added deterministic cache/downloader, renderer, session, PDF annotation, menu-routing, iPhone unit, and real-app UI coverage. Visually verified that a cached remote image replaces its placeholder inline on iPhone without disturbing nearby document or table layout.
+
 # 2026-09-05 — Stable iPhone tables and safe HTML image tags
 
 - Reworked iPhone PDF tables so every cell is wrapped to its own content-aware column before the logical row is assembled. Short columns no longer consume equal shares of the page, wrapped cells remain top-aligned, and one border encloses the complete row instead of each visual line.

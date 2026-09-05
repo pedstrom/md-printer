@@ -757,8 +757,25 @@ private struct UITestMarkdownDocumentContainer: View {
 
     init() {
         let fixture = Self.makeFixture()
+        let cacheDirectory = fixture.url.deletingLastPathComponent()
+            .appendingPathComponent("UITestRemoteImageCache", isDirectory: true)
+        try? FileManager.default.removeItem(at: cacheDirectory)
+        let cache = RemoteImageCache(directoryURL: cacheDirectory)
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 70)).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 120, height: 70))
+        }
+        let downloader = UITestRemoteImageDownloader(
+            cache: cache,
+            imageData: image.pngData() ?? Data()
+        )
         _session = StateObject(
-            wrappedValue: MobileDocumentSession(document: fixture.document, sourceURL: fixture.url)
+            wrappedValue: MobileDocumentSession(
+                document: fixture.document,
+                sourceURL: fixture.url,
+                remoteImageCache: cache,
+                remoteImageDownloader: downloader
+            )
         )
     }
 
@@ -802,6 +819,8 @@ private struct UITestMarkdownDocumentContainer: View {
 
         [Permission-gated page](permission-required.md) exercises explicit Files authorization.
 
+        ![Network artwork](https://example.com/image.png)
+
         - [x] Render Markdown
         - [ ] Inspect PDF
 
@@ -818,14 +837,26 @@ private struct UITestMarkdownDocumentContainer: View {
 
         A note reference[^viewer].
 
-        ![Network artwork](https://example.com/image.png)
-
         [^viewer]: Footnotes remain searchable and printable.
         """
         try? Data(markdown.utf8).write(to: sourceURL, options: .atomic)
         let document = (try? MarkdownDocument.load(from: sourceURL))
             ?? MarkdownDocument(title: "fixture", markdown: markdown)
         return (document, sourceURL)
+    }
+}
+
+private actor UITestRemoteImageDownloader: RemoteImageDownloading {
+    let cache: RemoteImageCache
+    let imageData: Data
+
+    init(cache: RemoteImageCache, imageData: Data) {
+        self.cache = cache
+        self.imageData = imageData
+    }
+
+    func download(source: String) async throws -> URL {
+        try cache.store(imageData, for: source)
     }
 }
 

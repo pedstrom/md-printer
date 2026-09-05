@@ -28,7 +28,7 @@ Apple's per-file cloud badges and download progress remain the source of truth f
 
 When a Markdown link points to another local file, the app may ask once for access to the containing folder. The permission is stored only on the device and can be removed by deleting the app.
 
-Remote images are intentionally not downloaded. Keep image files beside the Markdown document, or in a linked local folder the app can access.
+Remote images begin as readable placeholders. Tap a placeholder to download that image, or touch and hold it and choose **Download All Images** to fetch every missing remote image in the document. Downloaded images stay in Markdown Printer's disposable app cache; the app never writes them beside the Markdown file. Secure HTTPS images are supported, and iOS may remove cached copies when it needs space.
 
 ## Get help
 

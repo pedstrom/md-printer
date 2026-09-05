@@ -27,13 +27,17 @@ public final class MobileDocumentSession: ObservableObject {
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var permissionRequest: MobileDocumentPermissionRequest?
     @Published public private(set) var revision: UInt64 = 0
+    @Published public private(set) var remoteImageRevision: UInt64 = 0
+    @Published public private(set) var downloadingRemoteImageSources = Set<String>()
 
     public var title: String { presentation?.title ?? sourceURL?.lastPathComponent ?? "Markdown Printer" }
+    public let remoteImageCache: RemoteImageCache
 
     private let presenter: MobileMarkdownPresenter
     private let loader: MobileDocumentLoader
     private let directoryAccessStore: MobileDirectoryAccessStore
     private let pdfProvider: @MainActor (MarkdownDocument) async throws -> Data
+    private let remoteImageDownloader: any RemoteImageDownloading
     private var securityLease: SecurityScopedResourceLease?
     private var cachedPDF: (revision: UInt64, data: Data)?
     private var pdfTask: Task<Data, Error>?
@@ -44,12 +48,20 @@ public final class MobileDocumentSession: ObservableObject {
         presenter: MobileMarkdownPresenter = MobileMarkdownPresenter(),
         loader: MobileDocumentLoader = MobileDocumentLoader(),
         directoryAccessStore: MobileDirectoryAccessStore = .shared,
-        pdfConfiguration: MobilePDFConfiguration = .letter
+        pdfConfiguration: MobilePDFConfiguration = .letter,
+        remoteImageCache: RemoteImageCache = .applicationDefault,
+        remoteImageDownloader: (any RemoteImageDownloading)? = nil
     ) {
         self.presenter = presenter
         self.loader = loader
         self.directoryAccessStore = directoryAccessStore
-        let exporter = MobilePDFExporter(configuration: pdfConfiguration)
+        self.remoteImageCache = remoteImageCache
+        self.remoteImageDownloader = remoteImageDownloader
+            ?? RemoteImageDownloader(cache: remoteImageCache)
+        let exporter = MobilePDFExporter(
+            configuration: pdfConfiguration,
+            remoteImageCache: remoteImageCache
+        )
         self.pdfProvider = { document in
             try await exporter.pdfData(for: document)
         }
@@ -64,11 +76,16 @@ public final class MobileDocumentSession: ObservableObject {
         presenter: MobileMarkdownPresenter = MobileMarkdownPresenter(),
         loader: MobileDocumentLoader = MobileDocumentLoader(),
         directoryAccessStore: MobileDirectoryAccessStore = .shared,
+        remoteImageCache: RemoteImageCache = .applicationDefault,
+        remoteImageDownloader: (any RemoteImageDownloading)? = nil,
         pdfProvider: @escaping @MainActor (MarkdownDocument) async throws -> Data
     ) {
         self.presenter = presenter
         self.loader = loader
         self.directoryAccessStore = directoryAccessStore
+        self.remoteImageCache = remoteImageCache
+        self.remoteImageDownloader = remoteImageDownloader
+            ?? RemoteImageDownloader(cache: remoteImageCache)
         self.pdfProvider = pdfProvider
         if let document {
             apply(document, sourceURL: sourceURL ?? document.sourceURL)
@@ -124,6 +141,16 @@ public final class MobileDocumentSession: ObservableObject {
         permissionRequest = nil
     }
 
+    public var remoteImageReferences: [RemoteImageReference] {
+        document.map(RemoteImageCatalog.references) ?? []
+    }
+
+    public var uncachedRemoteImageSources: [String] {
+        remoteImageReferences
+            .map(\.source)
+            .filter { remoteImageCache.cachedFileURL(for: $0) == nil }
+    }
+
     public func authorizeDirectory(_ directoryURL: URL) throws {
         guard let permissionRequest else {
             throw MobileDirectoryAccessError.noPendingRequest
@@ -170,6 +197,65 @@ public final class MobileDocumentSession: ObservableObject {
         pdfTask?.cancel()
         pdfTask = nil
         if pdfState == .preparing { pdfState = .idle }
+    }
+
+    public func downloadRemoteImage(source: String) async {
+        guard remoteImageReferences.contains(where: { $0.source == source }),
+              remoteImageCache.cachedFileURL(for: source) == nil,
+              !downloadingRemoteImageSources.contains(source) else {
+            return
+        }
+        errorMessage = nil
+        downloadingRemoteImageSources.insert(source)
+        defer { downloadingRemoteImageSources.remove(source) }
+        do {
+            _ = try await remoteImageDownloader.download(source: source)
+            remoteImageDidChange()
+        } catch is CancellationError {
+            return
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    public func downloadAllRemoteImages() async {
+        let sources = uncachedRemoteImageSources.filter {
+            !downloadingRemoteImageSources.contains($0)
+        }
+        guard !sources.isEmpty else { return }
+        errorMessage = nil
+        downloadingRemoteImageSources.formUnion(sources)
+        let downloader = remoteImageDownloader
+        let failures = await withTaskGroup(of: Bool.self, returning: Int.self) { group in
+            for source in sources {
+                group.addTask {
+                    do {
+                        _ = try await downloader.download(source: source)
+                        return false
+                    } catch {
+                        return true
+                    }
+                }
+            }
+            var failures = 0
+            for await failed in group where failed { failures += 1 }
+            return failures
+        }
+        downloadingRemoteImageSources.subtract(sources)
+        if failures < sources.count { remoteImageDidChange() }
+        if failures > 0 {
+            errorMessage = failures == 1
+                ? "One remote image could not be downloaded."
+                : "\(failures) remote images could not be downloaded."
+        }
+    }
+
+    private func remoteImageDidChange() {
+        cancelPDFGeneration()
+        cachedPDF = nil
+        pdfState = .idle
+        revision &+= 1
+        remoteImageRevision &+= 1
     }
 
     public func clearError() {

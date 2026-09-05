@@ -40,6 +40,11 @@ struct MarkdownViewerView: View {
                     presentation: presentation,
                     selectedMatch: selectedMatch,
                     requestedAnchor: requestedAnchor,
+                    remoteImageCache: session.remoteImageCache,
+                    remoteImageRevision: session.remoteImageRevision,
+                    downloadingRemoteImageSources: session.downloadingRemoteImageSources,
+                    onDownloadRemoteImage: downloadRemoteImage,
+                    onDownloadAllRemoteImages: downloadAllRemoteImages,
                     onOpenURL: open,
                     onTapBackground: toggleToolbars
                 )
@@ -242,6 +247,10 @@ struct MarkdownViewerView: View {
     }
 
     private func open(_ url: URL) {
+        if let source = RemoteImageActionURL.downloadSource(from: url) {
+            downloadRemoteImage(source)
+            return
+        }
         if case let .definition(label)? = MobileFootnoteLink.target(from: url) {
             requestedAnchor = "footnote-\(label)"
             return
@@ -251,6 +260,14 @@ struct MarkdownViewerView: View {
             return
         }
         UIApplication.shared.open(url)
+    }
+
+    private func downloadRemoteImage(_ source: String) {
+        Task { await session.downloadRemoteImage(source: source) }
+    }
+
+    private func downloadAllRemoteImages() {
+        Task { await session.downloadAllRemoteImages() }
     }
 
     private func sharePDF() {

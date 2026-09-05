@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import MarkdownPrinterCore
 import UIKit
 
 public enum MobileImagePlaceholderReason: String, Equatable, Sendable {
@@ -24,9 +25,19 @@ public enum MobileImageResolution: Equatable, Sendable {
 }
 
 public struct MobileImageResolver: Sendable {
-    public init() {}
+    public let remoteImageCache: RemoteImageCache?
+
+    public init(remoteImageCache: RemoteImageCache? = nil) {
+        self.remoteImageCache = remoteImageCache
+    }
 
     public func resolve(source: String, relativeTo baseURL: URL?) -> MobileImageResolution {
+        if RemoteImageReference.remoteURL(from: source) != nil {
+            guard let cachedURL = remoteImageCache?.cachedFileURL(for: source) else {
+                return .placeholder(.remote)
+            }
+            return .local(cachedURL)
+        }
         let decoded = source.removingPercentEncoding ?? source
         if let candidate = URL(string: decoded),
            let scheme = candidate.scheme?.lowercased(),

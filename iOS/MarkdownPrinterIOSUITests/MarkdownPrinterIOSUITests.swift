@@ -285,6 +285,29 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(code.waitForExistence(timeout: 3))
     }
 
+    func testRemoteImagePlaceholderOffersSingleAndAllDownloadsThenDisplaysCachedImage() {
+        let placeholder = app.buttons["Tap to download: Network artwork"]
+        for _ in 0..<8 where !placeholder.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(placeholder.waitForExistence(timeout: 3))
+
+        placeholder.press(forDuration: 0.8)
+        XCTAssertTrue(app.buttons["Download Image"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Download All Images"].exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.1)).tap()
+
+        XCTAssertTrue(placeholder.waitForExistence(timeout: 2))
+        placeholder.tap()
+        XCTAssertTrue(app.images["Network artwork"].waitForExistence(timeout: 5))
+        XCTAssertFalse(placeholder.exists)
+
+        let loaded = XCTAttachment(screenshot: app.screenshot())
+        loaded.name = "Downloaded remote image from app cache"
+        loaded.lifetime = .keepAlways
+        add(loaded)
+    }
+
     func testUnreadableLinkedDocumentShowsRecoverableErrorState() {
         let link = app.links["Missing linked file"]
         XCTAssertTrue(link.waitForExistence(timeout: 4))

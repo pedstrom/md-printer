@@ -406,11 +406,115 @@ final class DocumentSessionTests: XCTestCase {
         XCTAssertEqual(session.document?.sourceModificationDate, newerDate)
     }
 
+    func testRemoteImageDownloadsRefreshPreviewAndDownloadAllUsesOnlyUncachedSources() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DocumentSessionRemoteImages-\(UUID().uuidString)", isDirectory: true)
+        let cache = RemoteImageCache(directoryURL: directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let downloader = TestRemoteImageDownloader(cache: cache, imageData: try makeTestPNG())
+        let session = DocumentSession(
+            remoteImageCache: cache,
+            remoteImageDownloader: downloader
+        )
+        let first = "https://example.com/one.png"
+        let second = "https://example.com/two.png"
+        try session.apply(MarkdownDocument(title: "Remote", markdown: """
+        ![One](\(first))
+
+        <img src="\(second)" alt="Two">
+        """))
+        let initialRevision = try XCTUnwrap(session.renderedSnapshot?.revision)
+        XCTAssertEqual(session.uncachedRemoteImageSources, [first, second])
+        XCTAssertTrue(session.renderedText.string.contains("click to download"))
+
+        await session.downloadRemoteImage(source: "https://example.com/not-in-document.png")
+        let requestsBeforeDownload = await downloader.requestedSources()
+        XCTAssertEqual(requestsBeforeDownload, [])
+        await session.downloadRemoteImage(source: first)
+        XCTAssertGreaterThan(try XCTUnwrap(session.renderedSnapshot?.revision), initialRevision)
+        XCTAssertNotNil(cache.cachedFileURL(for: first))
+        XCTAssertEqual(session.uncachedRemoteImageSources, [second])
+
+        await session.downloadRemoteImage(source: first)
+        await session.downloadAllRemoteImages()
+        let requestedSources = await downloader.requestedSources()
+        XCTAssertEqual(requestedSources, [first, second])
+        XCTAssertTrue(session.uncachedRemoteImageSources.isEmpty)
+        XCTAssertFalse(session.renderedText.string.contains("click to download"))
+        XCTAssertNil(session.errorMessage)
+    }
+
+    func testDownloadAllKeepsSuccessfulImagesAndReportsFailures() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DocumentSessionRemoteFailures-\(UUID().uuidString)", isDirectory: true)
+        let cache = RemoteImageCache(directoryURL: directory)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let failedSource = "https://example.com/fail.png"
+        let successfulSource = "https://example.com/succeed.png"
+        let downloader = TestRemoteImageDownloader(
+            cache: cache,
+            imageData: try makeTestPNG(),
+            failingSources: [failedSource]
+        )
+        let session = DocumentSession(
+            remoteImageCache: cache,
+            remoteImageDownloader: downloader
+        )
+        try session.apply(MarkdownDocument(
+            title: "Remote",
+            markdown: "![Fail](\(failedSource))\n\n![Succeed](\(successfulSource))"
+        ))
+
+        await session.downloadAllRemoteImages()
+
+        XCTAssertNil(cache.cachedFileURL(for: failedSource))
+        XCTAssertNotNil(cache.cachedFileURL(for: successfulSource))
+        XCTAssertEqual(session.errorMessage, "One remote image could not be downloaded.")
+        XCTAssertTrue(session.downloadingRemoteImageSources.isEmpty)
+    }
+
+    private func makeTestPNG() throws -> Data {
+        let image = NSImage(size: NSSize(width: 18, height: 12))
+        image.lockFocus()
+        NSColor.systemPurple.setFill()
+        NSBezierPath(rect: NSRect(origin: .zero, size: image.size)).fill()
+        image.unlockFocus()
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
+        return try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+    }
+
 }
 
 private enum TestError: LocalizedError {
     case example
     var errorDescription: String? { "Example failure" }
+}
+
+private actor TestRemoteImageDownloader: RemoteImageDownloading {
+    let cache: RemoteImageCache
+    let imageData: Data
+    let failingSources: Set<String>
+    private var sources: [String] = []
+
+    init(
+        cache: RemoteImageCache,
+        imageData: Data,
+        failingSources: Set<String> = []
+    ) {
+        self.cache = cache
+        self.imageData = imageData
+        self.failingSources = failingSources
+    }
+
+    func download(source: String) async throws -> URL {
+        sources.append(source)
+        if failingSources.contains(source) { throw TestError.example }
+        return try cache.store(imageData, for: source)
+    }
+
+    func requestedSources() -> [String] {
+        sources
+    }
 }
 
 @MainActor

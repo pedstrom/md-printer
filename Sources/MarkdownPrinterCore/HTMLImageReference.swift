@@ -3,7 +3,8 @@ import Foundation
 /// A deliberately narrow HTML extension for image tags.
 ///
 /// Markdown Printer keeps arbitrary HTML inert, but routes a standalone `<img>`
-/// tag through the same local-only image pipeline as Markdown image syntax.
+/// tag through the same image pipeline as Markdown image syntax. Remote sources
+/// remain inert unless a full-app session explicitly offers a user action.
 public struct HTMLImageReference: Equatable, Sendable {
     public let source: String
     public let alternativeText: String
