@@ -1,5 +1,11 @@
 # Product Development Log
 
+# 2026-09-05 — Stable iPhone tables and safe HTML image tags
+
+- Reworked iPhone PDF tables so every cell is wrapped to its own content-aware column before the logical row is assembled. Short columns no longer consume equal shares of the page, wrapped cells remain top-aligned, and one border encloses the complete row instead of each visual line.
+- Recognize a standalone HTML `<img>` tag in block or inline Markdown and route it through the same image pipeline on Mac and iPhone. Local images render inline, the optional HTML `width` is honored, and remote images remain offline as readable placeholders rather than appearing as raw markup; all other HTML stays inert.
+- Added Mac renderer and iPhone PDF regression coverage for HTML image tags, requested image widths, remote-image safety, wrapped table alignment, row advancement, and column alignment, then visually inspected native Mac and iPhone-generated PDFs.
+
 ## 2026-09-04 — Cancellable iPhone document opening
 
 - Kept the filename and a top-left **Back** action visible from the first frame of the iPhone opening screen, including while iCloud or another file provider is still downloading the selected document.

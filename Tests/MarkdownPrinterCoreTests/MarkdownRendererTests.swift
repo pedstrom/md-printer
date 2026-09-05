@@ -325,9 +325,11 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertNotNil(output.attribute(.attachment, at: 0, effectiveRange: nil))
     }
 
-    func testReferenceAutolinkAndRawHTMLRenderingIsLinkedOrLiteralAsAppropriate() throws {
+    func testReferenceAutolinkRawHTMLAndHTMLImageRenderingAreHandledSafely() throws {
         let output = renderer.render(markdown: """
         [Guide][guide] and <reader@example.com>. Raw <span data-x="1">text</span>.
+
+        <div data-x="2">Literal block HTML</div>
 
         <img src="https://example.com/never-fetch.png">
 
@@ -339,12 +341,14 @@ final class MarkdownRendererTests: XCTestCase {
         assertAttribute(.backgroundColor, text: "<span data-x=\"1\">", in: output)
 
         let rawLinkRange = (output.string as NSString).range(of: "<span data-x=\"1\">")
-        let rawBlockRange = (output.string as NSString).range(of: "<img src=\"https://example.com/never-fetch.png\">")
+        let rawBlockRange = (output.string as NSString).range(of: "<div data-x=\"2\">")
         XCTAssertNil(output.attribute(.link, at: rawLinkRange.location, effectiveRange: nil))
         XCTAssertNil(output.attribute(.attachment, at: rawLinkRange.location, effectiveRange: nil))
         XCTAssertFalse((0..<output.length).contains {
             output.attribute(.attachment, at: $0, effectiveRange: nil) != nil
         })
+        XCTAssertFalse(output.string.contains("<img"))
+        XCTAssertTrue(output.string.contains("[Image: https://example.com/never-fetch.png]"))
         let rawFont = try XCTUnwrap(
             output.attribute(.font, at: rawLinkRange.location, effectiveRange: nil) as? NSFont
         )
@@ -353,7 +357,34 @@ final class MarkdownRendererTests: XCTestCase {
             output.attribute(.paragraphStyle, at: rawBlockRange.location, effectiveRange: nil)
                 as? NSParagraphStyle
         )
-        XCTAssertEqual(rawBlockParagraph.textBlocks.first?.backgroundColor, renderer.configuration.codeBackgroundColor)
+        XCTAssertEqual(
+            rawBlockParagraph.textBlocks.first?.backgroundColor,
+            renderer.configuration.codeBackgroundColor
+        )
+    }
+
+    func testLocalHTMLImageTagUsesRequestedWidthForBlockAndTableImages() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let imageURL = directory.appendingPathComponent("reference.png")
+        try makePNG(size: NSSize(width: 160, height: 80)).write(to: imageURL)
+
+        let output = renderer.render(markdown: """
+        <img src="reference.png" alt="Block" width="80">
+
+        | Image |
+        | --- |
+        | <img alt='Table' src='reference.png' width='60px'> |
+        """, baseURL: directory)
+        let attachments = (0..<output.length).compactMap {
+            output.attribute(.attachment, at: $0, effectiveRange: nil) as? NSTextAttachment
+        }
+
+        XCTAssertEqual(attachments.count, 2)
+        XCTAssertEqual(attachments[0].bounds.size, NSSize(width: 80, height: 40))
+        XCTAssertEqual(attachments[1].bounds.size, NSSize(width: 60, height: 30))
+        XCTAssertFalse(output.string.contains("<img"))
     }
 
     func testMissingRemoteAndAbsoluteImagesBecomePlaceholders() {

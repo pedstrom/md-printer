@@ -4,8 +4,7 @@ import MarkdownPrinterCore
 import UIKit
 
 extension NSAttributedString.Key {
-    static let mobileTableColumnCount = NSAttributedString.Key("MarkdownPrinterMobileTableColumnCount")
-    static let mobileTableHeader = NSAttributedString.Key("MarkdownPrinterMobileTableHeader")
+    static let mobileTableRow = NSAttributedString.Key("MarkdownPrinterMobileTableRow")
     static let mobileQuote = NSAttributedString.Key("MarkdownPrinterMobileQuote")
     static let mobileThematicBreak = NSAttributedString.Key("MarkdownPrinterMobileThematicBreak")
     static let mobileFootnoteReference = NSAttributedString.Key("MarkdownPrinterMobileFootnoteReference")
@@ -131,7 +130,7 @@ final class MobilePrintRenderer {
                 baseURL: baseURL,
                 footnoteNumbers: footnoteNumbers
             )
-        case let .codeBlock(_, code), let .rawHTML(code):
+        case let .codeBlock(_, code):
             let style = paragraph(
                 leftIndent: configuration.codeBlockPadding,
                 firstLineIndent: configuration.codeBlockPadding,
@@ -143,6 +142,39 @@ final class MobilePrintRenderer {
             result.append(
                 NSAttributedString(
                     string: code + (code.hasSuffix("\n") ? "" : "\n"),
+                    attributes: [
+                        .font: UIFont.monospacedSystemFont(ofSize: 8.5, weight: .regular),
+                        .foregroundColor: UIColor.black,
+                        .backgroundColor: UIColor(white: 0.94, alpha: 1),
+                        .paragraphStyle: style
+                    ]
+                )
+            )
+        case let .rawHTML(source):
+            if let reference = HTMLImageReference(html: source) {
+                let rendered = NSMutableAttributedString(attributedString: image(
+                    source: reference.source,
+                    alt: reference.alternativeText,
+                    baseURL: baseURL,
+                    font: font(.regular, size: configuration.bodyFontSize),
+                    maximumWidth: reference.requestedWidth.map { CGFloat($0) }
+                ))
+                rendered.addAttribute(.paragraphStyle, value: paragraph(), range: rendered.fullRange)
+                result.append(rendered)
+                result.append(NSAttributedString(string: "\n"))
+                break
+            }
+            let style = paragraph(
+                leftIndent: configuration.codeBlockPadding,
+                firstLineIndent: configuration.codeBlockPadding,
+                rightIndent: configuration.codeBlockPadding,
+                spacingBefore: 3,
+                spacingAfter: 8,
+                lineSpacing: 1
+            )
+            result.append(
+                NSAttributedString(
+                    string: source + (source.hasSuffix("\n") ? "" : "\n"),
                     attributes: [
                         .font: UIFont.monospacedSystemFont(ofSize: 8.5, weight: .regular),
                         .foregroundColor: UIColor.black,
@@ -266,10 +298,11 @@ final class MobilePrintRenderer {
     ) {
         let allRows = [headers] + rows
         let columnCount = max(1, allRows.map(\.count).max() ?? 1)
-        let columnWidth = configuration.contentWidth / CGFloat(columnCount)
+        let columnWidths = tableColumnWidths(for: allRows, columnCount: columnCount)
         let tabs = (0..<columnCount).map { index in
             let alignment = alignments[safe: index] ?? .leading
-            let leading = CGFloat(index) * columnWidth
+            let leading = columnWidths.prefix(index).reduce(0, +)
+            let columnWidth = columnWidths[index]
             let location: CGFloat
             switch alignment {
             case .leading:
@@ -282,50 +315,141 @@ final class MobilePrintRenderer {
             return NSTextTab(textAlignment: textAlignment(for: alignment), location: location)
         }
         for (rowIndex, row) in allRows.enumerated() {
-            let line = NSMutableAttributedString(string: "")
-            for column in 0..<columnCount {
-                line.append(NSAttributedString(string: "\t"))
+            let cells = (0..<columnCount).map { column -> [NSAttributedString] in
                 let cell = column < row.count ? row[column] : []
-                line.append(
-                    inline(
-                        cell,
-                        font: font(rowIndex == 0 ? .demiBold : .regular, size: 8.5),
-                        baseURL: baseURL,
-                        footnoteNumbers: footnoteNumbers
-                    )
+                let rendered = inline(
+                    cell,
+                    font: font(rowIndex == 0 ? .demiBold : .regular, size: 8.5),
+                    baseURL: baseURL,
+                    footnoteNumbers: footnoteNumbers,
+                    maximumImageWidth: columnWidths[column] - 8
                 )
+                return wrappedLines(in: rendered, width: columnWidths[column] - 8)
             }
             let style = paragraph(
                 spacingAfter: 0,
                 lineSpacing: 1,
                 tabStops: tabs
             )
-            line.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style]))
-            line.addAttributes(
-                [
-                    .paragraphStyle: style,
-                    .mobileTableColumnCount: columnCount,
-                    .mobileTableHeader: rowIndex == 0
-                ],
-                range: line.fullRange
-            )
-            if rowIndex == 0 {
-                line.addAttribute(
-                    .backgroundColor,
-                    value: UIColor(white: 0.94, alpha: 1),
-                    range: line.fullRange
-                )
+            let rowStart = result.length
+            let visualLineCount = max(1, cells.map(\.count).max() ?? 1)
+            for visualLine in 0..<visualLineCount {
+                let line = NSMutableAttributedString(string: "")
+                for column in 0..<columnCount {
+                    line.append(NSAttributedString(string: "\t"))
+                    if visualLine < cells[column].count {
+                        line.append(cells[column][visualLine])
+                    }
+                }
+                line.append(NSAttributedString(string: "\n"))
+                line.addAttribute(.paragraphStyle, value: style, range: line.fullRange)
+                result.append(line)
             }
-            result.append(line)
+            result.addAttribute(
+                .mobileTableRow,
+                value: MobileTableRowDecoration(
+                    columnWidths: columnWidths,
+                    isHeader: rowIndex == 0
+                ),
+                range: NSRange(location: rowStart, length: result.length - rowStart)
+            )
         }
         result.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: paragraph(spacingAfter: 2)]))
+    }
+
+    private func tableColumnWidths(
+        for rows: [[[InlineNode]]],
+        columnCount: Int
+    ) -> [CGFloat] {
+        let minimumFraction = min(0.22, 0.54 / CGFloat(columnCount))
+        let flexibleFraction = max(0, 1 - minimumFraction * CGFloat(columnCount))
+        var demands = Array(repeating: CGFloat(1), count: columnCount)
+
+        for (rowIndex, row) in rows.enumerated() {
+            for column in 0..<min(row.count, columnCount) {
+                let cellFont = font(rowIndex == 0 ? .demiBold : .regular, size: 8.5)
+                let text = plainText(from: row[column]) as NSString
+                let measuredWidth = text.size(withAttributes: [.font: cellFont]).width + 8
+                demands[column] = max(
+                    demands[column],
+                    min(measuredWidth, configuration.contentWidth * 2)
+                )
+            }
+        }
+
+        let totalDemand = demands.reduce(0, +)
+        return demands.map { demand in
+            (minimumFraction + flexibleFraction * demand / totalDemand) * configuration.contentWidth
+        }
+    }
+
+    private func plainText(from nodes: [InlineNode]) -> String {
+        nodes.map { node in
+            switch node {
+            case let .text(text), let .code(text):
+                return text
+            case let .rawHTML(source):
+                return HTMLImageReference(html: source)?.alternativeText ?? source
+            case let .emphasis(children), let .strong(children), let .underline(children),
+                 let .strikethrough(children), let .link(children, _, _):
+                return plainText(from: children)
+            case let .footnoteReference(label):
+                return label
+            case let .image(alt, _, _):
+                return alt
+            case .softBreak, .hardBreak:
+                return " "
+            }
+        }.joined()
+    }
+
+    private func wrappedLines(
+        in attributed: NSAttributedString,
+        width: CGFloat
+    ) -> [NSAttributedString] {
+        guard attributed.length > 0 else { return [NSAttributedString(string: "")] }
+        let textStorage = NSTextStorage(attributedString: attributed)
+        let layoutManager = NSLayoutManager()
+        let container = NSTextContainer(
+            size: CGSize(width: max(1, width), height: .greatestFiniteMagnitude)
+        )
+        container.lineFragmentPadding = 0
+        layoutManager.addTextContainer(container)
+        textStorage.addLayoutManager(layoutManager)
+        layoutManager.ensureLayout(for: container)
+
+        let glyphs = layoutManager.glyphRange(for: container)
+        var lines: [NSAttributedString] = []
+        var glyphIndex = glyphs.location
+        while glyphIndex < NSMaxRange(glyphs) {
+            var lineGlyphs = NSRange()
+            layoutManager.lineFragmentUsedRect(
+                forGlyphAt: glyphIndex,
+                effectiveRange: &lineGlyphs,
+                withoutAdditionalLayout: true
+            )
+            let characters = layoutManager.characterRange(
+                forGlyphRange: lineGlyphs,
+                actualGlyphRange: nil
+            )
+            let line = NSMutableAttributedString(
+                attributedString: attributed.attributedSubstring(from: characters)
+            )
+            while line.string.last == "\n" {
+                line.deleteCharacters(in: NSRange(location: line.length - 1, length: 1))
+            }
+            lines.append(line)
+            glyphIndex = NSMaxRange(lineGlyphs)
+        }
+        return lines.isEmpty ? [attributed] : lines
     }
 
     private func inline(
         _ nodes: [InlineNode],
         font baseFont: UIFont,
         baseURL: URL?,
-        footnoteNumbers: [String: Int]
+        footnoteNumbers: [String: Int],
+        maximumImageWidth: CGFloat? = nil
     ) -> NSMutableAttributedString {
         let result = NSMutableAttributedString(string: "")
         for node in nodes {
@@ -333,15 +457,39 @@ final class MobilePrintRenderer {
             case let .text(text):
                 result.append(NSAttributedString(string: text, attributes: attributes(font: baseFont)))
             case let .emphasis(children):
-                result.append(inline(children, font: variant(of: baseFont, italic: true), baseURL: baseURL, footnoteNumbers: footnoteNumbers))
+                result.append(inline(
+                    children,
+                    font: variant(of: baseFont, italic: true),
+                    baseURL: baseURL,
+                    footnoteNumbers: footnoteNumbers,
+                    maximumImageWidth: maximumImageWidth
+                ))
             case let .strong(children):
-                result.append(inline(children, font: variant(of: baseFont, bold: true), baseURL: baseURL, footnoteNumbers: footnoteNumbers))
+                result.append(inline(
+                    children,
+                    font: variant(of: baseFont, bold: true),
+                    baseURL: baseURL,
+                    footnoteNumbers: footnoteNumbers,
+                    maximumImageWidth: maximumImageWidth
+                ))
             case let .underline(children):
-                let child = inline(children, font: baseFont, baseURL: baseURL, footnoteNumbers: footnoteNumbers)
+                let child = inline(
+                    children,
+                    font: baseFont,
+                    baseURL: baseURL,
+                    footnoteNumbers: footnoteNumbers,
+                    maximumImageWidth: maximumImageWidth
+                )
                 child.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: child.fullRange)
                 result.append(child)
             case let .strikethrough(children):
-                let child = inline(children, font: baseFont, baseURL: baseURL, footnoteNumbers: footnoteNumbers)
+                let child = inline(
+                    children,
+                    font: baseFont,
+                    baseURL: baseURL,
+                    footnoteNumbers: footnoteNumbers,
+                    maximumImageWidth: maximumImageWidth
+                )
                 child.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: child.fullRange)
                 result.append(child)
             case let .code(code):
@@ -356,7 +504,13 @@ final class MobilePrintRenderer {
                     )
                 )
             case let .link(children, destination, _):
-                let child = inline(children, font: baseFont, baseURL: baseURL, footnoteNumbers: footnoteNumbers)
+                let child = inline(
+                    children,
+                    font: baseFont,
+                    baseURL: baseURL,
+                    footnoteNumbers: footnoteNumbers,
+                    maximumImageWidth: maximumImageWidth
+                )
                 if let url = MarkdownLinkTarget.resolvedURL(for: destination, relativeTo: baseURL) {
                     child.addAttributes(
                         [.link: url, .foregroundColor: UIColor.systemBlue, .underlineStyle: NSUnderlineStyle.single.rawValue],
@@ -378,18 +532,37 @@ final class MobilePrintRenderer {
                 )
                 result.append(reference)
             case let .image(alt, source, _):
-                result.append(image(source: source, alt: alt, baseURL: baseURL, font: baseFont))
+                result.append(image(
+                    source: source,
+                    alt: alt,
+                    baseURL: baseURL,
+                    font: baseFont,
+                    maximumWidth: maximumImageWidth
+                ))
             case let .rawHTML(source):
-                result.append(
-                    NSAttributedString(
-                        string: source,
-                        attributes: [
-                            .font: UIFont.monospacedSystemFont(ofSize: max(7, baseFont.pointSize * 0.9), weight: .regular),
-                            .foregroundColor: UIColor.black,
-                            .backgroundColor: UIColor(white: 0.94, alpha: 1)
-                        ]
+                if let reference = HTMLImageReference(html: source) {
+                    result.append(image(
+                        source: reference.source,
+                        alt: reference.alternativeText,
+                        baseURL: baseURL,
+                        font: baseFont,
+                        maximumWidth: min(
+                            maximumImageWidth ?? .greatestFiniteMagnitude,
+                            reference.requestedWidth.map { CGFloat($0) } ?? .greatestFiniteMagnitude
+                        )
+                    ))
+                } else {
+                    result.append(
+                        NSAttributedString(
+                            string: source,
+                            attributes: [
+                                .font: UIFont.monospacedSystemFont(ofSize: max(7, baseFont.pointSize * 0.9), weight: .regular),
+                                .foregroundColor: UIColor.black,
+                                .backgroundColor: UIColor(white: 0.94, alpha: 1)
+                            ]
+                        )
                     )
-                )
+                }
             case .softBreak:
                 result.append(NSAttributedString(string: "\n", attributes: attributes(font: baseFont)))
             case .hardBreak:
@@ -399,13 +572,19 @@ final class MobilePrintRenderer {
         return result
     }
 
-    private func image(source: String, alt: String, baseURL: URL?, font: UIFont) -> NSAttributedString {
+    private func image(
+        source: String,
+        alt: String,
+        baseURL: URL?,
+        font: UIFont,
+        maximumWidth: CGFloat? = nil
+    ) -> NSAttributedString {
         switch imageResolver.resolve(source: source, relativeTo: baseURL) {
         case let .local(url):
             guard let data = try? Data(contentsOf: url), let image = UIImage(data: data) else {
                 return placeholder(alt: alt, reason: .inaccessible, font: font)
             }
-            let maximumWidth = configuration.contentWidth
+            let maximumWidth = min(configuration.contentWidth, maximumWidth ?? .greatestFiniteMagnitude)
             let scale = min(1, maximumWidth / max(1, image.size.width))
             let attachment = NSTextAttachment()
             attachment.image = image
@@ -515,6 +694,16 @@ final class MobilePrintRenderer {
         case .center: return .center
         case .trailing: return .right
         }
+    }
+}
+
+final class MobileTableRowDecoration: NSObject {
+    let columnWidths: [CGFloat]
+    let isHeader: Bool
+
+    init(columnWidths: [CGFloat], isHeader: Bool) {
+        self.columnWidths = columnWidths
+        self.isHeader = isHeader
     }
 }
 

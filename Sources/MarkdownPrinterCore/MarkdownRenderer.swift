@@ -165,6 +165,23 @@ public final class MarkdownRenderer {
             ))
 
         case let .rawHTML(source):
+            if let reference = HTMLImageReference(html: source) {
+                let rendered = NSMutableAttributedString(attributedString: imageAttachment(
+                    alt: reference.alternativeText,
+                    source: reference.source,
+                    baseURL: baseURL,
+                    font: fonts.regular(size: configuration.bodyFontSize),
+                    requestedWidth: reference.requestedWidth.map { CGFloat($0) }
+                ))
+                rendered.addAttribute(
+                    NSAttributedString.Key.paragraphStyle,
+                    value: paragraphStyle(),
+                    range: rendered.fullRange
+                )
+                result.append(rendered)
+                result.append(NSAttributedString(string: "\n"))
+                break
+            }
             let block = NSTextBlock()
             block.setContentWidth(100, type: .percentageValueType)
             block.setWidth(configuration.codeBlockPadding, type: .absoluteValueType, for: .padding)
@@ -418,14 +435,24 @@ public final class MarkdownRenderer {
             case let .image(alt, source, _):
                 result.append(imageAttachment(alt: alt, source: source, baseURL: baseURL, font: font))
             case let .rawHTML(source):
-                result.append(NSAttributedString(
-                    string: source,
-                    attributes: [
-                        .font: fonts.monospaced(size: font.pointSize - 0.5),
-                        .foregroundColor: configuration.textColor,
-                        .backgroundColor: configuration.codeBackgroundColor
-                    ]
-                ))
+                if let reference = HTMLImageReference(html: source) {
+                    result.append(imageAttachment(
+                        alt: reference.alternativeText,
+                        source: reference.source,
+                        baseURL: baseURL,
+                        font: font,
+                        requestedWidth: reference.requestedWidth.map { CGFloat($0) }
+                    ))
+                } else {
+                    result.append(NSAttributedString(
+                        string: source,
+                        attributes: [
+                            .font: fonts.monospaced(size: font.pointSize - 0.5),
+                            .foregroundColor: configuration.textColor,
+                            .backgroundColor: configuration.codeBackgroundColor
+                        ]
+                    ))
+                }
             case .softBreak, .hardBreak:
                 result.append(NSAttributedString(string: "\n", attributes: bodyAttributes(font: font)))
             }
@@ -444,7 +471,13 @@ public final class MarkdownRenderer {
         return resolvedURL
     }
 
-    private func imageAttachment(alt: String, source: String, baseURL: URL?, font: NSFont) -> NSAttributedString {
+    private func imageAttachment(
+        alt: String,
+        source: String,
+        baseURL: URL?,
+        font: NSFont,
+        requestedWidth: CGFloat? = nil
+    ) -> NSAttributedString {
         guard let url = imageURL(source: source, baseURL: baseURL),
               let image = NSImage(contentsOf: url), image.size.width > 0, image.size.height > 0 else {
             return NSAttributedString(
@@ -456,7 +489,10 @@ public final class MarkdownRenderer {
             )
         }
 
-        let maximumWidth = min(configuration.maximumImageWidth, configuration.contentWidth)
+        let maximumWidth = min(
+            min(configuration.maximumImageWidth, configuration.contentWidth),
+            requestedWidth ?? .greatestFiniteMagnitude
+        )
         let scale = min(1, maximumWidth / image.size.width)
         let attachment = NSTextAttachment()
         attachment.image = image

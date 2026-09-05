@@ -216,7 +216,8 @@ final class WordExporterTests: XCTestCase {
         XCTAssertFalse(relationshipsXML.contains("never-fetch.png"))
         XCTAssertTrue(documentXML.contains("&lt;a href="))
         XCTAssertTrue(documentXML.contains("https://example.com/inert"))
-        XCTAssertTrue(documentXML.contains("&lt;img src="))
+        XCTAssertFalse(documentXML.contains("&lt;img src="))
+        XCTAssertTrue(documentXML.contains("[Image: https://example.com/never-fetch.png]"))
         XCTAssertTrue(documentXML.contains("https://example.com/never-fetch.png"))
     }
 

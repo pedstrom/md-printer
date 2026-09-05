@@ -214,11 +214,11 @@ public struct MobilePDFExporter: Sendable {
         }
 
         textStorage.enumerateAttribute(
-            .mobileTableColumnCount,
+            .mobileTableRow,
             in: characterRange,
-            options: [.longestEffectiveRangeNotRequired]
+            options: []
         ) { value, range, _ in
-            guard let columnCount = value as? Int, columnCount > 0 else { return }
+            guard let row = value as? MobileTableRowDecoration, !row.columnWidths.isEmpty else { return }
             let rect = decorationRect(
                 forCharacterRange: range,
                 layoutManager: layoutManager,
@@ -231,12 +231,17 @@ public struct MobilePDFExporter: Sendable {
                 width: configuration.contentWidth,
                 height: max(12, rect.height)
             )
+            if row.isHeader {
+                UIColor(white: 0.94, alpha: 1).setFill()
+                context.fill(rowRect)
+            }
             UIColor(white: 0.72, alpha: 1).setStroke()
             let path = UIBezierPath(rect: rowRect)
             path.lineWidth = 0.5
             path.stroke()
-            for column in 1..<columnCount {
-                let x = rowRect.minX + rowRect.width * CGFloat(column) / CGFloat(columnCount)
+            var x = rowRect.minX
+            for columnWidth in row.columnWidths.dropLast() {
+                x += columnWidth
                 let divider = UIBezierPath()
                 divider.move(to: CGPoint(x: x, y: rowRect.minY))
                 divider.addLine(to: CGPoint(x: x, y: rowRect.maxY))

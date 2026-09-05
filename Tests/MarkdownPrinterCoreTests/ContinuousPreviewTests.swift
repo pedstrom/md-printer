@@ -149,7 +149,7 @@ final class ContinuousPreviewRenderingTests: XCTestCase {
         )
     }
 
-    func testRendererSharesReferenceAutolinkEntityAndInertHTMLBehavior() throws {
+    func testRendererSharesReferenceAutolinkEntityAndSafeHTMLImageBehavior() throws {
         let markdown = """
         Quick Look title
         ================
@@ -169,7 +169,8 @@ final class ContinuousPreviewRenderingTests: XCTestCase {
 
         XCTAssertEqual(document.title, "Quick Look title")
         XCTAssertTrue(output.string.contains("Guide reader@example.com © Raw <span>source</span>."))
-        XCTAssertTrue(output.string.contains("<img src=\"https://example.com/never-fetch.png\">"))
+        XCTAssertFalse(output.string.contains("<img"))
+        XCTAssertTrue(output.string.contains("[Image: https://example.com/never-fetch.png]"))
         let guide = (output.string as NSString).range(of: "Guide")
         let email = (output.string as NSString).range(of: "reader@example.com")
         let raw = (output.string as NSString).range(of: "<span>")

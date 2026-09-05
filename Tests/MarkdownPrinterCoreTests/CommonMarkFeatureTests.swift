@@ -123,4 +123,27 @@ final class CommonMarkFeatureTests: XCTestCase {
             .text("after")
         ])
     }
+
+    func testHTMLImageReferenceAcceptsImageTagsWithoutMakingOtherHTMLActive() {
+        let image = HTMLImageReference(
+            html: "  <IMG alt='Kiel &amp; harbor' width=220px src=\"images/kiel%20harbor.jpg\" title='View'>  "
+        )
+        XCTAssertEqual(image?.source, "images/kiel%20harbor.jpg")
+        XCTAssertEqual(image?.alternativeText, "Kiel & harbor")
+        XCTAssertEqual(image?.title, "View")
+        XCTAssertEqual(image?.requestedWidth, 220)
+        let selfClosing = HTMLImageReference(
+            html: "<img src=first.png src=second.png alt disabled width='0'/>"
+        )
+        XCTAssertEqual(selfClosing?.source, "first.png")
+        XCTAssertEqual(selfClosing?.alternativeText, "")
+        XCTAssertNil(selfClosing?.requestedWidth)
+        XCTAssertNil(HTMLImageReference(html: "img src='missing-angle.png'"))
+        XCTAssertNil(HTMLImageReference(html: "<img alt='Missing source'>"))
+        XCTAssertNil(HTMLImageReference(html: "<span src='image.png'>"))
+        XCTAssertNil(HTMLImageReference(html: "<img / nope>"))
+        XCTAssertNil(HTMLImageReference(html: "<img src=>"))
+        XCTAssertNil(HTMLImageReference(html: "<img src='image.png'> trailing"))
+        XCTAssertNil(HTMLImageReference(html: "<img src='unterminated.png>"))
+    }
 }

@@ -142,8 +142,46 @@ final class MobilePDFExporterTests: XCTestCase {
         let omega = try XCTUnwrap(pdf.findString("omega", withOptions: []).first).bounds(for: page)
 
         XCTAssertEqual(alpha.minX, 58, accuracy: 2)
-        XCTAssertEqual(middle.midX, 306, accuracy: 2)
+        XCTAssertGreaterThan(middle.minX, alpha.maxX)
+        XCTAssertLessThan(middle.maxX, omega.minX)
         XCTAssertEqual(omega.maxX, 554, accuracy: 2)
+    }
+
+    func testWrappedTableCellsStayTopAlignedAndAdvanceAsOneRow() async throws {
+        let markdown = """
+        | Time | Map | Stop | What To Do |
+        | --- | ---: | --- | --- |
+        | 10:52-11:05 | 1 to 2 | Lübeck Hbf to Holstentor | Walk straight toward the old town. The station-to-gate leg is about 700 m. |
+        | 11:05-11:20 | 2 | Holstentor | Take the classic lawn-side Holstentor view. |
+
+        ## Representative Images
+
+        | Idea | Representative Image | Source |
+        | --- | --- | --- |
+        | Kiellinie waterfront | <img src="https://commons.wikimedia.org/wiki/Special:FilePath/Kiellinie%2C%20Kiel.jpg" alt="Kiellinie waterfront in Kiel" width="220"> | [Wiki](https://commons.wikimedia.org/) |
+        """
+        let data = try await MobilePDFExporter().pdfData(
+            for: MarkdownDocument(title: "Wrapped Table", markdown: markdown)
+        )
+        let pdf = try XCTUnwrap(PDFDocument(data: data))
+        let page = try XCTUnwrap(pdf.page(at: 0))
+        let time = try XCTUnwrap(pdf.findString("10:52-11:05", withOptions: []).first).bounds(for: page)
+        let stop = try XCTUnwrap(pdf.findString("Lübeck Hbf", withOptions: []).first).bounds(for: page)
+        let action = try XCTUnwrap(pdf.findString("Walk straight", withOptions: []).first).bounds(for: page)
+        let finalLine = try XCTUnwrap(pdf.findString("about 700 m.", withOptions: []).first).bounds(for: page)
+        let nextRow = try XCTUnwrap(pdf.findString("11:05-11:20", withOptions: []).first).bounds(for: page)
+
+        XCTAssertEqual(time.midY, stop.midY, accuracy: 2)
+        XCTAssertEqual(time.midY, action.midY, accuracy: 2)
+        XCTAssertLessThan(nextRow.maxY, finalLine.minY)
+        XCTAssertFalse(pdfText(pdf).contains("<img"))
+        XCTAssertFalse(pdf.findString("Remote", withOptions: []).isEmpty)
+        XCTAssertFalse(pdf.findString("loaded", withOptions: []).isEmpty)
+
+        let documentsURL = try XCTUnwrap(
+            FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        )
+        try data.write(to: documentsURL.appendingPathComponent("mobile-table-images.pdf"), options: .atomic)
     }
 
     func testLocalImageRendersWhileRemoteMissingAndCorruptImagesUseReadablePlaceholders() async throws {
@@ -182,6 +220,35 @@ final class MobilePDFExporterTests: XCTestCase {
         XCTAssertTrue(text.contains("Image could not be displayed: Broken diagram"))
         XCTAssertTrue(text.contains("Image unavailable from this file provider: Unavailable diagram"))
         XCTAssertTrue(text.contains("Remote image not loaded: Remote diagram"))
+    }
+
+    func testHTMLImageTagsUseTheLocalOnlyImagePipelineInsteadOfPrintingMarkup() throws {
+        let imageURL = directory.appendingPathComponent("local.png")
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 80, height: 40)).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 80, height: 40))
+        }
+        try XCTUnwrap(image.pngData()).write(to: imageURL)
+        let sourceURL = directory.appendingPathComponent("HTML Images.md")
+        let markdown = """
+        <img src="local.png" alt="Local HTML" width="32">
+
+        | Idea | Representative Image |
+        | --- | --- |
+        | Harbor | <img src="https://example.com/harbor.jpg" alt="Remote harbor" width="220"> |
+        """
+        try Data(markdown.utf8).write(to: sourceURL)
+        let attributed = try MobilePrintRenderer(configuration: .letter).render(
+            document: try MarkdownDocument.load(from: sourceURL)
+        )
+        let attachments = (0..<attributed.length).compactMap {
+            attributed.attribute(.attachment, at: $0, effectiveRange: nil) as? NSTextAttachment
+        }
+
+        XCTAssertEqual(attachments.count, 1)
+        XCTAssertEqual(attachments[0].bounds.size, CGSize(width: 32, height: 16))
+        XCTAssertTrue(attributed.string.contains("Remote image not loaded: Remote harbor"))
+        XCTAssertFalse(attributed.string.contains("<img"))
     }
 
     func testEmptyDocumentStillProducesOneValidPage() async throws {
