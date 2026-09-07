@@ -3,6 +3,32 @@ import UIKit
 import MarkdownPrinterCore
 @testable import MarkdownPrinterMobileSupport
 
+private final class SaveTrackingFilePresenter: NSObject, NSFilePresenter {
+    let presentedItemURL: URL?
+    let presentedItemOperationQueue: OperationQueue
+
+    private let lock = NSLock()
+    private let onSave: () -> Void
+    private var saveRequestCountStorage = 0
+
+    init(url: URL, onSave: @escaping () -> Void) {
+        presentedItemURL = url
+        presentedItemOperationQueue = OperationQueue()
+        presentedItemOperationQueue.maxConcurrentOperationCount = 1
+        self.onSave = onSave
+    }
+
+    var saveRequestCount: Int {
+        lock.withLock { saveRequestCountStorage }
+    }
+
+    func savePresentedItemChanges(completionHandler: @escaping (Error?) -> Void) {
+        lock.withLock { saveRequestCountStorage += 1 }
+        onSave()
+        completionHandler(nil)
+    }
+}
+
 @MainActor
 final class MobileDocumentAccessTests: XCTestCase {
     private enum TestError: Error {
@@ -165,6 +191,44 @@ final class MobileDocumentAccessTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? MobileDocumentAccessError, .unsupportedTextEncoding)
         }
+    }
+
+    func testLoaderReadDoesNotRequestPresenterSaveOrChangeSourceDates() async throws {
+        let sourceURL = directory.appendingPathComponent("read-only.md")
+        let originalData = Data("# Read Only\n\nOriginal bytes.".utf8)
+        try originalData.write(to: sourceURL)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date(timeIntervalSince1970: 1_600_000_000)],
+            ofItemAtPath: sourceURL.path
+        )
+        let before = try sourceURL.resourceValues(
+            forKeys: [.creationDateKey, .contentModificationDateKey]
+        )
+        XCTAssertNotNil(before.creationDate)
+        XCTAssertNotNil(before.contentModificationDate)
+
+        let presenter = SaveTrackingFilePresenter(url: sourceURL) {
+            try? FileManager.default.setAttributes(
+                [.modificationDate: Date(timeIntervalSince1970: 1_700_000_000)],
+                ofItemAtPath: sourceURL.path
+            )
+        }
+        NSFileCoordinator.addFilePresenter(presenter)
+        defer { NSFileCoordinator.removeFilePresenter(presenter) }
+
+        let document = try await MobileDocumentLoader().load(at: sourceURL)
+        var refreshedSourceURL = sourceURL
+        refreshedSourceURL.removeAllCachedResourceValues()
+        let after = try refreshedSourceURL.resourceValues(
+            forKeys: [.creationDateKey, .contentModificationDateKey]
+        )
+
+        XCTAssertEqual(document.markdown, String(decoding: originalData, as: UTF8.self))
+        XCTAssertEqual(document.sourceModificationDate, before.contentModificationDate)
+        XCTAssertEqual(try Data(contentsOf: sourceURL), originalData)
+        XCTAssertEqual(presenter.saveRequestCount, 0)
+        XCTAssertEqual(after.creationDate, before.creationDate)
+        XCTAssertEqual(after.contentModificationDate, before.contentModificationDate)
     }
 
     func testCancellingLoaderPropagatesToTheFileReadTask() async throws {

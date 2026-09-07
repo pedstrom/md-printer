@@ -13,6 +13,8 @@ The filename in the top bar identifies the open document. Manage the source Mark
 
 If iCloud or another file provider needs time to download a selected document, the opening screen keeps a **Back** button available immediately. Going back returns to the document browser and cancels Markdown Printer's pending read; it does not remove or change the source file.
 
+Markdown Printer opens the selected Markdown as a read-only viewer and does not ask other apps to save it before reading. Opening, viewing, searching, and generating a PDF do not write the source file. iCloud and other File Providers may still update download, synchronization, last-used, or access metadata while making a cloud-only file available, and an imported copy has its own creation metadata.
+
 ## iCloud status
 
 The document browser immediately shows files that iOS already has available, then checks iCloud without blocking browsing. The compact message above the browser means:

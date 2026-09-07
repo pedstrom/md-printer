@@ -319,7 +319,12 @@ public struct MobileDocumentLoader: Sendable {
         var coordinationError: NSError?
         var result: Result<Data, Error>?
         let coordinator = NSFileCoordinator()
-        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) {
+        // This app is a viewer; reading must not ask another presenter to save first.
+        coordinator.coordinate(
+            readingItemAt: url,
+            options: [.withoutChanges],
+            error: &coordinationError
+        ) {
             coordinatedURL in
             result = Result { try Data(contentsOf: coordinatedURL, options: [.mappedIfSafe]) }
         }

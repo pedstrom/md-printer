@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-09-07 — Read-only iPhone source coordination
+
+- Marked coordinated iPhone Markdown reads as **without changes**, so opening or refreshing a document no longer asks another registered file presenter to save before Markdown Printer reads it.
+- Added a deterministic presenter-backed regression proving that a read does not request a save and preserves the selected file's bytes, creation date, and content-modification date on the local filesystem.
+- Kept the guarantee scoped honestly: iCloud and other File Providers may still materialize a cloud-only file, reconcile provider metadata, update last-used or access metadata, or create a separately dated imported copy.
+
 ## 2026-09-05 — User-initiated remote image caching
 
 - Made remote-image placeholders actionable in the full Mac and iPhone apps without adding automatic network access. Clicking or tapping downloads one secure image; right-clicking or touching and holding also offers **Download All Images** for the current document.
