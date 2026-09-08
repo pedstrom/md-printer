@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-09-08 — Direct iPhone viewing controls and handoff
+
+- Removed the document-browser sample action, placed the icon-only PDF share action beside the filename, and made the bottom Find field visible with the viewing bars while keeping its keyboard and result controls dormant until the field receives focus.
+- Made a rightward back swipe from the main viewer perform the same browser return as the visible Back button, while preserving linked-document swipe navigation.
+- Made files sent to Markdown Printer dismiss and replace an already open document immediately instead of waiting for the user to return to the browser.
+- Made secure remote images load automatically in the full iPhone viewer and remain readable placeholders when unavailable; the disposable-cache boundary remains unchanged and Finder Quick Look stays offline.
+
 ## 2026-09-07 — Read-only iPhone source coordination
 
 - Marked coordinated iPhone Markdown reads as **without changes**, so opening or refreshing a document no longer asks another registered file presenter to save before Markdown Printer reads it.

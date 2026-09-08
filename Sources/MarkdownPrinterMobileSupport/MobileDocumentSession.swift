@@ -27,6 +27,7 @@ public final class MobileDocumentSession: ObservableObject {
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var permissionRequest: MobileDocumentPermissionRequest?
     @Published public private(set) var revision: UInt64 = 0
+    @Published public private(set) var documentRevision: UInt64 = 0
     @Published public private(set) var remoteImageRevision: UInt64 = 0
     @Published public private(set) var downloadingRemoteImageSources = Set<String>()
 
@@ -132,6 +133,7 @@ public final class MobileDocumentSession: ObservableObject {
             blocks: document.blocks
         )
         revision &+= 1
+        documentRevision &+= 1
         self.document = resolvedDocument
         self.sourceURL = resolvedURL
         presentation = presenter.prepare(document: resolvedDocument)
@@ -219,6 +221,14 @@ public final class MobileDocumentSession: ObservableObject {
     }
 
     public func downloadAllRemoteImages() async {
+        await downloadAllRemoteImages(reportFailures: true)
+    }
+
+    public func loadRemoteImagesIfAvailable() async {
+        await downloadAllRemoteImages(reportFailures: false)
+    }
+
+    private func downloadAllRemoteImages(reportFailures: Bool) async {
         let sources = uncachedRemoteImageSources.filter {
             !downloadingRemoteImageSources.contains($0)
         }
@@ -243,7 +253,7 @@ public final class MobileDocumentSession: ObservableObject {
         }
         downloadingRemoteImageSources.subtract(sources)
         if failures < sources.count { remoteImageDidChange() }
-        if failures > 0 {
+        if reportFailures && failures > 0 {
             errorMessage = failures == 1
                 ? "One remote image could not be downloaded."
                 : "\(failures) remote images could not be downloaded."

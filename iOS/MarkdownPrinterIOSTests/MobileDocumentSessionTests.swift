@@ -21,6 +21,7 @@ final class MobileDocumentSessionTests: XCTestCase {
         XCTAssertEqual(session.presentation?.blocks.count, 2)
         XCTAssertEqual(session.sourceURL, url)
         XCTAssertEqual(session.revision, 1)
+        XCTAssertEqual(session.documentRevision, 1)
         XCTAssertEqual(session.pdfState, .idle)
     }
 
@@ -234,6 +235,7 @@ final class MobileDocumentSessionTests: XCTestCase {
         )
         _ = try await session.pdfData()
         let initialRevision = session.revision
+        let initialDocumentRevision = session.documentRevision
         XCTAssertEqual(session.uncachedRemoteImageSources, [first, second])
 
         await session.downloadRemoteImage(source: "https://example.com/not-present.png")
@@ -241,6 +243,7 @@ final class MobileDocumentSessionTests: XCTestCase {
         XCTAssertEqual(requestsBeforeDownload, [])
         await session.downloadRemoteImage(source: first)
         XCTAssertGreaterThan(session.revision, initialRevision)
+        XCTAssertEqual(session.documentRevision, initialDocumentRevision)
         XCTAssertEqual(session.remoteImageRevision, 1)
         XCTAssertEqual(session.pdfState, .idle)
         XCTAssertNotNil(cache.cachedFileURL(for: first))
@@ -278,6 +281,11 @@ final class MobileDocumentSessionTests: XCTestCase {
             remoteImageDownloader: downloader,
             pdfProvider: { _ in Data() }
         )
+
+        await session.loadRemoteImagesIfAvailable()
+        XCTAssertNil(session.errorMessage)
+        let automaticRequests = await downloader.requestedSources()
+        XCTAssertEqual(automaticRequests, [first, second])
 
         await session.downloadRemoteImage(source: first)
         XCTAssertEqual(session.errorMessage, "Test remote image failure.")

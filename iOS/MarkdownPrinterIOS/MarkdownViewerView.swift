@@ -11,7 +11,6 @@ struct MarkdownViewerView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var toolbarsVisible = true
-    @State private var searchPresented = false
     @State private var searchOptions = MarkdownSearchOptions()
     @State private var selectedMatchIndex = 0
     @State private var requestedAnchor: String?
@@ -19,6 +18,7 @@ struct MarkdownViewerView: View {
     @State private var shareItems: [Any] = []
     @State private var sharedTemporaryURL: URL?
     @State private var actionError: String?
+    @FocusState private var searchFieldFocused: Bool
 
     private var matches: [MarkdownSearchMatch] {
         session.presentation?.searchIndex.matches(for: searchOptions) ?? []
@@ -31,6 +31,10 @@ struct MarkdownViewerView: View {
 
     private var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains("-ui-testing")
+    }
+
+    private var backSwipeAction: (() -> Void)? {
+        onNavigateBack ?? onClose
     }
 
     var body: some View {
@@ -57,19 +61,15 @@ struct MarkdownViewerView: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
-        .overlay(alignment: .leading) {
-            if let onNavigateBack {
-                MobileBackSwipeEdgeView(edge: .leading, onNavigateBack: onNavigateBack)
-            }
-        }
+        .simultaneousGesture(leadingBackSwipeGesture)
         .overlay(alignment: .trailing) {
-            if let onNavigateBack {
-                MobileBackSwipeEdgeView(edge: .trailing, onNavigateBack: onNavigateBack)
+            if let backSwipeAction {
+                MobileBackSwipeEdgeView(edge: .trailing, onNavigateBack: backSwipeAction)
             }
         }
         .navigationTitle(session.sourceURL?.lastPathComponent ?? session.title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(toolbarsVisible || searchPresented ? .visible : .hidden, for: .navigationBar)
+        .toolbar(toolbarsVisible ? .visible : .hidden, for: .navigationBar)
         .toolbar {
             if let onClose {
                 ToolbarItem(placement: .topBarLeading) {
@@ -77,18 +77,19 @@ struct MarkdownViewerView: View {
                         .accessibilityIdentifier("browser-back-button")
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: sharePDF) {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share PDF")
+                .accessibilityIdentifier("share-pdf-button")
+            }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if toolbarsVisible || searchPresented {
-                HStack(spacing: 14) {
-                    if searchPresented {
-                        searchToolbar
-                    } else {
-                        viewingToolbar
-                    }
-                }
-                .padding(.horizontal, 18)
-                .frame(minHeight: 50)
+            if toolbarsVisible {
+                searchBar
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
                 .background(.bar)
                 .overlay(alignment: .top) {
                     Divider()
@@ -96,29 +97,16 @@ struct MarkdownViewerView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .modifier(
-            MarkdownSearchPresentationModifier(
-                query: $searchOptions.query,
-                isPresented: $searchPresented
-            )
-        )
         .onSubmit(of: .search) { selectNextMatch() }
         .onChange(of: searchOptions.query) { _, _ in resetSearchSelection() }
         .onChange(of: searchOptions.matchCase) { _, _ in resetSearchSelection() }
         .onChange(of: searchOptions.wholeWord) { _, _ in resetSearchSelection() }
-        .onChange(of: searchPresented) { _, presented in
-            if presented {
-                toolbarsVisible = true
-                resetSearchSelection()
-            } else {
-                searchOptions.query = ""
-                selectedMatchIndex = 0
-                requestedAnchor = nil
-            }
-        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await session.refreshIfChanged() }
+        }
+        .task(id: session.documentRevision) {
+            await session.loadRemoteImagesIfAvailable()
         }
         .sheet(isPresented: $showingShare, onDismiss: cleanUpSharedFile) {
             if isUITesting {
@@ -150,63 +138,74 @@ struct MarkdownViewerView: View {
             }
         }
         .onDisappear {
+            searchFieldFocused = false
             session.cancelPDFGeneration()
             cleanUpSharedFile()
         }
     }
 
     @ViewBuilder
-    private var viewingToolbar: some View {
-        Button {
-            searchPresented = true
-        } label: {
-            AdaptiveToolbarLabel("Find", systemImage: "magnifyingglass")
-        }
-        .accessibilityIdentifier("search-button")
+    private var searchBar: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField("Find in Markdown", text: $searchOptions.query)
+                    .focused($searchFieldFocused)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                    .accessibilityIdentifier("find-field")
+                if !searchOptions.query.isEmpty {
+                    Button {
+                        searchOptions.query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(minHeight: 36)
+            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
 
-        Spacer()
+            if searchFieldFocused {
+                HStack(spacing: 18) {
+                    Menu {
+                        Toggle("Match Case", isOn: $searchOptions.matchCase)
+                        Toggle("Whole Word", isOn: $searchOptions.wholeWord)
+                    } label: {
+                        Image(systemName: "textformat")
+                    }
+                    .accessibilityLabel("Search options")
 
-        Button {
-            sharePDF()
-        } label: {
-            AdaptiveToolbarLabel("Share PDF", systemImage: "square.and.arrow.up")
-        }
-        .accessibilityIdentifier("share-pdf-button")
-    }
+                    Text(matchSummary)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
 
-    @ViewBuilder
-    private var searchToolbar: some View {
-        Menu {
-            Toggle("Match Case", isOn: $searchOptions.matchCase)
-            Toggle("Whole Word", isOn: $searchOptions.wholeWord)
-        } label: {
-            Image(systemName: "textformat")
-        }
-        .accessibilityLabel("Search options")
+                    Spacer()
 
-        Text(matchSummary)
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
-            .frame(minWidth: 58)
-            .lineLimit(1)
-            .minimumScaleFactor(0.7)
+                    Button(action: selectPreviousMatch) {
+                        Image(systemName: "chevron.up")
+                    }
+                    .disabled(matches.isEmpty)
+                    .accessibilityLabel("Previous result")
 
-        Spacer()
+                    Button(action: selectNextMatch) {
+                        Image(systemName: "chevron.down")
+                    }
+                    .disabled(matches.isEmpty)
+                    .accessibilityLabel("Next result")
 
-        Button(action: selectPreviousMatch) {
-            Image(systemName: "chevron.up")
-        }
-        .disabled(matches.isEmpty)
-        .accessibilityLabel("Previous result")
-
-        Button(action: selectNextMatch) {
-            Image(systemName: "chevron.down")
-        }
-        .disabled(matches.isEmpty)
-        .accessibilityLabel("Next result")
-
-        Button { searchPresented = false } label: {
-            AdaptiveToolbarLabel("Done", systemImage: "xmark.circle")
+                    Button("Done") {
+                        searchFieldFocused = false
+                    }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
     }
 
@@ -216,6 +215,23 @@ struct MarkdownViewerView: View {
         return "\(selectedMatchIndex + 1) of \(matches.count)"
     }
 
+    private var leadingBackSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 14)
+            .onEnded { value in
+                guard value.startLocation.x <= 30 else { return }
+                let predicted = value.predictedEndTranslation
+                let travel = abs(predicted.width) > abs(value.translation.width)
+                    ? predicted
+                    : value.translation
+                guard MobileBackSwipePolicy.shouldNavigateBack(
+                    from: .leading,
+                    horizontalTravel: travel.width,
+                    verticalTravel: travel.height
+                ) else { return }
+                backSwipeAction?()
+            }
+    }
+
     private var pdfFilename: String {
         let source = session.sourceURL?.deletingPathExtension().lastPathComponent ?? session.title
         let sanitized = source.replacingOccurrences(of: "/", with: "-")
@@ -223,7 +239,10 @@ struct MarkdownViewerView: View {
     }
 
     private func toggleToolbars() {
-        guard !searchPresented else { return }
+        if searchFieldFocused {
+            searchFieldFocused = false
+            return
+        }
         withAnimation(.easeInOut(duration: 0.18)) {
             toolbarsVisible.toggle()
         }
@@ -328,25 +347,6 @@ private struct ShareSheetTestView: View {
     }
 }
 
-private struct MarkdownSearchPresentationModifier: ViewModifier {
-    @Binding var query: String
-    @Binding var isPresented: Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if isPresented {
-            content.searchable(
-                text: $query,
-                isPresented: $isPresented,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Find in Markdown"
-            )
-        } else {
-            content
-        }
-    }
-}
-
 private struct MobileBackSwipeEdgeView: View {
     let edge: MobileBackSwipeEdge
     let onNavigateBack: () -> Void
@@ -372,29 +372,6 @@ private struct MobileBackSwipeEdgeView: View {
             )
             .padding(.vertical, 56)
             .accessibilityHidden(true)
-    }
-}
-
-private struct AdaptiveToolbarLabel: View {
-    let title: String
-    let systemImage: String
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    init(_ title: String, systemImage: String) {
-        self.title = title
-        self.systemImage = systemImage
-    }
-
-    var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                Image(systemName: systemImage)
-                    .font(.title3)
-            } else {
-                Label(title, systemImage: systemImage)
-            }
-        }
-        .accessibilityLabel(title)
     }
 }
 

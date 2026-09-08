@@ -394,7 +394,7 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
             guard let coordinator, let controller else { return }
             coordinator.documentBrowserDidAppear(controller)
         }
-        context.coordinator.installStoreReadinessItems(on: controller)
+        context.coordinator.installBrowserItems(on: controller)
         return controller
     }
 
@@ -420,6 +420,11 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
         ) -> Void
         typealias DocumentPresenter = (URL, UIDocumentBrowserViewController) -> Void
         typealias RevealReadiness = @MainActor (UIDocumentBrowserViewController) -> Bool
+        typealias PresentedContentCheck = @MainActor (UIDocumentBrowserViewController) -> Bool
+        typealias PresentedContentDismisser = @MainActor (
+            UIDocumentBrowserViewController,
+            @escaping () -> Void
+        ) -> Void
 
         private struct PendingIncomingDocument {
             let document: MobileIncomingDocument
@@ -431,9 +436,12 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
         private var activeIncomingDocumentID: UUID?
         private var lastHandledIncomingDocumentID: UUID?
         private var pendingIncomingDocument: PendingIncomingDocument?
+        private var dismissingForIncomingDocumentID: UUID?
         private let revealDocument: DocumentRevealer
         private let presentRevealedDocument: DocumentPresenter?
         private let isReadyToReveal: RevealReadiness
+        private let hasPresentedContent: PresentedContentCheck
+        private let dismissPresentedContent: PresentedContentDismisser
 
         override convenience init() {
             self.init(
@@ -452,26 +460,25 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
             presentRevealedDocument: DocumentPresenter? = nil,
             isReadyToReveal: @escaping RevealReadiness = {
                 $0.viewIfLoaded?.window != nil
+            },
+            hasPresentedContent: @escaping PresentedContentCheck = {
+                $0.presentedViewController != nil
+            },
+            dismissPresentedContent: @escaping PresentedContentDismisser = {
+                controller,
+                completion in
+                controller.dismiss(animated: false, completion: completion)
             }
         ) {
             self.revealDocument = revealDocument
             self.presentRevealedDocument = presentRevealedDocument
             self.isReadyToReveal = isReadyToReveal
+            self.hasPresentedContent = hasPresentedContent
+            self.dismissPresentedContent = dismissPresentedContent
             super.init()
         }
 
-        func installStoreReadinessItems(on controller: UIDocumentBrowserViewController) {
-            let sampleButton = UIBarButtonItem(
-                title: "Sample",
-                style: .plain,
-                target: self,
-                action: #selector(openSample)
-            )
-            sampleButton.tintColor = .systemBlue
-            sampleButton.accessibilityLabel = "Open Markdown Printer sample"
-            sampleButton.accessibilityIdentifier = "open-sample-button"
-            controller.additionalLeadingNavigationBarButtonItems = [sampleButton]
-
+        func installBrowserItems(on controller: UIDocumentBrowserViewController) {
             let informationButton = UIBarButtonItem(
                 image: UIImage(systemName: "info.circle"),
                 style: .plain,
@@ -506,6 +513,21 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
                 document: document,
                 onHandled: onHandled
             )
+
+            if hasPresentedContent(controller) {
+                guard dismissingForIncomingDocumentID != document.id else { return }
+                dismissingForIncomingDocumentID = document.id
+                dismissPresentedContent(controller) { [weak self, weak controller] in
+                    guard let self, let controller else { return }
+                    self.dismissingForIncomingDocumentID = nil
+                    self.openIncomingDocumentIfNeeded(
+                        document,
+                        from: controller,
+                        onHandled: onHandled
+                    )
+                }
+                return
+            }
             guard isReadyToReveal(controller) else { return }
 
             pendingIncomingDocument = nil
@@ -528,11 +550,7 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
                 }
             }
 
-            if controller.presentedViewController == nil {
-                reveal()
-            } else {
-                controller.dismiss(animated: false, completion: reveal)
-            }
+            reveal()
         }
 
         func documentBrowserDidAppear(_ controller: UIDocumentBrowserViewController) {
@@ -543,16 +561,6 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
                 from: controller,
                 onHandled: pendingIncomingDocument.onHandled
             )
-        }
-
-        @objc private func openSample() {
-            guard let controller else { return }
-            do {
-                let url = try AppStoreSampleDocument.ensureExists()
-                presentDocument(at: url, from: controller)
-            } catch {
-                presentError(error, from: controller, title: "Couldn’t Open Sample")
-            }
         }
 
         @objc private func showInformation() {
@@ -596,20 +604,6 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
             onHandled(document.id)
         }
 
-        private func presentError(
-            _ error: Error,
-            from controller: UIViewController,
-            title: String
-        ) {
-            let alert = UIAlertController(
-                title: title,
-                message: error.localizedDescription,
-                preferredStyle: .alert
-            )
-            alert.addAction(UIAlertAction(title: "OK", style: .cancel))
-            controller.present(alert, animated: true)
-        }
-
         func documentBrowser(
             _ controller: UIDocumentBrowserViewController,
             failedToImportDocumentAt documentURL: URL,
@@ -623,54 +617,6 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
             alert.addAction(UIAlertAction(title: "OK", style: .cancel))
             controller.present(alert, animated: true)
         }
-    }
-}
-
-enum AppStoreSampleDocument {
-    static let filename = "Markdown Printer Sample.md"
-    static let markdown = """
-    # Welcome to Markdown Printer
-
-    This local sample gives you something useful to open immediately. Markdown Printer reads files in place and does not upload their contents.
-
-    ## A quick tour
-
-    - **Formatted Markdown** with headings, lists, links, and tables
-    - [x] Search the document
-    - [ ] Share, save, or print its PDF from one system sheet
-
-    | Output | Behavior |
-    | :--- | :--- |
-    | Preview | Continuous and selectable |
-    | PDF | Searchable and paginated |
-
-    > Your original Markdown remains unchanged.
-
-    ```swift
-    let document = "local and private"
-    ```
-
-    Use **Find** and **Share PDF** in the bottom toolbar. Manage the source file in Files, where you can also delete this sample whenever you like.
-    """
-
-    static func ensureExists() throws -> URL {
-        guard let directory = FileManager.default.urls(
-            for: .documentDirectory,
-            in: .userDomainMask
-        ).first else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-        return try ensureExists(in: directory)
-    }
-
-    static func ensureExists(in directory: URL) throws -> URL {
-        let fileManager = FileManager.default
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(filename)
-        if !fileManager.fileExists(atPath: url.path) {
-            try Data(markdown.utf8).write(to: url, options: .atomic)
-        }
-        return url
     }
 }
 
@@ -753,6 +699,7 @@ private struct UITestOpeningDocumentContainer: View {
 
 private struct UITestMarkdownDocumentContainer: View {
     @State private var linkedDocuments: [URL] = []
+    @State private var isDocumentOpen = true
     @StateObject private var session: MobileDocumentSession
 
     init() {
@@ -780,11 +727,19 @@ private struct UITestMarkdownDocumentContainer: View {
     }
 
     var body: some View {
-        NavigationStack(path: $linkedDocuments) {
-            MarkdownViewerView(session: session, linkedDocuments: $linkedDocuments)
-                .navigationDestination(for: URL.self) { url in
-                    LinkedMarkdownDocumentView(url: url, linkedDocuments: $linkedDocuments)
-                }
+        if isDocumentOpen {
+            NavigationStack(path: $linkedDocuments) {
+                MarkdownViewerView(
+                    session: session,
+                    linkedDocuments: $linkedDocuments,
+                    onClose: { isDocumentOpen = false }
+                )
+                    .navigationDestination(for: URL.self) { url in
+                        LinkedMarkdownDocumentView(url: url, linkedDocuments: $linkedDocuments)
+                    }
+            }
+        } else {
+            Text("Returned to document browser")
         }
     }
 

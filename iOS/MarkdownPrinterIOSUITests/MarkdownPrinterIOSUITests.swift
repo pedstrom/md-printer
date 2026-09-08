@@ -11,15 +11,19 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["iPhone Viewer Fixture"].waitForExistence(timeout: 8))
     }
 
-    func testViewerUsesStaticFilenameAndFocusedFindShareToolbar() {
+    func testViewerUsesStaticFilenameTopShareIconAndBottomFindField() {
         XCTAssertTrue(app.staticTexts["fixture.md"].exists)
         XCTAssertFalse(app.buttons["document-actions-button"].exists)
         XCTAssertFalse(app.buttons["info-button"].exists)
         XCTAssertTrue(app.buttons["share-pdf-button"].exists)
-        XCTAssertTrue(app.buttons["search-button"].exists)
-        XCTAssertFalse(app.searchFields["Find in Markdown"].exists)
-        XCTAssertEqual(app.buttons["search-button"].label, "Find")
+        XCTAssertFalse(app.buttons["search-button"].exists)
+        XCTAssertTrue(app.textFields["find-field"].exists)
+        XCTAssertFalse(app.buttons["Previous result"].exists)
+        XCTAssertFalse(app.buttons["Next result"].exists)
+        XCTAssertFalse(app.buttons["Done"].exists)
+        XCTAssertEqual(app.keyboards.count, 0)
         XCTAssertEqual(app.buttons["share-pdf-button"].label, "Share PDF")
+        XCTAssertFalse(app.staticTexts["Share PDF"].exists)
         let portrait = XCTAttachment(screenshot: app.screenshot())
         portrait.name = "iPhone viewer portrait"
         portrait.lifetime = .keepAlways
@@ -27,10 +31,13 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
     }
 
     func testSearchNavigatesMatchesAndExposesOptions() {
-        app.buttons["search-button"].tap()
-        let search = app.searchFields["Find in Markdown"]
-        XCTAssertTrue(search.waitForExistence(timeout: 3))
+        let search = app.textFields["find-field"]
+        XCTAssertTrue(search.exists)
         search.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["Previous result"].exists)
+        XCTAssertTrue(app.buttons["Next result"].exists)
+        XCTAssertTrue(app.buttons["Done"].exists)
         search.typeText("EXACT SEARCH PHRASE")
         XCTAssertTrue(app.staticTexts["1 of 2"].waitForExistence(timeout: 3))
 
@@ -43,10 +50,13 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Match Case"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Whole Word"].exists)
         app.buttons["Match Case"].tap()
-        app.tap()
         XCTAssertTrue(app.staticTexts["No Results"].waitForExistence(timeout: 2))
         app.buttons["Done"].tap()
-        XCTAssertTrue(app.buttons["search-button"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["find-field"].exists)
+        XCTAssertFalse(app.buttons["Previous result"].exists)
+        XCTAssertFalse(app.buttons["Next result"].exists)
+        XCTAssertFalse(app.buttons["Done"].exists)
+        XCTAssertEqual(app.keyboards.count, 0)
     }
 
     func testSharePDFPreparesNamedPDFForSystemShare() {
@@ -57,7 +67,7 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.buttons["share-pdf-button"].waitForExistence(timeout: 3))
     }
 
-    func testFirstLaunchOffersInformationAndAWorkingSample() {
+    func testFirstLaunchOffersInformationWithoutASampleButton() {
         app.terminate()
         app = XCUIApplication()
         app.launchArguments = [
@@ -66,10 +76,9 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         ]
         app.launch()
 
-        let sampleButton = app.buttons["Open Markdown Printer sample"]
         let informationButton = app.buttons["About, privacy, and support"]
-        XCTAssertTrue(sampleButton.waitForExistence(timeout: 8))
-        XCTAssertTrue(informationButton.exists)
+        XCTAssertTrue(informationButton.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["Open Markdown Printer sample"].exists)
         XCTAssertTrue(
             app.staticTexts.matching(
                 NSPredicate(format: "label BEGINSWITH %@", "Checked for updates at ")
@@ -84,10 +93,6 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         informationButton.tap()
         XCTAssertTrue(app.navigationBars["Markdown Printer"].waitForExistence(timeout: 3))
         app.buttons["Done"].tap()
-
-        sampleButton.tap()
-        XCTAssertTrue(app.staticTexts["Welcome to Markdown Printer"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.buttons["browser-back-button"].exists)
     }
 
     func testFilesSentFromAnotherAppOpenOnColdAndWarmLaunches() throws {
@@ -98,7 +103,7 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
             "-ui-testing-cloud-status", "checked"
         ]
         app.launch()
-        XCTAssertTrue(app.buttons["Open Markdown Printer sample"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["About, privacy, and support"].waitForExistence(timeout: 8))
         app.terminate()
 
         let directory = FileManager.default.temporaryDirectory
@@ -144,7 +149,7 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(app.staticTexts["Checking iCloud…"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.buttons["Open Markdown Printer sample"].exists)
+        XCTAssertFalse(app.buttons["Open Markdown Printer sample"].exists)
         XCTAssertTrue(app.buttons["Recents"].exists)
         XCTAssertTrue(app.buttons["Browse"].exists)
 
@@ -224,6 +229,16 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["iPhone Viewer Fixture"].waitForExistence(timeout: 5))
     }
 
+    func testMainDocumentSwipeRightMatchesBrowserBackButton() {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.45))
+            .press(
+                forDuration: 0.05,
+                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.45))
+            )
+
+        XCTAssertTrue(app.staticTexts["Returned to document browser"].waitForExistence(timeout: 5))
+    }
+
     func testPermissionGatedLinkedDocumentRequestsReusableFolderAccess() {
         let link = app.links["Permission-gated page"]
         XCTAssertTrue(link.waitForExistence(timeout: 4))
@@ -246,9 +261,9 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
 
     func testReadingTapHidesAndRestoresToolbars() {
         XCTAssertTrue(app.buttons["share-pdf-button"].exists)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.45)).tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.45)).tap()
         XCTAssertFalse(app.buttons["share-pdf-button"].waitForExistence(timeout: 1))
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.45)).tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.45)).tap()
         XCTAssertTrue(app.buttons["share-pdf-button"].waitForExistence(timeout: 3))
     }
 
@@ -285,22 +300,13 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         XCTAssertTrue(code.waitForExistence(timeout: 3))
     }
 
-    func testRemoteImagePlaceholderOffersSingleAndAllDownloadsThenDisplaysCachedImage() {
-        let placeholder = app.buttons["Tap to download: Network artwork"]
-        for _ in 0..<8 where !placeholder.isHittable {
+    func testRemoteImageDisplaysAutomaticallyWhenAvailable() {
+        let loadedImage = app.images["Network artwork"]
+        for _ in 0..<8 where !loadedImage.isHittable {
             app.swipeUp()
         }
-        XCTAssertTrue(placeholder.waitForExistence(timeout: 3))
-
-        placeholder.press(forDuration: 0.8)
-        XCTAssertTrue(app.buttons["Download Image"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.buttons["Download All Images"].exists)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.1)).tap()
-
-        XCTAssertTrue(placeholder.waitForExistence(timeout: 2))
-        placeholder.tap()
-        XCTAssertTrue(app.images["Network artwork"].waitForExistence(timeout: 5))
-        XCTAssertFalse(placeholder.exists)
+        XCTAssertTrue(loadedImage.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Tap to download: Network artwork"].exists)
 
         let loaded = XCTAttachment(screenshot: app.screenshot())
         loaded.name = "Downloaded remote image from app cache"

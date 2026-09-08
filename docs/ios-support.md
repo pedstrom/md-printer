@@ -5,9 +5,8 @@ Markdown Printer opens local Markdown files and turns them into polished, search
 ## Getting started
 
 1. Open Markdown Printer and choose a `.md`, `.markdown`, `.mdown`, or `.mkd` file from Files.
-2. If you do not have a document handy, tap **Sample** in the document browser.
-3. Use **Find** in the bottom toolbar to search the open document.
-4. Use **Share PDF** to send, save, or print the generated PDF from the system share sheet.
+2. Use the **Find** field at the bottom to search the open document. The keyboard and result controls appear only after you tap the field.
+3. Use the share icon beside the filename to send, save, or print the generated PDF from the system share sheet.
 
 The filename in the top bar identifies the open document. Manage the source Markdown file in Files. About, privacy, and support remain available from the information button in the document browser.
 
@@ -30,7 +29,7 @@ Apple's per-file cloud badges and download progress remain the source of truth f
 
 When a Markdown link points to another local file, the app may ask once for access to the containing folder. The permission is stored only on the device and can be removed by deleting the app.
 
-Remote images begin as readable placeholders. Tap a placeholder to download that image, or touch and hold it and choose **Download All Images** to fetch every missing remote image in the document. Downloaded images stay in Markdown Printer's disposable app cache; the app never writes them beside the Markdown file. Secure HTTPS images are supported, and iOS may remove cached copies when it needs space.
+Secure remote images referenced by an open document load automatically. If an image is unavailable, its readable placeholder remains and can be tapped to retry. Downloaded images stay in Markdown Printer's disposable app cache; the app never writes them beside the Markdown file. iOS may remove cached copies when it needs space.
 
 ## Get help
 

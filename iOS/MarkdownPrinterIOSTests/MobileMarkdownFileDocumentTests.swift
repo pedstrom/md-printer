@@ -132,6 +132,44 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
         XCTAssertEqual(handledID, document.id)
     }
 
+    @MainActor
+    func testIncomingDocumentDismissesOpenViewerBeforeRevealingReplacement() {
+        let incomingURL = URL(fileURLWithPath: "/tmp/Replacement.md")
+        let revealedURL = URL(fileURLWithPath: "/tmp/Imported/Replacement.md")
+        let document = MobileIncomingDocument(url: incomingURL)
+        let browser = UIDocumentBrowserViewController(
+            forOpening: [MobileMarkdownFileDocument.markdownContentType]
+        )
+        var hasOpenViewer = true
+        var dismissCount = 0
+        var revealedCount = 0
+        var presentedURL: URL?
+        let coordinator = MarkdownDocumentBrowser.Coordinator(
+            revealDocument: { _, url, importIfNeeded, completion in
+                XCTAssertEqual(url, incomingURL)
+                XCTAssertTrue(importIfNeeded)
+                revealedCount += 1
+                completion(revealedURL, nil)
+            },
+            presentRevealedDocument: { url, _ in
+                presentedURL = url
+            },
+            isReadyToReveal: { _ in true },
+            hasPresentedContent: { _ in hasOpenViewer },
+            dismissPresentedContent: { _, completion in
+                dismissCount += 1
+                hasOpenViewer = false
+                completion()
+            }
+        )
+
+        coordinator.openIncomingDocumentIfNeeded(document, from: browser) { _ in }
+
+        XCTAssertEqual(dismissCount, 1)
+        XCTAssertEqual(revealedCount, 1)
+        XCTAssertEqual(presentedURL, revealedURL)
+    }
+
     func testShareStoreWritesNamedTemporaryPDF() throws {
         let data = Data("%PDF-test".utf8)
         let url = try MobilePDFShareStore.write(data: data, filename: "Shared.pdf")
@@ -139,23 +177,6 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
 
         XCTAssertEqual(url.lastPathComponent, "Shared.pdf")
         XCTAssertEqual(try Data(contentsOf: url), data)
-    }
-
-    func testStoreSampleCreatesLocalMarkdownWithoutOverwritingIt() throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MarkdownPrinterSampleTests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-
-        let firstURL = try AppStoreSampleDocument.ensureExists(in: directory)
-        XCTAssertEqual(firstURL.lastPathComponent, "Markdown Printer Sample.md")
-        XCTAssertEqual(try String(contentsOf: firstURL, encoding: .utf8), AppStoreSampleDocument.markdown)
-        XCTAssertTrue(AppStoreSampleDocument.markdown.contains("# Welcome to Markdown Printer"))
-        XCTAssertTrue(AppStoreSampleDocument.markdown.contains("does not upload"))
-
-        try Data("User-edited sample".utf8).write(to: firstURL, options: .atomic)
-        let secondURL = try AppStoreSampleDocument.ensureExists(in: directory)
-        XCTAssertEqual(secondURL, firstURL)
-        XCTAssertEqual(try String(contentsOf: secondURL, encoding: .utf8), "User-edited sample")
     }
 
     func testAppInformationUsesPublicHTTPSDestinations() {

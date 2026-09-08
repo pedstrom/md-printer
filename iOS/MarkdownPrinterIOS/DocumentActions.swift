@@ -142,13 +142,13 @@ struct MarkdownPrinterInformationView: View {
                 }
 
                 Section("Getting Started") {
-                    Text("Choose a Markdown file from Files, or tap Sample in the document browser for a ready-made tour.")
+                    Text("Choose a Markdown file from Files. Files shared to Markdown Printer replace the currently open document immediately.")
                     Text("The iCloud status above the document browser says when Markdown Printer last checked for updates. Files already available on the device remain usable while a check is slow, offline, or unsuccessful.")
-                    Text("Use Find to search the open document. Share PDF opens the system share sheet for sending, saving, or printing the generated PDF.")
+                    Text("Use the bottom Find field to search the open document. The share icon beside the filename opens the system sheet for sending, saving, or printing the generated PDF.")
                 }
 
                 Section("Privacy") {
-                    Text("Documents are processed on this iPhone. Markdown Printer does not collect analytics, track you, or upload document contents. Remote images are downloaded only after you choose to fetch them and stay in the app cache.")
+                    Text("Documents are processed on this iPhone. Markdown Printer does not collect analytics, track you, or upload document contents. Secure remote images referenced by an open document load automatically and stay in the app cache.")
                     Text("Folder permissions you grant are remembered only on this device so linked local files can open again.")
                     Link(destination: MarkdownPrinterAppInformation.privacyPolicyURL) {
                         Label("Privacy Policy", systemImage: "hand.raised")
