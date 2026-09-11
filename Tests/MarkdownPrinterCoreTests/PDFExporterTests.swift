@@ -289,6 +289,53 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertTrue(allText.contains("Row 70"))
     }
 
+    func testMultipleTableImagesRenderInsidePageMarginsWithoutExtraPages() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try makePNG(size: NSSize(width: 1000, height: 500))
+            .write(to: directory.appendingPathComponent("wide.png"))
+        let configuration = RendererConfiguration()
+        let rendered = MarkdownRenderer(configuration: configuration).render(markdown: """
+        | First | Second | Third |
+        | :--- | :---: | ---: |
+        | ![A](wide.png) | ![B](wide.png) | ![C](wide.png) |
+        | Caption one | Caption two | Caption three |
+        | ![D](wide.png)![E](wide.png) | ![F](wide.png) ![G](wide.png) | Final caption |
+
+        Text after the table.
+        """, baseURL: directory)
+        let document = try XCTUnwrap(PDFDocument(data: PDFExporter().pdfData(from: rendered)))
+        XCTAssertEqual(document.pageCount, 1, "Cell-sized images should not force unnecessary pages")
+        let page = try XCTUnwrap(document.page(at: 0))
+        for text in ["Caption one", "Caption two", "Caption three", "Final caption", "Text after the table."] {
+            XCTAssertTrue(page.string?.contains(text) == true, "Missing \(text)")
+        }
+
+        // Inspect actual PDF pixels so attachment metadata alone cannot hide clipping or overflow.
+        let thumbnail = page.thumbnail(of: configuration.pageSize, for: .mediaBox)
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(thumbnail.tiffRepresentation)))
+        let pixelsPerPoint = CGFloat(bitmap.pixelsWide) / configuration.pageSize.width
+        var bluePixelsByColumn = [0, 0, 0]
+        var minimumImageX = CGFloat.greatestFiniteMagnitude
+        var maximumImageX = CGFloat.zero
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
+                      color.blueComponent > 0.5,
+                      color.blueComponent > color.redComponent + 0.3 else { continue }
+                let pointX = CGFloat(x) / pixelsPerPoint
+                minimumImageX = min(minimumImageX, pointX)
+                maximumImageX = max(maximumImageX, pointX)
+                let column = Int((pointX - configuration.pageMargins.left) / (configuration.contentWidth / 3))
+                if (0..<3).contains(column) { bluePixelsByColumn[column] += 1 }
+            }
+        }
+        XCTAssertTrue(bluePixelsByColumn.allSatisfy { $0 > 500 }, "Every image column must be visible")
+        XCTAssertGreaterThanOrEqual(minimumImageX, configuration.pageMargins.left)
+        XCTAssertLessThanOrEqual(maximumImageX, configuration.pageSize.width - configuration.pageMargins.right)
+    }
+
     func testPDFPreservesLinkAnnotation() throws {
         let text = MarkdownRenderer().render(markdown: "[OpenAI](https://openai.com)")
         let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))

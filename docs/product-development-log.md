@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-09-11 — Table images fit the printable width
+
+- Scale Mac table images to their content-aware column width after allowing for cell padding and borders, preserving aspect ratios and existing smaller image-size limits.
+- Apply the cell limit to final attachments so Markdown, nested or linked images, HTML image tags, and cached images all fit consistently, including multiple images within one cell.
+- Added regressions for narrower pages, image headers, adjacent images, placeholders, and small images, plus a rendered-PDF pixel check for visible image columns, page margins, searchable captions, and unnecessary page breaks.
+
 ## 2026-09-11 — Platform-scoped verification
 
 - Made verification and the staged commit gate run Mac checks by default, so Mac-only fixes no longer launch iPhone simulator tests or validate iOS signing settings.

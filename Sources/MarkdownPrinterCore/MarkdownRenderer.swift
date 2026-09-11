@@ -294,6 +294,8 @@ public final class MarkdownRenderer {
 
         let allRows = [headers] + rows
         let columnWidths = tableColumnWidths(for: allRows, columnCount: columnCount)
+        let cellPadding: CGFloat = 6
+        let borderWidth: CGFloat = 0.75
         for (rowIndex, row) in allRows.enumerated() {
             for columnIndex in 0..<columnCount {
                 let nodes = columnIndex < row.count ? row[columnIndex] : []
@@ -309,9 +311,12 @@ public final class MarkdownRenderer {
                     columnSpan: 1
                 )
                 block.setContentWidth(columnWidths[columnIndex], type: .percentageValueType)
-                block.setWidth(0.75, type: .absoluteValueType, for: .border)
+                block.setWidth(borderWidth, type: .absoluteValueType, for: .border)
                 block.setBorderColor(configuration.tableBorderColor)
-                block.setWidth(6, type: .absoluteValueType, for: .padding)
+                block.setWidth(cellPadding, type: .absoluteValueType, for: .padding)
+                let imageWidth = configuration.contentWidth * columnWidths[columnIndex] / 100
+                    - 2 * (cellPadding + borderWidth)
+                fitTableImages(in: cell, maximumWidth: max(1, imageWidth))
                 if rowIndex == 0 {
                     block.backgroundColor = configuration.codeBackgroundColor
                 }
@@ -324,6 +329,19 @@ public final class MarkdownRenderer {
                 result.append(cell)
                 result.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: paragraph]))
             }
+        }
+    }
+
+    private func fitTableImages(in cell: NSMutableAttributedString, maximumWidth: CGFloat) {
+        // Fit the final attachments so nested styles, linked images, and HTML images share the same limit.
+        cell.enumerateAttribute(.attachment, in: cell.fullRange) { value, _, _ in
+            guard let attachment = value as? NSTextAttachment,
+                  attachment.bounds.width > maximumWidth else { return }
+            let scale = maximumWidth / attachment.bounds.width
+            var bounds = attachment.bounds
+            bounds.size.width *= scale
+            bounds.size.height *= scale
+            attachment.bounds = bounds
         }
     }
 

@@ -309,6 +309,72 @@ final class MarkdownRendererTests: XCTestCase {
         XCTAssertEqual(attachment?.bounds.height, 252)
     }
 
+    func testTableImagesFitTheirColumnsIncludingNestedAndHTMLImages() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try makePNG(size: NSSize(width: 1000, height: 500))
+            .write(to: directory.appendingPathComponent("wide.png"))
+        let source = "https://example.com/cached.png"
+        let cache = RemoteImageCache(directoryURL: directory.appendingPathComponent("cache"))
+        try cache.store(makePNG(size: NSSize(width: 1000, height: 500)), for: source)
+
+        for pageWidth: CGFloat in [612, 360] {
+            let configuration = RendererConfiguration(pageSize: CGSize(width: pageWidth, height: 792))
+            let output = MarkdownRenderer(configuration: configuration, remoteImageCache: cache).render(
+                markdown: """
+                | ![Header](wide.png) | A longer description column | Third |
+                | --- | --- | --- |
+                | [**![Linked](wide.png)**](https://example.com) | <u>*![Nested](wide.png)*</u> | <img src='wide.png' width='900'> |
+                | ![A](wide.png)![B](wide.png) | ~~![Cached](\(source))~~ | ![Missing](missing.png) |
+                """,
+                baseURL: directory
+            )
+            var imageCount = 0
+            output.enumerateAttribute(.attachment, in: NSRange(location: 0, length: output.length)) { value, range, _ in
+                guard let attachment = value as? NSTextAttachment else { return }
+                imageCount += 1
+                let style = output.attribute(.paragraphStyle, at: range.location, effectiveRange: nil)
+                    as? NSParagraphStyle
+                guard let block = style?.textBlocks.first as? NSTextTableBlock else {
+                    return XCTFail("Image must remain in its table cell")
+                }
+                let horizontalInsets = [NSRectEdge.minX, .maxX].reduce(CGFloat.zero) { total, edge in
+                    total + block.width(for: .padding, edge: edge) + block.width(for: .border, edge: edge)
+                }
+                let availableWidth = configuration.contentWidth * block.contentWidth / 100 - horizontalInsets
+                XCTAssertLessThanOrEqual(attachment.bounds.width, availableWidth + 0.01)
+                XCTAssertGreaterThan(attachment.bounds.width, 0)
+                XCTAssertEqual(attachment.bounds.width / attachment.bounds.height, 2, accuracy: 0.001)
+            }
+            XCTAssertEqual(imageCount, 7)
+            XCTAssertTrue(output.string.contains("[Image: Missing]"))
+        }
+    }
+
+    func testTableImageSizingPreservesSmallImagesAndRequestedLimits() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try makePNG(size: NSSize(width: 20, height: 10))
+            .write(to: directory.appendingPathComponent("small.png"))
+        try makePNG(size: NSSize(width: 1000, height: 500))
+            .write(to: directory.appendingPathComponent("wide.png"))
+        let output = MarkdownRenderer(configuration: RendererConfiguration(maximumImageWidth: 80)).render(
+            markdown: """
+            | Small | Requested | Configured |
+            | --- | --- | --- |
+            | ![Small](small.png) | <img src='wide.png' width='30'> | ![Wide](wide.png) |
+            """,
+            baseURL: directory
+        )
+        var sizes: [NSSize] = []
+        output.enumerateAttribute(.attachment, in: NSRange(location: 0, length: output.length)) { value, _, _ in
+            if let attachment = value as? NSTextAttachment { sizes.append(attachment.bounds.size) }
+        }
+        XCTAssertEqual(sizes, [NSSize(width: 20, height: 10), NSSize(width: 30, height: 15), NSSize(width: 80, height: 40)])
+    }
+
     func testReferenceImageUsesTheSameLocalOnlyAttachmentPath() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
