@@ -50,8 +50,94 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
         controller.toggle()
         XCTAssertFalse(container.isThumbnailSidebarVisible)
         XCTAssertEqual(container.sidebarDividerThickness, 0)
+        container.attach(sidebarController: nil)
+        XCTAssertFalse(controller.canToggle)
         container.prepareForDismantling()
         XCTAssertFalse(controller.canToggle)
+    }
+
+    func testDismantlingDefersSidebarPublicationUntilAfterSwiftUITeardown() async {
+        for isVisible in [false, true] {
+            let controller = PDFThumbnailSidebarController()
+            let container = PDFPreviewContainerView(
+                frame: NSRect(x: 0, y: 0, width: 760, height: 890)
+            )
+            container.attach(sidebarController: controller)
+            container.setThumbnailSidebarVisible(isVisible)
+            var publicationCount = 0
+            let publication = controller.objectWillChange.sink {
+                publicationCount += 1
+            }
+            let coordinator = PDFPreviewView.Coordinator(
+                openURL: { _ in },
+                onDragError: { _ in }
+            )
+
+            PDFPreviewView.dismantleNSView(container, coordinator: coordinator)
+            // Repeated cleanup and commands must stay inert before the deferred reset.
+            container.prepareForDismantling()
+            controller.toggle()
+
+            XCTAssertEqual(publicationCount, 0)
+            XCTAssertNil(container.thumbnailView.pdfView)
+            XCTAssertEqual(container.isThumbnailSidebarVisible, isVisible)
+
+            await nextMainQueueTurn()
+
+            XCTAssertGreaterThan(publicationCount, 0)
+            XCTAssertFalse(controller.canToggle)
+            XCTAssertFalse(controller.isVisible)
+            XCTAssertEqual(controller.commandTitle, "Show Thumbnails")
+            withExtendedLifetime(publication) { }
+        }
+    }
+
+    func testDeferredDismantlingDoesNotResetReplacementSidebar() async {
+        let controller = PDFThumbnailSidebarController()
+        let original = PDFPreviewContainerView()
+        original.attach(sidebarController: controller)
+        original.prepareForDismantling()
+
+        let replacement = PDFPreviewContainerView()
+        replacement.setThumbnailSidebarVisible(true)
+        replacement.attach(sidebarController: controller)
+        var publicationCount = 0
+        let publication = controller.objectWillChange.sink {
+            publicationCount += 1
+        }
+
+        await nextMainQueueTurn()
+
+        XCTAssertEqual(publicationCount, 0)
+        XCTAssertTrue(controller.canToggle)
+        XCTAssertTrue(controller.isVisible)
+        XCTAssertEqual(controller.commandTitle, "Hide Thumbnails")
+        controller.toggle()
+        XCTAssertFalse(replacement.isThumbnailSidebarVisible)
+        withExtendedLifetime(publication) { }
+    }
+
+    func testDismantlingOldContainerDoesNotDisconnectCurrentSidebar() async {
+        let controller = PDFThumbnailSidebarController()
+        let original = PDFPreviewContainerView()
+        original.attach(sidebarController: controller)
+        let current = PDFPreviewContainerView()
+        current.setThumbnailSidebarVisible(true)
+        current.attach(sidebarController: controller)
+        var publicationCount = 0
+        let publication = controller.objectWillChange.sink {
+            publicationCount += 1
+        }
+
+        original.prepareForDismantling()
+        await nextMainQueueTurn()
+
+        XCTAssertEqual(publicationCount, 0)
+        XCTAssertTrue(controller.canToggle)
+        XCTAssertTrue(controller.isVisible)
+        controller.toggle()
+        XCTAssertFalse(current.isThumbnailSidebarVisible)
+        withExtendedLifetime(publication) { }
     }
 
     func testThumbnailViewTracksTheActiveBufferedPreviewAcrossRefresh() throws {
@@ -127,5 +213,11 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
         let text = MarkdownRenderer().render(markdown: markdown)
         let data = try PDFExporter().pdfData(from: text)
         return (data, try XCTUnwrap(PDFDocument(data: data)))
+    }
+
+    private func nextMainQueueTurn() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
 }

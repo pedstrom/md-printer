@@ -50,6 +50,16 @@ package final class PDFThumbnailSidebarController: ObservableObject {
         refresh()
     }
 
+    func detachForDismantling(from target: PDFThumbnailSidebarTarget) {
+        guard self.target === target else { return }
+        self.target = nil
+        // Publishing inside dismantleNSView re-enters SwiftUI's graph destruction.
+        Task { @MainActor [weak self] in
+            guard let self, self.target == nil else { return }
+            self.refresh()
+        }
+    }
+
     package func toggle() {
         guard let target else { return }
         target.setThumbnailSidebarVisible(!target.isThumbnailSidebarVisible)
@@ -189,7 +199,7 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
 
     func prepareForDismantling() {
         if let sidebarController {
-            sidebarController.detach(from: self)
+            sidebarController.detachForDismantling(from: self)
         }
         sidebarController = nil
         previewView.prepareForDismantling()

@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-09-11 — Safe thumbnail cleanup when closing windows
+
+- Fixed the thumbnail sidebar publishing command-state changes while SwiftUI destroys a document window, which could abort the app when closing with Command-W.
+- Disconnect the closing preview immediately and defer observable state cleanup until after teardown, matching the existing search and viewing controllers. A pending reset leaves a newly attached preview's state intact.
+- Added native preview teardown regressions for hidden and visible thumbnails, repeated cleanup, commands after disconnection, replacement previews, and cleanup of an older container.
+
 ## 2026-09-08 — Direct iPhone viewing controls and handoff
 
 - Removed the document-browser sample action, placed the icon-only PDF share action beside the filename, and made the bottom Find field visible with the viewing bars while keeping its keyboard and result controls dormant until the field receives focus.
