@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-09-11 — Platform-scoped verification
+
+- Made verification and the staged commit gate run Mac checks by default, so Mac-only fixes no longer launch iPhone simulator tests or validate iOS signing settings.
+- Added an explicit `--include-ios` option to both commands for changes affecting iOS, and documented the platform-selection rule in the repository working agreement.
+
 ## 2026-09-11 — Safe thumbnail cleanup when closing windows
 
 - Fixed the thumbnail sidebar publishing command-state changes while SwiftUI destroys a document window, which could abort the app when closing with Command-W.
