@@ -33,6 +33,6 @@ Secure remote images referenced by an open document load automatically. If an im
 
 ## Get help
 
-Search existing reports or [open a support issue](https://github.com/pedstrom/md-printer/issues). Include the iOS version, app version, file extension, and the steps that led to the problem. Do not attach a private document unless you intend to make it public.
+Email [pete@edstrom.net](mailto:pete@edstrom.net), search existing reports, or [open a support issue](https://github.com/pedstrom/md-printer/issues). Include the iOS version, app version, file extension, and the steps that led to the problem. Do not attach a private document unless you intend to make it public.
 
 See the [privacy policy](privacy-policy.md) for the app's data practices.
