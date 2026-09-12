@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-09-12 — Version 1.4.4
+
+- Promoted user-initiated remote image downloads, HTML image support, table-image fitting, and the window-closing thumbnail cleanup fix together as version 1.4.4, build 13.
+- Updated the Mac app version, public download label, release notes, and release verification assertions for the signed, notarized GitHub and Sparkle update.
+
 ## 2026-09-11 — Table images fit the printable width
 
 - Scale Mac table images to their content-aware column width after allowing for cell padding and borders, preserving aspect ratios and existing smaller image-size limits.
