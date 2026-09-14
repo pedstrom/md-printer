@@ -49,6 +49,7 @@ APP_PATH="$ARCHIVE_PATH/Products/Applications/Markdown Printer.app"
 test -x "$APP_PATH/Markdown Printer"
 test -s "$APP_PATH/PrivacyInfo.xcprivacy"
 codesign --verify --deep --strict "$APP_PATH"
+bash scripts/build-and-run/validate_ios_bundle.sh "$APP_PATH"
 [[ "$(plutil -extract CFBundleIdentifier raw "$APP_PATH/Info.plist")" == "$EXPECTED_BUNDLE_ID" ]]
 [[ "$(plutil -extract ITSAppUsesNonExemptEncryption raw "$APP_PATH/Info.plist")" == "false" ]]
 

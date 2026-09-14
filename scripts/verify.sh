@@ -49,6 +49,10 @@ required_files=(
   iOS/MarkdownPrinterIOS/MobileMarkdownContentView.swift
   iOS/MarkdownPrinterIOS/MarkdownViewerView.swift
   iOS/MarkdownPrinterIOS/DocumentActions.swift
+  iOS/MarkdownPrinterIOS/MobileWindowView.swift
+  Sources/MarkdownPrinterMobileSupport/MobileDocumentWindows.swift
+  Sources/MarkdownPrinterMobileSupport/MobileFindTextField.swift
+  Sources/MarkdownPrinterMobileSupport/MobilePDFPresentation.swift
   iOS/MarkdownPrinterIOS/Assets.xcassets/AppIcon.appiconset/Contents.json
   iOS/MarkdownPrinterIOS/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png
   iOS/MarkdownPrinterIOSTests/MobilePresentationTests.swift
@@ -77,11 +81,13 @@ required_files=(
   scripts/build-and-run/verify_published_release.sh
   scripts/build-and-run/verify_update_assets.sh
   scripts/build-and-run/test_ios.sh
+  scripts/build-and-run/validate_ios_bundle.sh
   scripts/build-and-run/build_ios_device.sh
   scripts/build-and-run/archive_ios_app_store.sh
   scripts/build-and-run/ExportOptions-AppStore.plist
   docs/privacy-policy.md
   docs/ios-support.md
+  docs/ipad-validation.md
   .codex/skills/md-printer-macos/SKILL.md
   .codex/skills/md-printer-change-gate/SKILL.md
 )
@@ -190,7 +196,7 @@ if [[ "$INCLUDE_IOS" == true ]]; then
     iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj
   grep -q 'IPHONEOS_DEPLOYMENT_TARGET = 26.0' \
     iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj
-  grep -q 'TARGETED_DEVICE_FAMILY = 1' \
+  grep -q 'TARGETED_DEVICE_FAMILY = "1,2"' \
     iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj
   if grep -q 'DEVELOPMENT_TEAM' iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj; then
     echo "The iOS project must use automatic signing without a tracked development team." >&2

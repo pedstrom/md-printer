@@ -8,14 +8,17 @@ import UIKit
 
 @main
 struct MarkdownPrinterIOSApp: App {
+    @UIApplicationDelegateAdaptor(MobileApplicationDelegate.self) private var appDelegate
     var body: some Scene {
-        WindowGroup {
-            MarkdownPrinterRootView()
-        }
+        WindowGroup(id: "documents", for: UUID.self) { $windowID in
+            MarkdownPrinterRootView(windowID: $windowID)
+        } defaultValue: { UUID() }
+        .commands { MarkdownPrinterMobileCommands() }
     }
 }
 
 private struct MarkdownPrinterRootView: View {
+    @Binding var windowID: UUID
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var incomingDocuments = MobileIncomingDocumentQueue()
     @StateObject private var cloudStatus = MobileCloudBrowserStatusMonitor()
@@ -32,8 +35,12 @@ private struct MarkdownPrinterRootView: View {
         Group {
             if isUITesting {
                 UITestMarkdownDocumentContainer()
+                    .preferredColorScheme(ProcessInfo.processInfo.arguments.contains("-ui-testing-dark") ? .dark : .light)
+                    .background(MobileSceneAttachment(onAttach: MobileWindowRuntime.selectFixtureScene))
             } else if isOpeningUITesting {
                 UITestOpeningDocumentContainer()
+            } else if UIDevice.current.userInterfaceIdiom == .pad {
+                IPadMarkdownWindow(windowID: $windowID)
             } else {
                 VStack(spacing: 0) {
                     MobileCloudBrowserStatusView(
@@ -56,11 +63,13 @@ private struct MarkdownPrinterRootView: View {
                 }
             }
         }
-        .onOpenURL(perform: incomingDocuments.receive)
+        .onOpenURL { url in
+            if UIDevice.current.userInterfaceIdiom != .pad { incomingDocuments.receive(url) }
+        }
     }
 }
 
-private struct MobileCloudBrowserStatusView: View {
+struct MobileCloudBrowserStatusView: View {
     let status: MobileCloudBrowserStatus
     let onRetry: () -> Void
 
@@ -366,15 +375,18 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
     let incomingDocument: MobileIncomingDocument?
     let onIncomingDocumentHandled: (UUID) -> Void
     let onBrowserDidAppear: () -> Void
+    let onPickDocument: ((URL) -> Void)?
 
     init(
         incomingDocument: MobileIncomingDocument? = nil,
         onIncomingDocumentHandled: @escaping (UUID) -> Void = { _ in },
-        onBrowserDidAppear: @escaping () -> Void = {}
+        onBrowserDidAppear: @escaping () -> Void = {},
+        onPickDocument: ((URL) -> Void)? = nil
     ) {
         self.incomingDocument = incomingDocument
         self.onIncomingDocumentHandled = onIncomingDocumentHandled
         self.onBrowserDidAppear = onBrowserDidAppear
+        self.onPickDocument = onPickDocument
     }
 
     func makeCoordinator() -> Coordinator {
@@ -390,6 +402,7 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
         controller.allowsPickingMultipleItems = false
         context.coordinator.controller = controller
         context.coordinator.onBrowserDidAppear = onBrowserDidAppear
+        context.coordinator.onPickDocument = onPickDocument
         controller.onDidAppear = { [weak coordinator = context.coordinator, weak controller] in
             guard let coordinator, let controller else { return }
             coordinator.documentBrowserDidAppear(controller)
@@ -403,6 +416,7 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
         context: Context
     ) {
         context.coordinator.onBrowserDidAppear = onBrowserDidAppear
+        context.coordinator.onPickDocument = onPickDocument
         context.coordinator.openIncomingDocumentIfNeeded(
             incomingDocument,
             from: controller,
@@ -433,6 +447,7 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
 
         weak var controller: UIDocumentBrowserViewController?
         var onBrowserDidAppear: () -> Void = {}
+        var onPickDocument: ((URL) -> Void)?
         private var activeIncomingDocumentID: UUID?
         private var lastHandledIncomingDocumentID: UUID?
         private var pendingIncomingDocument: PendingIncomingDocument?
@@ -496,6 +511,7 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
             didPickDocumentsAt documentURLs: [URL]
         ) {
             guard let url = documentURLs.first else { return }
+            if let onPickDocument { onPickDocument(url); return }
             presentDocument(at: url, from: controller)
         }
 
@@ -697,7 +713,7 @@ private struct UITestOpeningDocumentContainer: View {
     }
 }
 
-private struct UITestMarkdownDocumentContainer: View {
+struct UITestMarkdownDocumentContainer: View {
     @State private var linkedDocuments: [URL] = []
     @State private var isDocumentOpen = true
     @StateObject private var session: MobileDocumentSession
@@ -743,7 +759,7 @@ private struct UITestMarkdownDocumentContainer: View {
         }
     }
 
-    private static func makeFixture() -> (document: MarkdownDocument, url: URL) {
+    static func makeFixture() -> (document: MarkdownDocument, url: URL) {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("MarkdownPrinterUITestFixture", isDirectory: true)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -762,8 +778,14 @@ private struct UITestMarkdownDocumentContainer: View {
             ofItemAtPath: permissionURL.path
         )
 
+        for (folder, title, word, other) in [("one", "First Project", "alpha", "two"), ("two", "Second Project", "beta", "one")] {
+            let file = directory.appendingPathComponent("\(folder)/Report.md")
+            try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? Data("# \(title)\n\nAn independent \(word) document.\n\n[Other Project](../\(other)/Report.md)".utf8).write(to: file)
+        }
+
         let sourceURL = directory.appendingPathComponent("fixture.md")
-        let markdown = """
+        var markdown = """
         # iPhone Viewer Fixture
 
         The exact search phrase appears here. The exact search phrase appears twice.
@@ -794,6 +816,9 @@ private struct UITestMarkdownDocumentContainer: View {
 
         [^viewer]: Footnotes remain searchable and printable.
         """
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing-windows") {
+            markdown = markdown.replacingOccurrences(of: "![Network artwork](https://example.com/image.png)", with: "[First Project](one/Report.md)")
+        }
         try? Data(markdown.utf8).write(to: sourceURL, options: .atomic)
         let document = (try? MarkdownDocument.load(from: sourceURL))
             ?? MarkdownDocument(title: "fixture", markdown: markdown)
@@ -815,7 +840,9 @@ private actor UITestRemoteImageDownloader: RemoteImageDownloading {
     }
 }
 
-private struct LinkedMarkdownDocumentView: View {
+struct LinkedMarkdownDocumentView: View {
+    @Environment(\.mobileDocumentWindow) private var documentWindow
+    @State private var attempt = 0
     let url: URL
     @Binding var linkedDocuments: [URL]
     @StateObject private var session = MobileDocumentSession()
@@ -844,16 +871,17 @@ private struct LinkedMarkdownDocumentView: View {
                     }
                 }
             } else if let error = session.errorMessage {
-                ContentUnavailableView(
-                    "Couldn’t Open Markdown",
-                    systemImage: "doc.text.magnifyingglass",
-                    description: Text(error)
-                )
+                ContentUnavailableView {
+                    Label("Couldn’t Open Markdown", systemImage: "doc.text.magnifyingglass")
+                } description: { Text(error) } actions: {
+                    Button("Retry") { attempt += 1 }
+                    if let documentWindow { Button("Browse", action: documentWindow.browse) }
+                }
             } else {
                 ProgressView("Opening…")
             }
         }
-        .task(id: url) {
+        .task(id: "\(url.absoluteString)#\(attempt)") {
             await session.load(url: url)
             if session.permissionRequest != nil {
                 showingPermissionPicker = true

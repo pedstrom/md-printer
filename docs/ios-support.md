@@ -1,4 +1,4 @@
-# Markdown Printer for iPhone Support
+# Markdown Printer for iPhone and iPad Support
 
 Markdown Printer opens local Markdown files and turns them into polished, searchable PDFs without uploading the source document.
 
@@ -13,6 +13,31 @@ The filename in the top bar identifies the open document. Manage the source Mark
 If iCloud or another file provider needs time to download a selected document, the opening screen keeps a **Back** button available immediately. Going back returns to the document browser and cancels Markdown Printer's pending read; it does not remove or change the source file.
 
 Markdown Printer opens the selected Markdown as a read-only viewer and does not ask other apps to save it before reading. Opening, viewing, searching, and generating a PDF do not write the source file. iCloud and other File Providers may still update download, synchronization, last-used, or access metadata while making a cloud-only file available, and an imported copy has its own creation metadata.
+
+## iPad windows and keyboard
+
+The iPad app supports portrait (including upside-down), landscape, and resizable windows on iPadOS 26 or newer. Reading layout follows the available window space, including while another app shares the display. Tables and code can scroll horizontally within the document.
+
+Each window keeps its own document, linked-document history, search, reading position, and PDF actions. Choose **New Window** from the menu bar to browse another document. Markdown shared from another app or dropped from Files opens separately when the receiving window already contains a document; an existing matching document window is activated when available. An empty browser window opens the selected file directly. Files with the same filename in different folders remain separate documents.
+
+Tap a local Markdown link to navigate in the same window. Touch and hold its text and choose **Open in New Window** to open it separately. **Back** returns through linked documents; the root **Back** action returns that window to Files. Close Window closes only that window.
+
+| Command | Shortcut |
+| --- | --- |
+| New Window | Command-N |
+| Open | Command-O |
+| Find | Command-F |
+| Next / previous result | Command-G / Shift-Command-G |
+| Finish finding | Escape |
+| Share PDF | Shift-Command-S |
+| Print PDF | Command-P |
+| Close Window | Command-W |
+
+PDF sharing uses an anchored system popover on iPad. **Save to Files**, sharing, and printing all use the same locally generated PDF. Window size and reading text size do not change the PDF’s US Letter page layout.
+
+Open windows restore their document references and reading state locally. Restoration does not save document contents or reopen a window that you closed. If a referenced file moved, was removed, or needs permission, use **Retry**, **Allow Folder Access**, or **Browse** to recover. An unavailable file does not prevent other windows from working.
+
+On iPhone, incoming shared Markdown continues to replace the current document immediately.
 
 ## iCloud status
 

@@ -1,8 +1,8 @@
 # Markdown Printer Privacy Policy
 
-Effective: September 8, 2026
+Effective: September 14, 2026
 
-Markdown Printer is a local-first Markdown reader and PDF creator for iPhone and Mac.
+Markdown Printer is a local-first Markdown reader and PDF creator for iPhone, iPad, and Mac.
 
 ## Data collection
 
@@ -10,9 +10,11 @@ Markdown Printer does not collect personal data, document contents, analytics, u
 
 ## Documents and files
 
-Documents you choose are read and processed on your device. Markdown Printer does not upload document contents. On iPhone, the app automatically requests secure remote images referenced by a document you open; on Mac, remote images are requested only after you click a placeholder or choose a download command. The request goes to the host named by the document, and the result is stored in Markdown Printer's disposable app cache rather than beside the Markdown file. Finder Quick Look never downloads remote images.
+Documents you choose are read and processed on your device. Markdown Printer does not upload document contents. On iPhone and iPad, the app automatically requests secure remote images referenced by a document you open; on Mac, remote images are requested only after you click a placeholder or choose a download command. The request goes to the host named by the document, and the result is stored in Markdown Printer's disposable app cache rather than beside the Markdown file. Finder Quick Look never downloads remote images.
 
-On iPhone, the app stores security-scoped folder permissions that you explicitly grant so linked local documents and images can open again. Those permissions stay on the device in the app's local preferences.
+On iPhone and iPad, the app stores security-scoped folder permissions that you explicitly grant so linked local documents and images can open again. Those permissions stay on the device in the app's local preferences.
+
+On iPad, local scene restoration stores file bookmarks, linked-document navigation, search settings, and reading positions. It does not store Markdown document contents in restoration records. Each window owns its temporary PDF exports, which are removed when sharing finishes.
 
 ## User-directed sharing and links
 

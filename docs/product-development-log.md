@@ -1,5 +1,14 @@
 # Product Development Log
 
+## 2026-09-14 — Native iPad document windows
+
+- Enable native iPhone/iPad builds, all iPad orientations, and resizable multiple scenes while retaining the read-only document loader and continuous reader.
+- Route incoming iPad documents and Files drops to separate or matching windows, keep linked navigation and reader state per scene, and restore local document bookmarks with permission/retry recovery.
+- Add menu and keyboard actions for document windows, Find, PDF sharing, and printing; use an anchored activity popover with completion-owned temporary files.
+- Adapt search controls and tables to available space and accessibility text sizes, and keep custom screen-edge navigation limited to iPhone.
+- Expand verification to iPhone, iPad mini, and 13-inch iPad suites plus an 11-inch smoke check, with explicit universal-bundle and scene configuration checks. Physical file-provider, keyboard/trackpad, VoiceOver, and AirPrint acceptance is recorded separately from simulator results.
+- Passed the full Mac and mobile gate at 95.19% Mac, 96.74% mobile, and 98.08% new window/presentation support coverage; reviewed native reader, share/print, and PDF artifacts. Preserve per-run result bundles and coverage, resolve pinned test dependencies before running, and capture the whole iPad screen to avoid rotated app-bound screenshot cropping.
+
 ## 2026-09-12 — Version 1.4.4
 
 - Promoted user-initiated remote image downloads, HTML image support, table-image fitting, and the window-closing thumbnail cleanup fix together as version 1.4.4, build 13.

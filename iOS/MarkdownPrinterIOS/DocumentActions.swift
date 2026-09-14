@@ -3,54 +3,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
-struct ActivityView: UIViewControllerRepresentable {
-    let items: [Any]
+typealias MobilePDFActivityItem = MarkdownPrinterMobileSupport.MobilePDFActivityItem
 
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
-}
-
-final class MobilePDFActivityItem: NSObject, UIActivityItemSource {
-    let data: Data
-    let fileURL: URL
-
-    var placeholderItem: Any { fileURL }
-    var dataTypeIdentifier: String { UTType.pdf.identifier }
-
-    init(data: Data, fileURL: URL) {
-        self.data = data
-        self.fileURL = fileURL
-    }
-
-    func activityViewControllerPlaceholderItem(
-        _ activityViewController: UIActivityViewController
-    ) -> Any {
-        placeholderItem
-    }
-
-    func activityViewController(
-        _ activityViewController: UIActivityViewController,
-        itemForActivityType activityType: UIActivity.ActivityType?
-    ) -> Any? {
-        item(for: activityType)
-    }
-
-    func item(for activityType: UIActivity.ActivityType?) -> Any {
-        // The share-sheet Print activity may continue reading after its source sheet dismisses.
-        // Supplying the complete bytes avoids treating a cleaned-up temporary URL as protected.
-        activityType == .print ? data : fileURL
-    }
-
-    func activityViewController(
-        _ activityViewController: UIActivityViewController,
-        dataTypeIdentifierForActivityType activityType: UIActivity.ActivityType?
-    ) -> String {
-        dataTypeIdentifier
-    }
-}
+typealias MobilePDFShareStore = MarkdownPrinterMobileSupport.MobilePDFShareStore
 
 struct LinkedMarkdownFolderPicker: UIViewControllerRepresentable {
     let request: MobileDocumentPermissionRequest
@@ -94,17 +49,6 @@ struct LinkedMarkdownFolderPicker: UIViewControllerRepresentable {
     }
 }
 
-enum MobilePDFShareStore {
-    static func write(data: Data, filename: String) throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MarkdownPrinterShare-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(filename)
-        try data.write(to: url, options: .atomic)
-        return url
-    }
-}
-
 enum MarkdownPrinterAppInformation {
     static let privacyPolicyURL = URL(
         string: "https://github.com/pedstrom/md-printer/blob/main/docs/privacy-policy.md"
@@ -137,18 +81,18 @@ struct MarkdownPrinterInformationView: View {
                 Section("About") {
                     Label("Markdown Printer", systemImage: "doc.richtext")
                         .font(.headline)
-                    Text("A local-first Markdown reader for creating polished, searchable PDFs on iPhone.")
+                    Text("A local-first Markdown reader for creating polished, searchable PDFs on iPhone and iPad.")
                     LabeledContent("App", value: MarkdownPrinterAppInformation.versionDescription)
                 }
 
                 Section("Getting Started") {
-                    Text("Choose a Markdown file from Files. Files shared to Markdown Printer replace the currently open document immediately.")
+                    Text("Choose a Markdown file from Files. On iPad, shared files open in separate windows or activate an existing matching document. On iPhone, they replace the currently open document.")
                     Text("The iCloud status above the document browser says when Markdown Printer last checked for updates. Files already available on the device remain usable while a check is slow, offline, or unsuccessful.")
                     Text("Use the bottom Find field to search the open document. The share icon beside the filename opens the system sheet for sending, saving, or printing the generated PDF.")
                 }
 
                 Section("Privacy") {
-                    Text("Documents are processed on this iPhone. Markdown Printer does not collect analytics, track you, or upload document contents. Secure remote images referenced by an open document load automatically and stay in the app cache.")
+                    Text("Documents are processed on this device. Markdown Printer does not collect analytics, track you, or upload document contents. Secure remote images referenced by an open document load automatically and stay in the app cache.")
                     Text("Folder permissions you grant are remembered only on this device so linked local files can open again.")
                     Link(destination: MarkdownPrinterAppInformation.privacyPolicyURL) {
                         Label("Privacy Policy", systemImage: "hand.raised")

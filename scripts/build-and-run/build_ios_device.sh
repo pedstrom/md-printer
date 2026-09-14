@@ -43,7 +43,7 @@ if [[ "$MODE" == "--install" && -z "$DEVICE_ID" ]]; then
     | head -n 1)"
 fi
 if [[ "$MODE" == "--install" && -z "$DEVICE_ID" ]]; then
-  echo "No connected iPhone was found. Connect and trust the phone, or set MARKDOWN_PRINTER_IOS_DEVICE_ID." >&2
+  echo "No connected iPhone or iPad was found. Connect and trust the device, or set MARKDOWN_PRINTER_IOS_DEVICE_ID." >&2
   exit 1
 fi
 
@@ -68,6 +68,7 @@ APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphoneos/Markdown Printer.app"
 PROFILE_PLIST="$(mktemp -t markdown-printer-ios-profile).plist"
 
 codesign --verify --deep --strict "$APP_PATH"
+bash scripts/build-and-run/validate_ios_bundle.sh "$APP_PATH"
 security cms -D -i "$APP_PATH/embedded.mobileprovision" > "$PROFILE_PLIST"
 PROFILE_TEAM="$(plutil -extract TeamIdentifier.0 raw "$PROFILE_PLIST")"
 PROFILE_DAYS="$(plutil -extract TimeToLive raw "$PROFILE_PLIST")"
@@ -81,7 +82,7 @@ if (( PROFILE_DAYS <= 7 )); then
   exit 1
 fi
 
-echo "Built a paid-team iPhone app signed for team $PROFILE_TEAM."
+echo "Built a paid-team iPhone/iPad app signed for team $PROFILE_TEAM."
 echo "Provisioning profile expires: $PROFILE_EXPIRATION ($PROFILE_DAYS-day profile)."
 
 if [[ "$MODE" == "--install" ]]; then

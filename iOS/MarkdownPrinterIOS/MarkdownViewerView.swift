@@ -9,16 +9,22 @@ struct MarkdownViewerView: View {
     var onClose: (() -> Void)? = nil
     var onNavigateBack: (() -> Void)? = nil
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.mobileDocumentWindow) private var documentWindow
+    @StateObject private var pdfPresenter = MobilePDFPresentationController()
+    @State private var visibleBlock: String?
+    @State private var didRestore = false
+    @State private var restoredSearchOptions: MarkdownSearchOptions?
+    @StateObject private var readerCommands = MobileReaderCommands()
+    @State private var pendingCommand: MobileReaderCommandRequest?
 
     @State private var toolbarsVisible = true
     @State private var searchOptions = MarkdownSearchOptions()
     @State private var selectedMatchIndex = 0
     @State private var requestedAnchor: String?
     @State private var showingShare = false
-    @State private var shareItems: [Any] = []
     @State private var sharedTemporaryURL: URL?
     @State private var actionError: String?
-    @FocusState private var searchFieldFocused: Bool
+    @State private var searchFieldFocused = false
 
     private var matches: [MarkdownSearchMatch] {
         session.presentation?.searchIndex.matches(for: searchOptions) ?? []
@@ -31,6 +37,7 @@ struct MarkdownViewerView: View {
 
     private var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains("-ui-testing")
+            && !ProcessInfo.processInfo.arguments.contains("-ui-testing-real-share")
     }
 
     private var backSwipeAction: (() -> Void)? {
@@ -50,7 +57,8 @@ struct MarkdownViewerView: View {
                     onDownloadRemoteImage: downloadRemoteImage,
                     onDownloadAllRemoteImages: downloadAllRemoteImages,
                     onOpenURL: open,
-                    onTapBackground: toggleToolbars
+                    onTapBackground: toggleToolbars,
+                    visibleBlock: $visibleBlock
                 )
             } else {
                 ContentUnavailableView(
@@ -61,9 +69,9 @@ struct MarkdownViewerView: View {
             }
         }
         .background(Color(uiColor: .systemBackground))
-        .simultaneousGesture(leadingBackSwipeGesture)
+        .modifier(PhoneBackGesture(gesture: leadingBackSwipeGesture))
         .overlay(alignment: .trailing) {
-            if let backSwipeAction {
+            if UIDevice.current.userInterfaceIdiom != .pad, let backSwipeAction {
                 MobileBackSwipeEdgeView(edge: .trailing, onNavigateBack: backSwipeAction)
             }
         }
@@ -80,9 +88,17 @@ struct MarkdownViewerView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: sharePDF) {
                     Image(systemName: "square.and.arrow.up")
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .accessibilityLabel("Share PDF")
                 .accessibilityIdentifier("share-pdf-button")
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .frame(minWidth: 44, minHeight: 44)
+                .background(PDFPresentationAnchor(presenter: pdfPresenter))
+                .hoverEffect(.highlight)
+                .contextMenu {
+                    Button("Print PDF", systemImage: "printer", action: printPDF)
+                }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -97,10 +113,40 @@ struct MarkdownViewerView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .background(MobileDocumentKeys(commands: readerCommands))
+        .focusedSceneValue(\.markdownReaderCommands, readerCommands)
+        .onAppear {
+            readerCommands.send = { [request = $pendingCommand] action in
+                request.wrappedValue = MobileReaderCommandRequest(action: action)
+            }
+            guard !didRestore else { return }
+            let reader = documentWindow?.reader(for: session.sourceURL) ?? MobileReaderRestoration()
+            let options = MarkdownSearchOptions(query: reader.query, matchCase: reader.matchCase, wholeWord: reader.wholeWord)
+            restoredSearchOptions = options
+            searchOptions = options
+            selectedMatchIndex = reader.selectedMatch
+            visibleBlock = reader.visibleBlock
+            toolbarsVisible = reader.toolbarsVisible
+            didRestore = true
+        }
+        .onChange(of: pendingCommand) { _, request in
+            guard let request else { return }
+            switch request.action {
+            case .find: focusSearch()
+            case .next: selectNextMatch()
+            case .previous: selectPreviousMatch()
+            case .share: sharePDF()
+            case .print: printPDF()
+            }
+        }
+        .onChange(of: readerRestoration) { _, state in
+            if didRestore { documentWindow?.saveReader(state, for: session.sourceURL) }
+        }
         .onSubmit(of: .search) { selectNextMatch() }
-        .onChange(of: searchOptions.query) { _, _ in resetSearchSelection() }
-        .onChange(of: searchOptions.matchCase) { _, _ in resetSearchSelection() }
-        .onChange(of: searchOptions.wholeWord) { _, _ in resetSearchSelection() }
+        .onChange(of: searchOptions) { _, options in
+            if options != restoredSearchOptions { resetSearchSelection() }
+            restoredSearchOptions = nil
+        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await session.refreshIfChanged() }
@@ -111,9 +157,6 @@ struct MarkdownViewerView: View {
         .sheet(isPresented: $showingShare, onDismiss: cleanUpSharedFile) {
             if isUITesting {
                 ShareSheetTestView(filename: pdfFilename)
-            } else {
-                ActivityView(items: shareItems)
-                    .accessibilityIdentifier("share-sheet")
             }
         }
         .alert(
@@ -148,64 +191,99 @@ struct MarkdownViewerView: View {
     private var searchBar: some View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Find in Markdown", text: $searchOptions.query)
-                    .focused($searchFieldFocused)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                    .accessibilityIdentifier("find-field")
+                Button(action: focusSearch) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Find")
+                .keyboardShortcut("f")
+                MobileFindField(
+                    text: $searchOptions.query,
+                    isFocused: Binding(get: { searchFieldFocused }, set: { searchFieldFocused = $0 }),
+                    onSearch: selectNextMatch,
+                    onPrint: printPDF,
+                    onPreviousSearch: selectPreviousMatch
+                )
                 if !searchOptions.query.isEmpty {
                     Button {
                         searchOptions.query = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
+                            .frame(minWidth: 44, minHeight: 44)
                     }
                     .accessibilityLabel("Clear search")
                 }
             }
             .padding(.horizontal, 10)
-            .frame(minHeight: 36)
+            .frame(minHeight: 44)
             .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
 
             if searchFieldFocused {
-                HStack(spacing: 18) {
-                    Menu {
-                        Toggle("Match Case", isOn: $searchOptions.matchCase)
-                        Toggle("Whole Word", isOn: $searchOptions.wholeWord)
-                    } label: {
-                        Image(systemName: "textformat")
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        searchOptionsMenu
+                        Text(matchSummary).font(.caption.monospacedDigit()).fixedSize()
+                        Spacer(minLength: 4)
+                        searchNavigation
                     }
-                    .accessibilityLabel("Search options")
-
-                    Text(matchSummary)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-
-                    Spacer()
-
-                    Button(action: selectPreviousMatch) {
-                        Image(systemName: "chevron.up")
-                    }
-                    .disabled(matches.isEmpty)
-                    .accessibilityLabel("Previous result")
-
-                    Button(action: selectNextMatch) {
-                        Image(systemName: "chevron.down")
-                    }
-                    .disabled(matches.isEmpty)
-                    .accessibilityLabel("Next result")
-
-                    Button("Done") {
-                        searchFieldFocused = false
+                    VStack(spacing: 4) {
+                        HStack {
+                            searchOptionsMenu
+                            Text(matchSummary).font(.caption.monospacedDigit())
+                            Spacer()
+                        }
+                        HStack { Spacer(); searchNavigation }
                     }
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+        }
+    }
+
+    private var searchOptionsMenu: some View {
+        Menu {
+            Toggle("Match Case", isOn: $searchOptions.matchCase)
+            Toggle("Whole Word", isOn: $searchOptions.wholeWord)
+        } label: { Image(systemName: "textformat").frame(minWidth: 44, minHeight: 44) }
+        .accessibilityLabel("Search options")
+    }
+
+    private var searchNavigation: some View {
+        Group {
+            Button(action: selectPreviousMatch) { Image(systemName: "chevron.up").frame(minWidth: 44, minHeight: 44) }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(matches.isEmpty).accessibilityLabel("Previous result")
+            Button(action: selectNextMatch) { Image(systemName: "chevron.down").frame(minWidth: 44, minHeight: 44) }
+                .keyboardShortcut("g")
+                .disabled(matches.isEmpty).accessibilityLabel("Next result")
+            Button("Done") { searchFieldFocused = false }.frame(minHeight: 44).keyboardShortcut(.cancelAction)
+        }
+    }
+
+    private var readerRestoration: MobileReaderRestoration {
+        var state = MobileReaderRestoration()
+        state.query = searchOptions.query
+        state.matchCase = searchOptions.matchCase
+        state.wholeWord = searchOptions.wholeWord
+        state.selectedMatch = selectedMatchIndex
+        state.visibleBlock = visibleBlock
+        state.toolbarsVisible = toolbarsVisible
+        return state
+    }
+
+    private func focusSearch() {
+        toolbarsVisible = true
+        searchFieldFocused = true
+    }
+
+    private func printPDF() {
+        toolbarsVisible = true
+        searchFieldFocused = false
+        preparePDF { data in
+            do { try pdfPresenter.printPDF(data: data, filename: pdfFilename) { actionError = $0 } }
+            catch { actionError = error.localizedDescription }
         }
     }
 
@@ -218,7 +296,7 @@ struct MarkdownViewerView: View {
     private var leadingBackSwipeGesture: some Gesture {
         DragGesture(minimumDistance: 14)
             .onEnded { value in
-                guard value.startLocation.x <= 30 else { return }
+                guard UIDevice.current.userInterfaceIdiom != .pad, value.startLocation.x <= 30 else { return }
                 let predicted = value.predictedEndTranslation
                 let travel = abs(predicted.width) > abs(value.translation.width)
                     ? predicted
@@ -290,12 +368,17 @@ struct MarkdownViewerView: View {
     }
 
     private func sharePDF() {
+        toolbarsVisible = true
+        searchFieldFocused = false
         preparePDF { data in
             do {
-                let url = try MobilePDFShareStore.write(data: data, filename: pdfFilename)
-                sharedTemporaryURL = url
-                shareItems = [MobilePDFActivityItem(data: data, fileURL: url)]
-                showingShare = true
+                if isUITesting {
+                    let url = try MobilePDFShareStore.write(data: data, filename: pdfFilename)
+                    sharedTemporaryURL = url
+                    showingShare = true
+                } else {
+                    try pdfPresenter.share(data: data, filename: pdfFilename)
+                }
             } catch {
                 actionError = error.localizedDescription
             }
@@ -305,7 +388,10 @@ struct MarkdownViewerView: View {
     private func preparePDF(completion: @escaping (Data) -> Void) {
         Task {
             do {
-                completion(try await session.pdfData())
+                let data = try await session.pdfData()
+                // Allow the toolbar's presentation anchor to lay out after a keyboard command.
+                await Task.yield()
+                completion(data)
             } catch is CancellationError {
                 return
             } catch {
@@ -318,7 +404,6 @@ struct MarkdownViewerView: View {
         guard let sharedTemporaryURL else { return }
         try? FileManager.default.removeItem(at: sharedTemporaryURL.deletingLastPathComponent())
         self.sharedTemporaryURL = nil
-        shareItems = []
     }
 }
 
@@ -389,5 +474,13 @@ private struct PDFProgressOverlay: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
         .shadow(radius: 12)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct PhoneBackGesture<BackGesture: Gesture>: ViewModifier {
+    let gesture: BackGesture
+    @ViewBuilder func body(content: Content) -> some View {
+        if UIDevice.current.userInterfaceIdiom == .pad { content }
+        else { content.simultaneousGesture(gesture) }
     }
 }

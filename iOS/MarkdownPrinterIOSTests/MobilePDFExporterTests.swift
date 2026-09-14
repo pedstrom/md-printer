@@ -19,6 +19,39 @@ final class MobilePDFExporterTests: XCTestCase {
         directory = nil
     }
 
+    func testShareablePDFVisualFixture() async throws {
+        let paragraphs = (1...35).map { "Section \($0): A readable document keeps its typography, searchable text, and page layout when shared from any window." }.joined(separator: "\n\n")
+        let markdown = """
+        # Markdown Printer on iPad
+
+        ## One document, ready to share
+
+        **Avenir Next**, *emphasis*, <u>underlining</u>, and `monospaced code` remain clear in the exported PDF.
+
+        > A quote stays together visually across wrapped lines, with a continuous rule beside the text.
+
+        | Document | Status | Notes |
+        | --- | --- | --- |
+        | Field notes | Ready | Readable columns and searchable text |
+        | Project outline | Reviewed | Long descriptions wrap inside their own cells without changing other columns |
+
+        ```swift
+        let actions = ["Read", "Find", "Share", "Print"]
+        ```
+
+        Unicode: café, 東京, and ✓. [Apple](https://www.apple.com/).
+
+        \(paragraphs)
+        """
+        let data = try await MobilePDFExporter().pdfData(for: MarkdownDocument(title: "iPad fixture", markdown: markdown))
+        let pdf = try XCTUnwrap(PDFDocument(data: data))
+        XCTAssertGreaterThan(pdf.pageCount, 1)
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "com.adobe.pdf")
+        attachment.name = "iPad exported PDF fixture"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testLetterConfigurationUsesFixedMacStyleDefaults() {
         let configuration = MobilePDFConfiguration.letter
         XCTAssertEqual(configuration.pageSize, CGSize(width: 612, height: 792))

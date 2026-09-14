@@ -14,6 +14,7 @@ struct MobileMarkdownContentView: View {
     let onDownloadAllRemoteImages: () -> Void
     let onOpenURL: (URL) -> Void
     let onTapBackground: () -> Void
+    @Binding var visibleBlock: String?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -38,6 +39,7 @@ struct MobileMarkdownContentView: View {
                     if !presentation.footnotes.isEmpty {
                         Text("Notes")
                             .font(.custom("Avenir Next Demi Bold", size: 19, relativeTo: .headline))
+                            .accessibilityAddTraits(.isHeader)
                             .padding(.top, 18)
                             .padding(.bottom, 8)
                         ForEach(presentation.footnotes) { footnote in
@@ -65,12 +67,14 @@ struct MobileMarkdownContentView: View {
                         }
                     }
                 }
+                .scrollTargetLayout()
                 .frame(maxWidth: 720, alignment: .leading)
                 .padding(.horizontal, 22)
                 .padding(.top, 18)
                 .padding(.bottom, 48)
                 .frame(maxWidth: .infinity)
             }
+            .scrollPosition(id: $visibleBlock, anchor: .top)
             .scrollDismissesKeyboard(.interactively)
             .textSelection(.enabled)
             .contentShape(Rectangle())
@@ -117,6 +121,7 @@ private struct MobileRenderedBlockView: View {
                     onDownloadRemoteImage: onDownloadRemoteImage,
                     onDownloadAllRemoteImages: onDownloadAllRemoteImages
                 )
+                .accessibilityAddTraits(.isHeader)
                 .padding(.top, level <= 2 ? 14 : 8)
                 .padding(.bottom, level <= 2 ? 7 : 4)
             case let .paragraph(content):
@@ -162,6 +167,8 @@ private struct MobileRenderedBlockView: View {
                     ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text(listMarker(item: item, index: index, ordered: ordered, start: start))
+                                .textSelection(.disabled)
+                                .accessibilityLabel(item.checked.map { $0 ? "Completed" : "Not completed" } ?? (ordered ? "Item \(start + index)" : "List item"))
                                 .font(.custom("Avenir Next", size: 17, relativeTo: .body))
                                 .foregroundStyle(.secondary)
                                 .frame(minWidth: 22, alignment: .trailing)
@@ -444,6 +451,8 @@ private struct MobileMarkdownImageView: View {
 }
 
 private struct MobileMarkdownTableView: View {
+    @State private var availableWidth: CGFloat = 0
+    @ScaledMetric(relativeTo: .subheadline) private var minimumCellWidth: CGFloat = 142
     let headers: [[InlineNode]]
     let alignments: [TableAlignment]
     let rows: [[[InlineNode]]]
@@ -458,6 +467,7 @@ private struct MobileMarkdownTableView: View {
     var body: some View {
         let allRows = [headers] + rows
         let columnCount = max(1, allRows.map(\.count).max() ?? 1)
+        let cellWidth = max(minimumCellWidth, (availableWidth / CGFloat(columnCount)) - 18)
         ScrollView(.horizontal) {
             Grid(horizontalSpacing: 0, verticalSpacing: 0) {
                 ForEach(Array(allRows.enumerated()), id: \.offset) { rowIndex, row in
@@ -474,7 +484,7 @@ private struct MobileMarkdownTableView: View {
                                 onDownloadRemoteImage: onDownloadRemoteImage,
                                 onDownloadAllRemoteImages: onDownloadAllRemoteImages
                             )
-                            .frame(width: 142, alignment: alignment(at: column))
+                            .frame(width: cellWidth, alignment: alignment(at: column))
                             .padding(.horizontal, 9)
                             .padding(.vertical, 8)
                             .background(rowIndex == 0 ? Color.secondary.opacity(0.13) : Color.clear)
@@ -487,6 +497,7 @@ private struct MobileMarkdownTableView: View {
                 }
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { availableWidth = $0 }
     }
 
     private func alignment(at index: Int) -> Alignment {
@@ -588,6 +599,8 @@ private func splitMobileInlineContent(_ nodes: [InlineNode]) -> [MobileInlineCon
 }
 
 private struct MobileInlineText: View {
+    @Environment(\.openMarkdownWindow) private var openInNewWindow
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     enum Style {
         case body
         case heading(Int)
@@ -612,19 +625,26 @@ private struct MobileInlineText: View {
         let _ = remoteImageRevision
         let text = Text(attributedText)
             .fixedSize(horizontal: false, vertical: true)
-        if let remoteSource = remoteReferences.first?.source {
+        if !remoteReferences.isEmpty || (openInNewWindow != nil && !localMarkdownLinks.isEmpty) {
             text.contextMenu {
-                Button("Download Image", systemImage: "arrow.down.circle") {
-                    onDownloadRemoteImage(remoteSource)
+                if let openInNewWindow {
+                    ForEach(localMarkdownLinks, id: \.url) { link in
+                        Button("Open “\(link.label)” in New Window", systemImage: "macwindow.badge.plus") { openInNewWindow(link.url) }
+                    }
                 }
-                .disabled(downloadingRemoteImageSources.contains(remoteSource))
-                Button("Download All Images", systemImage: "square.and.arrow.down.on.square") {
-                    onDownloadAllRemoteImages()
+                if let remoteSource = remoteReferences.first?.source {
+                    Button("Download Image", systemImage: "arrow.down.circle") { onDownloadRemoteImage(remoteSource) }
+                        .disabled(downloadingRemoteImageSources.contains(remoteSource))
+                    Button("Download All Images", systemImage: "square.and.arrow.down.on.square", action: onDownloadAllRemoteImages)
                 }
             }
         } else {
             text
         }
+    }
+
+    private var localMarkdownLinks: [(label: String, url: URL)] {
+        MobileMarkdownWindowLinks.links(in: nodes, relativeTo: baseURL)
     }
 
     private var remoteReferences: [RemoteImageReference] {
@@ -634,6 +654,7 @@ private struct MobileInlineText: View {
     }
 
     private var attributedText: AttributedString {
+        let _ = dynamicTypeSize
         let baseFont = scaledFont
         let output = NSMutableAttributedString(string: "")
         append(nodes, to: output, baseFont: baseFont)
