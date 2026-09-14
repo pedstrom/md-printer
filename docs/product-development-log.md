@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-09-14 — App Store presentation and mobile source licensing
+
+- Prepared prominent paid App Store installation links and customer-focused iPhone/iPad copy, with the free Mac download clearly identified and optional source-build instructions in the development guide.
+- Scoped the mobile source-available license to the iOS app and mobile support code: personal and workplace use and free sharing are allowed, while monetized redistribution requires written permission. Kept the Mac app and shared core under MIT and preserved earlier MIT grants and third-party terms.
+- Held publication until the public App Store listing offers the paid app for both iPhone and iPad; the completed iPad implementation and its separate physical-device acceptance record remain the basis for capability claims.
+
 ## 2026-09-14 — Native iPad document windows
 
 - Enable native iPhone/iPad builds, all iPad orientations, and resizable multiple scenes while retaining the read-only document loader and continuous reader.

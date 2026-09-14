@@ -4,17 +4,20 @@
 
 <h1 align="center">Markdown Printer</h1>
 
-<p align="center">Turn Markdown files into clean, printable PDFs on your Mac.</p>
+<p align="center">Read Markdown and create polished PDFs on Mac, iPhone, and iPad.</p>
 
 <p align="center">
-  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.4.4</strong></a>
+  <a href="https://apps.apple.com/app/id6811229585"><strong>Get the iPhone and iPad app on the App Store · Paid download</strong></a><br>
+  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.4.4 for Mac · Free</strong></a>
 </p>
 
 Markdown is suddenly everywhere. AI tools, coding assistants, note apps, and research workflows are producing copious `.md` files, but those files are not always pleasant to print, share, or read away from an editor. Markdown Printer gives them a polished page without sending the document anywhere.
 
-Drop one file—or a whole batch—onto the app. Each document opens in its own window as a finished PDF that you can save, print, or drag directly into Finder, Microsoft Teams, Messages, and other apps. When coworkers need something editable, save or drag a Microsoft Word version instead.
+**For iPhone and iPad, the App Store is the recommended way to get Markdown Printer.** The paid download gives you the ready-to-use app without managing Xcode builds or signing, and your purchase supports development. Prefer to build it yourself? The source is public, and you're welcome to [build and modify it for your own use](development/README.md#build-and-install-the-iphone-and-ipad-app).
 
-## What it does
+On Mac, drop one file—or a whole batch—onto the app. Each document opens in its own window as a finished PDF that you can save, print, or drag directly into Finder, Microsoft Teams, Messages, and other apps. When coworkers need something editable, save or drag a Microsoft Word version instead.
+
+## What it does on Mac
 
 - Formats ATX and Setext headings, paragraphs, bold, italics, underlining, strikethrough, inline and reference links, core autolinks, footnotes, lists, quotations, tables, fenced and indented code, entity references, and inline or reference images
 - Previews Markdown directly in Finder with a continuous, screen-optimized Quick Look view: select a file and press Space or Command-Y
@@ -34,6 +37,8 @@ Markdown Printer implements selected CommonMark 0.31.2 syntax rather than claimi
 
 ## Install
 
+### Mac
+
 Markdown Printer requires macOS 14 Sonoma or newer.
 
 1. [Download Markdown Printer](https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip).
@@ -46,21 +51,17 @@ Markdown Printer advertises itself as a viewer for Markdown without silently cha
 
 The release is signed with a Developer ID certificate and notarized by Apple, so it opens through the normal macOS security flow.
 
+Version 1.3.0 is the first release that includes the updater. If you have an older version, install a current Mac release manually once; future stable releases can be installed with **Markdown Printer > Check for Updates…**.
+
 ### iPhone and iPad app
 
-The repository also contains a universal iPhone and iPad viewer for iOS/iPadOS 26 in [`iOS/MarkdownPrinterIOS.xcodeproj`](iOS/MarkdownPrinterIOS.xcodeproj). It uses Apple’s native document browser for Recents, Shared, and Browse, with a compact status strip that checks iCloud metadata without hiding files already available on the device. Apple’s per-file cloud indicators remain authoritative; the app does not invent a provider-wide pending count that iOS cannot reliably supply. The viewer renders Markdown as a continuous, selectable SwiftUI document with adaptive colors, Dynamic Type, images, horizontally scrollable code and tables, search, linked-document navigation, and Preview-style toolbar hiding. Its bottom Find field is ready without an extra mode button, while the icon beside the filename opens the system share sheet to send, save, or print the one locally generated portrait US Letter PDF. If a file provider restricts sibling access, choose the containing folder once; Markdown Printer remembers that grant across launches so linked Markdown and local resources inside the authorized folder open directly until access is revoked in Settings. Secure remote images load automatically into the disposable app cache, with readable placeholders retained when an image is unavailable.
+[Get Markdown Printer on the App Store](https://apps.apple.com/app/id6811229585) for iPhone and iPad running iOS/iPadOS 26 or newer.
+
+Open Markdown from Apple’s native Files browser and read a continuous, selectable document with adaptive colors, Dynamic Type, images, and horizontally scrolling code and tables. Find text, follow linked documents, and use the share icon to send, save, or print a searchable PDF generated on your device. If a file provider restricts access to linked files, choose the containing folder once to allow access. Secure remote images load into the disposable app cache, with readable placeholders when an image is unavailable.
 
 On iPad, Markdown Printer supports separate, resizable document windows. Incoming Markdown files and Files drops open a new window when the receiving window already contains a document, or activate a window already showing that file. Linked documents stay in their current window unless you choose **Open in New Window** from the link’s context menu. Each window restores its document references, navigation, search, and reading position using local scene state. Native keyboard commands and anchored PDF sharing/printing support keyboard and trackpad workflows. See the [iPhone and iPad support guide](docs/ios-support.md) for shortcuts and recovery steps.
 
-The iOS app is currently a build-from-source target rather than an App Store release. Open the Xcode project, select the **MarkdownPrinterIOS** target, choose a paid Apple Developer team under **Signing & Capabilities**, connect an iPhone or iPad running iOS/iPadOS 26 or newer, and Run. A free Personal Team profile expires after seven days. The paid-team device helper refuses such a profile and reports the actual provisioning lifetime before optionally installing:
-
-```sh
-scripts/build-and-run/build_ios_device.sh --install
-```
-
-The paid team is read from the Mac’s Apple Development certificate (or `MARKDOWN_PRINTER_IOS_TEAM_ID`) and is not stored in the repository.
-
-Version 1.3.0 is the first release that includes the updater. If you have an older version, install 1.3.0 manually once; future stable releases can be installed with **Markdown Printer > Check for Updates…**.
+Building from source remains an option. The [development guide](development/README.md#build-and-install-the-iphone-and-ipad-app) covers Xcode, signing, and installation. Personal builds, use at work, and free forks and sharing are allowed; monetized redistribution of the mobile app or its code requires written permission under the [mobile source license](LICENSE-IOS.md).
 
 ## Privacy and update checks
 
@@ -80,4 +81,6 @@ Want to inspect or build it yourself? The developer commands and project structu
 
 ## License
 
-Markdown Printer is available under the [MIT License](LICENSE).
+The Mac app and shared core are open source under the [MIT License](LICENSE). The iPhone and iPad app and mobile-specific support code are source-available under the [Markdown Printer iOS Source-Available License 1.0](LICENSE-IOS.md).
+
+You may inspect, build, modify, and freely share the covered mobile code and apps, including for your own use at work. Selling or otherwise monetizing their redistribution—including paid bundles, subscriptions, and advertising-supported repackaging—requires Peter Edstrom's written permission. This does not restrict commercial use of documents you create with the app. Previously published MIT versions retain their existing permissions; see the license files for the exact scope and terms.

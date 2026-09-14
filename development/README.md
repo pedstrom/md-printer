@@ -1,6 +1,6 @@
 # Developing Markdown Printer
 
-Markdown Printer contains a native SwiftUI/AppKit macOS app and a separate SwiftUI/UIKit iPhone viewer. The shared parser and syntax tree, each platform’s renderer and PDF generator, preview, save path, print path, and Finder Quick Look renderer are all local and dependency-free. Sparkle 2 supplies the isolated macOS update client; it does not participate in document rendering.
+Markdown Printer contains a native SwiftUI/AppKit macOS app and a separate SwiftUI/UIKit iPhone and iPad viewer. The shared parser and syntax tree, each platform’s renderer and PDF generator, preview, save path, print path, and Finder Quick Look renderer are all local and dependency-free. Sparkle 2 supplies the isolated macOS update client; it does not participate in document rendering.
 
 The full app uses the generated PDF as the single source of truth for preview, save, and print. The embedded `MarkdownPrinterQuickLook.appex` is a separate continuous reading surface that shares `MarkdownPrinterCore` before PDF pagination. Its testable behavior lives in the `MarkdownPrinterQuickLookSupport` SwiftPM library; the Xcode app-extension target under `QuickLookExtension/` is only the `QLPreviewingController` bridge required by macOS.
 
@@ -8,7 +8,7 @@ The full app uses the generated PDF as the single source of truth for preview, s
 
 - macOS 14 Sonoma or newer
 - Xcode with Swift 6.1, the iOS 26 SDK, and an iOS 26 simulator
-- A paid Apple Developer team and connected iOS 26 iPhone only for the non-seven-day device build
+- An iPhone or iPad running iOS/iPadOS 26 or newer for device installation; a paid Apple Developer team for the non-seven-day device helper
 
 ## Build and run
 
@@ -30,9 +30,13 @@ To render a Markdown file from the command line:
 scripts/build-and-run/render_markdown.sh Examples/showcase.md /private/tmp/showcase.pdf
 ```
 
-### Build and install the iPhone app
+### Build and install the iPhone and iPad app
 
-Open `iOS/MarkdownPrinterIOS.xcodeproj` in Xcode. The **MarkdownPrinterIOS** scheme builds version 1.0 (build 1) for iPhone only with bundle ID `com.peteedstrom.markdown-printer.ios`. The target uses automatic signing and deliberately does not track a development-team identifier; select the paid team available in your local Xcode account before running on a phone.
+Personal builds and modifications are welcome. The mobile code is source-available under the [Markdown Printer iOS Source-Available License 1.0](../LICENSE-IOS.md): use at work and free sharing are allowed, while monetized redistribution of the code, app, or derivatives requires Peter Edstrom's written permission. The Mac app and shared core remain [MIT-licensed](../LICENSE), and earlier MIT grants remain valid.
+
+Open `iOS/MarkdownPrinterIOS.xcodeproj` in Xcode and select the **MarkdownPrinterIOS** scheme. It builds version 1.0 (build 1) for iPhone and iPad with bundle ID `com.peteedstrom.markdown-printer.ios`. For a simulator build, choose an iPhone or iPad simulator and Run. For a device build, choose your Apple Developer team under **Signing & Capabilities**, connect an iPhone or iPad running iOS/iPadOS 26 or newer, select it as the destination, and Run. The target uses automatic signing and deliberately does not track a development-team identifier.
+
+Xcode also supports manual builds with a free Personal Team, whose provisioning profile expires after seven days. The command-line device helper below requires a paid team, rejects seven-day-or-shorter profiles, and reports the actual provisioning lifetime before optionally installing.
 
 For a reproducible command-line build, signature check, provisioning-profile lifetime check, and optional install, use:
 
@@ -40,9 +44,17 @@ For a reproducible command-line build, signature check, provisioning-profile lif
 scripts/build-and-run/build_ios_device.sh --install
 ```
 
-The helper derives the paid team from the local Apple Development certificate unless `MARKDOWN_PRINTER_IOS_TEAM_ID` is set. It also accepts `MARKDOWN_PRINTER_IOS_DEVICE_ID` when more than one phone is connected. It verifies the embedded profile matches the requested team and refuses profiles with a seven-day-or-shorter lifetime. Certificates and provisioning profiles remain in the login Keychain and Xcode-managed local storage.
+The helper derives the paid team from the local Apple Development certificate unless `MARKDOWN_PRINTER_IOS_TEAM_ID` is set. It also accepts `MARKDOWN_PRINTER_IOS_DEVICE_ID` when more than one device is connected. It verifies the embedded profile matches the requested team and refuses profiles with a seven-day-or-shorter lifetime. Certificates and provisioning profiles remain in the login Keychain and Xcode-managed local storage.
 
-The iOS target hosts `UIDocumentBrowserViewController`, so Recents, Shared, Browse, Open In, local files, iCloud Drive, and other system file providers stay under Apple’s document APIs. The active `MobileDocumentSession` owns security-scoped access, coordinates reads, refreshes provider changes, and caches one asynchronous Letter PDF per document revision. The native SwiftUI screen renderer is independent from the Core Graphics/TextKit print renderer, while both consume the same shared Markdown syntax tree.
+The iOS target hosts `UIDocumentBrowserViewController`, so Recents, Shared, Browse, Open In, local files, iCloud Drive, and other system file providers stay under Apple’s document APIs. Each iPad window owns its document session, navigation, search, reading state, and PDF actions. Its `MobileDocumentSession` owns security-scoped access, coordinates reads, refreshes provider changes, and caches one asynchronous Letter PDF per document revision. The native SwiftUI screen renderer is independent from the Core Graphics/TextKit print renderer, while both consume the same shared Markdown syntax tree. See the [iPhone and iPad support guide](../docs/ios-support.md) for behavior and the [iPad validation record](../docs/ipad-validation.md) for automated results and pending physical-device acceptance.
+
+### Mobile App Store documentation publication hold
+
+The App Store presentation in the README is prepared locally for publication with the paid iPhone/iPad release. Do not push these documentation and license changes until [the public product page](https://apps.apple.com/app/id6811229585) resolves to Markdown Printer by Peter Edstrom and offers the paid app for both iPhone and iPad. A known Apple ID, a submitted archive, a pending review, or an iPhone-only listing does not satisfy this check.
+
+Before pushing, compare the product page's device support and OS requirements with the completed mobile implementation, review the outstanding device-acceptance items, and inspect the exact unpushed commit range for premature availability claims, placeholders, and private machine state. Ensure the mobile license is present before the first newly published iPad implementation commit; a later license change must not accidentally expose the new code through an earlier MIT-only commit. Preserve all previously public MIT history and grants.
+
+### Mac release packaging
 
 To create the signed and Apple-notarized ZIP archive used for GitHub releases, first store notarization credentials in the login Keychain and identify the Developer ID Application certificate:
 
