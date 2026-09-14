@@ -1,4 +1,24 @@
+Licensing scope
+===============
+
+The MIT License below applies to repository-owned material except for the
+iPhone/iPad-specific material under these repository-relative directories:
+
+  iOS/
+  Sources/MarkdownPrinterMobileSupport/
+
+That material is offered under LICENSE-IOS.md, the Markdown Printer iOS
+Source-Available License 1.0. The exception includes mobile source code,
+resources, tests, and project configuration. Its terms also cover copies
+and derivatives of that material, even when moved or renamed.
+
+The Mac app, shared MarkdownPrinterCore, and other repository-owned material
+outside those directories remain under MIT. Third-party material retains its
+own license. Previously published MIT versions retain their existing MIT
+permissions; this scope statement does not revoke or restrict those grants.
+
 MIT License
+===========
 
 Copyright (c) 2026 Peter Edstrom
 
