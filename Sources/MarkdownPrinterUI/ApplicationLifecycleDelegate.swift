@@ -4,6 +4,7 @@ import AppKit
 public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate {
     package var newTabHandler: (() -> Void)?
     package var helpHandler: ((MarkdownPrinterHelpDestination) -> Void)?
+    package var externalURLOpener: (URL) -> Void = { NSWorkspace.shared.open($0) }
     package var focusedWindowProvider: () -> NSWindow? = {
         NSApp.keyWindow ?? NSApp.mainWindow
     }
@@ -20,6 +21,9 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
     )
     private static let helpShortcutsIdentifier = NSUserInterfaceItemIdentifier(
         "com.peteedstrom.markdown-printer.help-shortcuts"
+    )
+    private static let releaseNotesIdentifier = NSUserInterfaceItemIdentifier(
+        "com.peteedstrom.markdown-printer.release-notes"
     )
     private lazy var fileMenuDelegateProxy = FileMenuDelegateProxy(owner: self)
     private lazy var editMenuDelegateProxy = EditMenuDelegateProxy(owner: self)
@@ -108,7 +112,8 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
         let generatedHelpSelector = #selector(NSApplication.showHelp(_:))
         let managedIdentifiers = [
             Self.helpOverviewIdentifier,
-            Self.helpShortcutsIdentifier
+            Self.helpShortcutsIdentifier,
+            Self.releaseNotesIdentifier
         ]
         let replacementIndex = helpMenu.items.firstIndex(where: { item in
             item.action == generatedHelpSelector
@@ -141,6 +146,18 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
             shortcuts,
             at: min(replacementIndex + 1, helpMenu.items.count)
         )
+
+        let releaseNotes = NSMenuItem(
+            title: AboutPanel.releaseNotesLinkText,
+            action: #selector(showReleaseNotes(_:)),
+            keyEquivalent: ""
+        )
+        releaseNotes.identifier = Self.releaseNotesIdentifier
+        releaseNotes.target = self
+        helpMenu.insertItem(
+            releaseNotes,
+            at: min(replacementIndex + 2, helpMenu.items.count)
+        )
     }
 
     @IBAction package func showMarkdownPrinterHelp(_ sender: Any?) {
@@ -149,6 +166,10 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
 
     @IBAction package func showKeyboardShortcuts(_ sender: Any?) {
         helpHandler?(.shortcuts)
+    }
+
+    @IBAction package func showReleaseNotes(_ sender: Any?) {
+        externalURLOpener(AboutPanel.releaseNotesURL)
     }
 
     private func configureEditMenu(in mainMenu: NSMenu?) {

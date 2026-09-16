@@ -33,10 +33,12 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         XCTAssertEqual(invocationCount, 1)
     }
 
-    func testGeneratedHelpIsReplacedByReusableOverviewAndShortcutActions() throws {
+    func testGeneratedHelpIsReplacedByReusableHelpAndReleaseNotesActions() throws {
         let delegate = ApplicationLifecycleDelegate()
         var destinations: [MarkdownPrinterHelpDestination] = []
         delegate.helpHandler = { destinations.append($0) }
+        var openedURLs: [URL] = []
+        delegate.externalURLOpener = { openedURLs.append($0) }
         let mainMenu = NSMenu()
         let helpItem = NSMenuItem(title: "Help", action: nil, keyEquivalent: "")
         let helpMenu = NSMenu(title: "Help")
@@ -52,18 +54,28 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
 
         delegate.configureHelpMenu(in: mainMenu)
         delegate.configureHelpMenu(in: mainMenu)
+        helpMenu.update()
 
         XCTAssertEqual(
             helpMenu.items.map(\.title),
-            ["Support", "Markdown Printer Help", "Keyboard Shortcuts"]
+            ["Support", "Markdown Printer Help", "Keyboard Shortcuts", "Release Notes"]
         )
         let overview = try XCTUnwrap(helpMenu.item(withTitle: "Markdown Printer Help"))
         let shortcuts = try XCTUnwrap(helpMenu.item(withTitle: "Keyboard Shortcuts"))
+        let releaseNotes = try XCTUnwrap(helpMenu.item(withTitle: "Release Notes"))
         XCTAssertTrue(overview.target === delegate)
         XCTAssertTrue(shortcuts.target === delegate)
+        XCTAssertTrue(releaseNotes.target === delegate)
+        XCTAssertTrue(releaseNotes.isEnabled)
+        XCTAssertEqual(releaseNotes.keyEquivalent, "")
         _ = overview.target?.perform(overview.action, with: overview)
         _ = shortcuts.target?.perform(shortcuts.action, with: shortcuts)
+        _ = releaseNotes.target?.perform(releaseNotes.action, with: releaseNotes)
         XCTAssertEqual(destinations, [.overview, .shortcuts])
+        XCTAssertEqual(
+            openedURLs.map(\.absoluteString),
+            ["https://github.com/pedstrom/md-printer/releases"]
+        )
 
         helpMenu.removeAllItems()
         helpMenu.addItem(
@@ -74,7 +86,7 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         try XCTUnwrap(helpMenu.delegate).menuWillOpen?(helpMenu)
         XCTAssertEqual(
             helpMenu.items.map(\.title),
-            ["Markdown Printer Help", "Keyboard Shortcuts"]
+            ["Markdown Printer Help", "Keyboard Shortcuts", "Release Notes"]
         )
     }
 
@@ -388,7 +400,7 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         )
         XCTAssertEqual(
             helpMenu.items.map(\.title),
-            ["Markdown Printer Help", "Keyboard Shortcuts"]
+            ["Markdown Printer Help", "Keyboard Shortcuts", "Release Notes"]
         )
 
         newItem.isHidden = false

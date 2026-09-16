@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-09-16 — Release history links on Mac
+
+- Added **Help > Release Notes** below **Keyboard Shortcuts** and a matching link above the license in **About Markdown Printer**. Both open the GitHub release history in the default browser, giving access to the newest published notes and earlier releases.
+- Added regression coverage for both About links, the Help action's destination and availability, and menu rebuilding without duplicate release-note entries.
+
 ## 2026-09-14 — App Store presentation and mobile source licensing
 
 - Prepared prominent paid App Store installation links and customer-focused iPhone/iPad copy, with the free Mac download clearly identified and optional source-build instructions in the development guide.
