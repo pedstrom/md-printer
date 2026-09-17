@@ -52,6 +52,7 @@ run_test_target() {
     -onlyUsePackageVersionsFromResolvedFile \
     -skipPackageUpdates \
     -parallel-testing-enabled NO \
+    -collect-test-diagnostics never \
     "-only-testing:$target" \
     test
   # Xcode replaces a device's profile on the next test invocation.

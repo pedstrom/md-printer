@@ -1,5 +1,15 @@
 # Product Development Log
 
+## 2026-09-17 — iOS 1.1 release preparation
+
+- Promoted native iPad support to iOS version 1.1, build 2, in both app build configurations; kept the Mac version independent and local signing settings out of the release commit.
+- Added iOS-specific release notes and an App Store Connect handoff covering the existing app record, distribution upload, required iPad screenshots, review information, and deliberate release selection.
+- Prepared the release workflow to run the full Mac/iPhone/iPad gate before signing and exporting the versioned App Store package. Physical-device acceptance remains separate from simulator verification; upload and submission are subsequent release steps.
+- Explicitly select the native SwiftPM build engine for Mac verification, benchmarks, and packaging so their existing artifact paths remain consistent after Xcode 27 changed the default engine.
+- Removed an immediately invoked nested weak-capture closure in incoming-document handoff after iOS 27 tests exposed a weak-reference crash; retain weak ownership in the asynchronous completion and cover completion after the coordinator closes.
+- Defer and coalesce native Find-field focus changes outside SwiftUI view updates to prevent an iOS 27 responder/layout loop when dismissing search; cover asynchronous focus, superseded requests, and closed-field lifetime.
+- Give each UI fixture session its own remote-image cache so SwiftUI view reconstruction cannot delete the active session's downloaded image, and wait for the native Files controls independently of the app's status bar. Keep XCTest results and screenshots while disabling the optional simulator sysdiagnose collection that stalled failed runs on Xcode 27.
+
 ## 2026-09-16 — Release history links on Mac
 
 - Added **Help > Release Notes** below **Keyboard Shortcuts** and a matching link above the license in **About Markdown Printer**. Both open the GitHub release history in the default browser, giving access to the newest published notes and earlier releases.

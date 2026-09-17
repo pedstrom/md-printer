@@ -348,8 +348,7 @@ struct MobileFindField: UIViewRepresentable {
         field.onSearch = onSearch
         field.onPrint = onPrint
         field.onPreviousSearch = onPreviousSearch
-        if isFocused && !field.isFirstResponder { field.becomeFirstResponder() }
-        if !isFocused && field.isFirstResponder { field.resignFirstResponder() }
+        field.setFocused(isFocused)
     }
 }
 

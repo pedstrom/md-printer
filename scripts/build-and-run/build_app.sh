@@ -22,7 +22,7 @@ if [[ "${1:-}" != "--skip-build" ]]; then
   for triple in "${TARGET_TRIPLES[@]}"; do
     CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache" \
       SWIFTPM_CUSTOM_CACHE_PATH="$ROOT/.build/swiftpm-cache" \
-      swift build -c "$CONFIGURATION" --triple "$triple" --product MarkdownPrinter
+      swift build --build-system native -c "$CONFIGURATION" --triple "$triple" --product MarkdownPrinter
   done
 fi
 
@@ -54,7 +54,7 @@ SPARKLE_FRAMEWORK=""
 for triple in "${TARGET_TRIPLES[@]}"; do
   BIN_PATH="$(CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache" \
     SWIFTPM_CUSTOM_CACHE_PATH="$ROOT/.build/swiftpm-cache" \
-    swift build -c "$CONFIGURATION" --triple "$triple" --show-bin-path)"
+    swift build --build-system native -c "$CONFIGURATION" --triple "$triple" --show-bin-path)"
   BINARIES+=("$BIN_PATH/MarkdownPrinter")
   if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
     SPARKLE_FRAMEWORK="$BIN_PATH/Sparkle.framework"

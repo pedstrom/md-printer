@@ -9,6 +9,8 @@ public final class MobileFindTextField: UITextField, UITextFieldDelegate {
     public var onSearch: () -> Void = {}
     public var onPrint: () -> Void = {}
     public var onPreviousSearch: () -> Void = {}
+    private var requestedFocus = false
+    private var focusUpdatePending = false
 
     public init() {
         super.init(frame: .zero)
@@ -26,6 +28,23 @@ public final class MobileFindTextField: UITextField, UITextFieldDelegate {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// UIKit can ask SwiftUI for the next responder while changing focus.
+    /// Apply the latest request after the current SwiftUI layout update ends.
+    public func setFocused(_ focused: Bool) {
+        requestedFocus = focused
+        guard !focusUpdatePending else { return }
+        focusUpdatePending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.focusUpdatePending = false
+            if self.requestedFocus && !self.isFirstResponder {
+                self.becomeFirstResponder()
+            } else if !self.requestedFocus && self.isFirstResponder {
+                self.resignFirstResponder()
+            }
+        }
+    }
 
     public override var keyCommands: [UIKeyCommand]? {
         let escape = UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(cancelFind(_:)))
@@ -52,8 +71,8 @@ public final class MobileFindTextField: UITextField, UITextFieldDelegate {
     }
 
     @objc private func textChanged() { onTextChange(text ?? "") }
-    public func textFieldDidBeginEditing(_ textField: UITextField) { onFocusChange(true) }
-    public func textFieldDidEndEditing(_ textField: UITextField) { onFocusChange(false) }
+    public func textFieldDidBeginEditing(_ textField: UITextField) { requestedFocus = true; onFocusChange(true) }
+    public func textFieldDidEndEditing(_ textField: UITextField) { requestedFocus = false; onFocusChange(false) }
     public func textFieldShouldReturn(_ textField: UITextField) -> Bool { onSearch(); return false }
 }
 

@@ -18,7 +18,7 @@ export CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache"
 export SWIFTPM_CUSTOM_CACHE_PATH="$ROOT/.build/swiftpm-cache"
 
 if [[ "$SKIP_BUILD" == "0" ]]; then
-  swift build -c release --product MarkdownPrinterCLI >/dev/null
+  swift build --build-system native -c release --product MarkdownPrinterCLI >/dev/null
 fi
 
 BINARY="$ROOT/.build/release/MarkdownPrinterCLI"

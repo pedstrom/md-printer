@@ -30,7 +30,7 @@ Validated with Xcode 26.6 and the iOS/iPadOS 26.5 Simulator runtime:
 
 Reviewed the 13-inch reader in portrait and landscape, dark appearance with text selection, large text, narrow-window Find, the native share popover, Save to Files, print options, and all three pages of the exported PDF fixture. Use full-screen iPad captures: app-bounded screenshots crop incorrectly after rotation on this Simulator runtime.
 
-The local review directory contains `ipad-13-field-notes-portrait.png`, `ipad-13-field-notes-landscape.png`, the interaction screenshots, `exported-fixture.pdf`, and its rendered pages. The signed archive is prepared separately from App Store submission; the iOS version remains 1.0, build 1.
+The local review directory contains `ipad-13-field-notes-portrait.png`, `ipad-13-field-notes-landscape.png`, the interaction screenshots, `exported-fixture.pdf`, and its rendered pages. This September 14 validation used iOS version 1.0, build 1. The subsequent [iOS 1.1 release handoff](ios-1.1-release.md) keeps versioned packages and fresh gate results separate from App Store submission.
 
 ## Physical iPad acceptance — pending
 

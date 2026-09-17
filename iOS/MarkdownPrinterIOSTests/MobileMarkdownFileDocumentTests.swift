@@ -170,6 +170,33 @@ final class MobileMarkdownFileDocumentTests: XCTestCase {
         XCTAssertEqual(presentedURL, revealedURL)
     }
 
+    @MainActor
+    func testIncomingDocumentCompletionDoesNotRetainClosedCoordinator() {
+        let document = MobileIncomingDocument(url: URL(fileURLWithPath: "/tmp/Delayed.md"))
+        let browser = UIDocumentBrowserViewController(
+            forOpening: [MobileMarkdownFileDocument.markdownContentType]
+        )
+        var completion: ((URL?, Error?) -> Void)?
+        var presented = false
+        var handled = false
+        var coordinator: MarkdownDocumentBrowser.Coordinator? = .init(
+            revealDocument: { _, _, _, callback in completion = callback },
+            presentRevealedDocument: { _, _ in presented = true },
+            isReadyToReveal: { _ in true }
+        )
+        weak var closedCoordinator = coordinator
+        coordinator?.openIncomingDocumentIfNeeded(document, from: browser) { _ in
+            handled = true
+        }
+        XCTAssertNotNil(completion)
+        coordinator = nil
+        XCTAssertNil(closedCoordinator)
+
+        completion?(document.url, nil)
+        XCTAssertFalse(presented)
+        XCTAssertFalse(handled)
+    }
+
     func testShareStoreWritesNamedTemporaryPDF() throws {
         let data = Data("%PDF-test".utf8)
         let url = try MobilePDFShareStore.write(data: data, filename: "Shared.pdf")

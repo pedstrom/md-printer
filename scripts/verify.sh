@@ -169,6 +169,11 @@ if [[ "$INCLUDE_IOS" == true ]]; then
     == '$(MARKETING_VERSION)' ]]
   [[ "$(plutil -extract CFBundleVersion raw iOS/MarkdownPrinterIOS/Info.plist)" \
     == '$(CURRENT_PROJECT_VERSION)' ]]
+  plutil -convert json -o - iOS/MarkdownPrinterIOS.xcodeproj/project.pbxproj \
+    | jq -e '[.objects[] | select(.isa == "XCBuildConfiguration") | .buildSettings
+      | select(.PRODUCT_BUNDLE_IDENTIFIER == "com.peteedstrom.markdown-printer.ios")]
+      | length == 2 and all(.[]; .MARKETING_VERSION == "1.1" and .CURRENT_PROJECT_VERSION == "2")' >/dev/null
+  test -s release-notes/ios-1.1.md
   [[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeRole raw \
     iOS/MarkdownPrinterIOS/Info.plist)" == "Viewer" ]]
   [[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeExtensions json -o - \
@@ -207,9 +212,11 @@ fi
 mkdir -p .build/module-cache .build/swiftpm-cache
 export CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache"
 export SWIFTPM_CUSTOM_CACHE_PATH="$ROOT/.build/swiftpm-cache"
-swift test --enable-code-coverage
+# Keep the native SwiftPM artifact layout used by coverage and packaging,
+# including on Xcode 27 where Swift Build became the default engine.
+swift test --build-system native --enable-code-coverage
 
-TEST_BIN_DIRECTORY="$(swift build --show-bin-path)"
+TEST_BIN_DIRECTORY="$(swift build --build-system native --show-bin-path)"
 TEST_BINARY="$TEST_BIN_DIRECTORY/MarkdownPrinterPackageTests.xctest/Contents/MacOS/MarkdownPrinterPackageTests"
 PROFDATA="$TEST_BIN_DIRECTORY/codecov/default.profdata"
 if [[ ! -x "$TEST_BINARY" || ! -s "$PROFDATA" ]]; then

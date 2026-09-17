@@ -237,6 +237,48 @@ final class MobileDocumentWindowTests: XCTestCase {
         XCTAssertEqual(field.autocorrectionType, .no)
     }
 
+    func testFindFocusChangesAreDeferredAndCoalesceToTheLatestRequest() async throws {
+        let host = UIViewController()
+        let window = UIWindow(windowScene: try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let field = MobileFindTextField()
+        field.frame = CGRect(x: 20, y: 80, width: 240, height: 44)
+        host.view.addSubview(field)
+
+        field.setFocused(true)
+        XCTAssertFalse(field.isFirstResponder, "Focus must not change during the SwiftUI update")
+        field.setFocused(false)
+        await drainMainQueue()
+        XCTAssertFalse(field.isFirstResponder, "The newer request must supersede the queued focus")
+
+        field.setFocused(true)
+        await drainMainQueue()
+        XCTAssertTrue(field.isFirstResponder)
+        field.setFocused(true)
+        await drainMainQueue()
+        XCTAssertTrue(field.isFirstResponder)
+
+        field.setFocused(false)
+        XCTAssertTrue(field.isFirstResponder, "Dismissal must also leave the SwiftUI update first")
+        await drainMainQueue()
+        XCTAssertFalse(field.isFirstResponder)
+
+        var discarded: MobileFindTextField? = MobileFindTextField()
+        weak var released = discarded
+        discarded?.setFocused(true)
+        discarded = nil
+        XCTAssertNil(released, "A queued focus request must not retain a closed field")
+        await drainMainQueue()
+    }
+
+    private func drainMainQueue() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+    }
+
     func testAtomicSceneStorageIsIndependentAndClosingRemovesOnlyThatScene() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

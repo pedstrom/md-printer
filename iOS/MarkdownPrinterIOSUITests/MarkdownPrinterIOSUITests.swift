@@ -152,8 +152,8 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
 
         XCTAssertTrue(app.staticTexts["Checking iCloud…"].waitForExistence(timeout: 8))
         XCTAssertFalse(app.buttons["Open Markdown Printer sample"].exists)
-        XCTAssertTrue(app.buttons["Recents"].exists)
-        XCTAssertTrue(app.buttons["Browse"].exists)
+        XCTAssertTrue(app.buttons["Recents"].waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(app.buttons["Browse"].waitForExistence(timeout: 8), app.debugDescription)
 
         let status = XCTAttachment(screenshot: readerScreenshot())
         status.name = "Document browser checking iCloud"
@@ -174,7 +174,7 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
             app.staticTexts["Couldn’t check iCloud — showing available files"]
                 .waitForExistence(timeout: 8)
         )
-        XCTAssertTrue(app.buttons["Browse"].exists)
+        XCTAssertTrue(app.buttons["Browse"].waitForExistence(timeout: 8), app.debugDescription)
         let retry = app.buttons["Retry"]
         XCTAssertTrue(retry.exists)
         retry.tap()

@@ -549,24 +549,19 @@ struct MarkdownDocumentBrowser: UIViewControllerRepresentable {
             pendingIncomingDocument = nil
             activeIncomingDocumentID = document.id
 
-            let reveal = { [weak self, weak controller] in
+            revealDocument(
+                controller,
+                document.url,
+                true
+            ) { [weak self, weak controller] url, _ in
                 guard let self, let controller else { return }
-                self.revealDocument(
-                    controller,
-                    document.url,
-                    true
-                ) { [weak self, weak controller] url, _ in
-                    guard let self, let controller else { return }
-                    self.finishIncomingDocument(
-                        document,
-                        revealedURL: url,
-                        from: controller,
-                        onHandled: onHandled
-                    )
-                }
+                self.finishIncomingDocument(
+                    document,
+                    revealedURL: url,
+                    from: controller,
+                    onHandled: onHandled
+                )
             }
-
-            reveal()
         }
 
         func documentBrowserDidAppear(_ controller: UIDocumentBrowserViewController) {
@@ -720,9 +715,10 @@ struct UITestMarkdownDocumentContainer: View {
 
     init() {
         let fixture = Self.makeFixture()
+        // SwiftUI can rebuild this value while retaining the original session.
+        // Never clear a cache that the retained session still owns.
         let cacheDirectory = fixture.url.deletingLastPathComponent()
-            .appendingPathComponent("UITestRemoteImageCache", isDirectory: true)
-        try? FileManager.default.removeItem(at: cacheDirectory)
+            .appendingPathComponent("UITestRemoteImageCache-\(UUID().uuidString)", isDirectory: true)
         let cache = RemoteImageCache(directoryURL: cacheDirectory)
         let image = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 70)).image { context in
             UIColor.systemTeal.setFill()
