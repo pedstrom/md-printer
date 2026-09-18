@@ -21,7 +21,7 @@ final class MarkdownRendererTests: XCTestCase {
         let headingRange = (output.string as NSString).range(of: "Heading")
         let headingFont = output.attribute(.font, at: headingRange.location, effectiveRange: nil) as? NSFont
         XCTAssertEqual(headingFont?.familyName, "Avenir Next")
-        XCTAssertEqual(headingFont?.pointSize, 24)
+        XCTAssertEqual(headingFont?.pointSize, 26)
 
         let bodyRange = (output.string as NSString).range(of: "Text")
         let bodyFont = output.attribute(.font, at: bodyRange.location, effectiveRange: nil) as? NSFont

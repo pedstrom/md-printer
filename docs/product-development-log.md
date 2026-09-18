@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-09-18 — Clearer heading hierarchy on Mac, iPhone, and iPad
+
+- Define all six heading levels together: PDF sizes 26/20/16/13/11/10 points, Bold for H1–H2, Demi Bold for H3–H5, and Demi Bold Italic for H6, with regular 10-point body text.
+- Share the hierarchy across Mac PDF preview/save/print and Word export, Finder Quick Look, the iPhone/iPad reader, and mobile PDF sharing/printing. Use screen-specific sizes and preserve Dynamic Type, inline emphasis, and system-font fallbacks.
+- Replace extra Mac heading blank lines with graduated paragraph spacing, account for preceding block spacing, and keep headings close to their following content.
+- Preserve the exact preceding-line boundary when moving a heading group to the next PDF page, preventing repeated backward page breaks in compact outlines; cover both synchronous and asynchronous export.
+- Add all-level typography, spacing, scaling, inline-style, Word export, and native reader regressions, plus a reusable heading fixture and inspectable mobile PDF/screenshot artifacts.
+
 ## 2026-09-17 — iOS 1.1 release preparation
 
 - Promoted native iPad support to iOS version 1.1, build 2, in both app build configurations; kept the Mac version independent and local signing settings out of the release commit.

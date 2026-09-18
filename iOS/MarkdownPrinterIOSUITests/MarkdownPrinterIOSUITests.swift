@@ -32,6 +32,32 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         add(portrait)
     }
 
+    func testAllHeadingLevelsRemainReadableInTheNativeReader() {
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-ui-testing-headings"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Heading level 2"].waitForExistence(timeout: 8))
+        let upper = XCTAttachment(screenshot: readerScreenshot())
+        upper.name = "Heading hierarchy - upper levels"
+        upper.lifetime = .keepAlways
+        add(upper)
+        var previousHeight = CGFloat.greatestFiniteMagnitude
+        for level in 2...6 {
+            let heading = app.staticTexts["Heading level \(level)"]
+            for _ in 0..<5 where !heading.isHittable { app.swipeUp() }
+            XCTAssertTrue(heading.isHittable)
+            XCTAssertLessThan(heading.frame.height, previousHeight)
+            previousHeight = heading.frame.height
+        }
+        let lower = XCTAttachment(screenshot: readerScreenshot())
+        lower.name = "Heading hierarchy - lower levels"
+        lower.lifetime = .keepAlways
+        add(lower)
+        let following = app.staticTexts["Following paragraph."]
+        for _ in 0..<5 where !following.isHittable { app.swipeUp() }
+        XCTAssertTrue(following.isHittable)
+    }
+
     func testSearchNavigatesMatchesAndExposesOptions() {
         let search = app.textFields["find-field"]
         XCTAssertTrue(search.exists)

@@ -815,6 +815,12 @@ struct UITestMarkdownDocumentContainer: View {
         if ProcessInfo.processInfo.arguments.contains("-ui-testing-windows") {
             markdown = markdown.replacingOccurrences(of: "![Network artwork](https://example.com/image.png)", with: "[First Project](one/Report.md)")
         }
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing-headings") {
+            markdown = "# iPhone Viewer Fixture\n\n" + (2...6).map {
+                "\(String(repeating: "#", count: $0)) Heading level \($0)\n\nBody text with **strong** text for comparison."
+            }.joined(separator: "\n\n")
+            markdown += "\n\n### A longer heading that wraps naturally across multiple lines\n\nFollowing paragraph."
+        }
         try? Data(markdown.utf8).write(to: sourceURL, options: .atomic)
         let document = (try? MarkdownDocument.load(from: sourceURL))
             ?? MarkdownDocument(title: "fixture", markdown: markdown)

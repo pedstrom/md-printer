@@ -73,7 +73,7 @@ struct MarkdownPrinterCLI {
             let blocks = MarkdownParser().parse(markdown)
             let configuration = RendererConfiguration(
                 bodyFontSize: 13,
-                headingFontSizes: [31, 26, 22, 18, 16, 13],
+                headingFontSizes: HeadingTypography.quickLookSizes,
                 pageSize: CGSize(width: 680, height: 1_000),
                 pageMargins: NSEdgeInsets(),
                 maximumImageWidth: 680,

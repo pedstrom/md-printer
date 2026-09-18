@@ -47,9 +47,8 @@ public final class MarkdownRenderer {
     }
 
     private func usesBlankLine(after previous: MarkdownBlock, before current: MarkdownBlock) -> Bool {
-        if case let .heading(level, _) = previous, level >= 2 {
-            return false
-        }
+        if case .heading = previous { return false }
+        if case .heading = current { return false }
         if case .paragraph = previous, case .list = current {
             return false
         }
@@ -66,9 +65,12 @@ public final class MarkdownRenderer {
         switch block {
         case let .heading(level, content):
             let size = configuration.headingSize(for: level)
-            let paragraph = paragraphStyle(spacingAfter: level <= 2 ? 12 : 8)
+            let style = HeadingTypography(level: level)
+            let scale = configuration.bodyFontSize / 10
+            let paragraph = paragraphStyle(spacingAfter: style.spacingAfter * scale)
+            paragraph.paragraphSpacingBefore = style.additionalSpacingBefore(in: result, scale: scale)
             paragraph.headerLevel = level
-            let rendered = renderInline(content, font: fonts.bold(size: size), baseURL: baseURL, footnotes: footnotes)
+            let rendered = renderInline(content, font: fonts.heading(level: level, size: size), baseURL: baseURL, footnotes: footnotes)
             rendered.addAttribute(.paragraphStyle, value: paragraph, range: rendered.fullRange)
             result.append(rendered)
             result.append(NSAttributedString(string: "\n"))
@@ -575,6 +577,7 @@ public final class MarkdownRenderer {
     }
 
     private func boldVariant(of font: NSFont) -> NSFont {
+        if NSFontManager.shared.traits(of: font).contains(.boldFontMask) { return font }
         if NSFontManager.shared.traits(of: font).contains(.italicFontMask) {
             return fonts.boldItalic(size: font.pointSize)
         }
@@ -582,10 +585,7 @@ public final class MarkdownRenderer {
     }
 
     private func italicVariant(of font: NSFont) -> NSFont {
-        if NSFontManager.shared.traits(of: font).contains(.boldFontMask) {
-            return fonts.boldItalic(size: font.pointSize)
-        }
-        return fonts.italic(size: font.pointSize)
+        NSFontManager.shared.convert(font, toHaveTrait: .italicFontMask)
     }
 
     private func textAlignment(for alignment: TableAlignment) -> NSTextAlignment {

@@ -72,7 +72,7 @@ public enum ContinuousPreviewStyle {
     public static var rendererConfiguration: RendererConfiguration {
         RendererConfiguration(
             bodyFontSize: 13,
-            headingFontSizes: [31, 26, 22, 18, 16, 13],
+            headingFontSizes: HeadingTypography.quickLookSizes,
             pageSize: CGSize(width: maximumReadingWidth, height: 1_000),
             pageMargins: NSEdgeInsets(),
             textColor: .labelColor,

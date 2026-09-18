@@ -256,7 +256,9 @@ public final class PDFExporter {
 
                 let page = pages[pageIndex]
                 let oldHeight = page.textContainer.containerSize.height
-                let newHeight = max(1, headingTop - 0.5)
+                // The preceding line can end exactly at this boundary. Cutting into it
+                // would move body text too, cascading the break back through the page.
+                let newHeight = max(1, headingTop)
                 guard newHeight < oldHeight - 0.5 else {
                     pageIndex += 1
                     continue
@@ -307,7 +309,7 @@ public final class PDFExporter {
 
                 let page = pages[pageIndex]
                 let oldHeight = page.textContainer.containerSize.height
-                let newHeight = max(1, headingTop - 0.5)
+                let newHeight = max(1, headingTop)
                 guard newHeight < oldHeight - 0.5 else {
                     pageIndex += 1
                     continue

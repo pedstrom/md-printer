@@ -1211,6 +1211,8 @@ final class PDFPreviewViewTests: XCTestCase {
         ))
         XCTAssertEqual(original.document.pageCount, replacement.document.pageCount)
         let originalSecondPage = try XCTUnwrap(original.document.page(at: 1))
+        let editedSelection = try XCTUnwrap(original.document.findString("PAGE TWO EDIT BASELINE", withOptions: []).first)
+        XCTAssertEqual(original.document.index(for: try XCTUnwrap(editedSelection.pages.first)), 1)
         let container = BufferedPDFPreviewView(
             frame: NSRect(x: 0, y: 0, width: 760, height: 890)
         )
@@ -1322,7 +1324,7 @@ final class PDFPreviewViewTests: XCTestCase {
     }
 
     private func makeBoundaryTableMarkdown(editedRowEight: String) -> String {
-        let openingParagraphs = (1...4).map {
+        let openingParagraphs = (1...7).map {
             "Opening paragraph \($0). Stable prose places the table low enough on page one."
         }
         let rows = (1...14).map { index in

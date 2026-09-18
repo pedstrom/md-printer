@@ -19,6 +19,96 @@ final class MobilePDFExporterTests: XCTestCase {
         directory = nil
     }
 
+    func testAllHeadingLevelsUseSharedPrintHierarchyAndTotalSpacing() throws {
+        let names = ["AvenirNext-Bold", "AvenirNext-Bold", "AvenirNext-DemiBold",
+                     "AvenirNext-DemiBold", "AvenirNext-DemiBold", "AvenirNext-DemiBoldItalic"]
+        for level in 1...6 {
+            let markdown = "Before.\n\n\(String(repeating: "#", count: level)) Heading\n\nAfter."
+            let output = try MobilePrintRenderer(configuration: .letter).render(
+                document: MarkdownDocument(title: "Headings", markdown: markdown)
+            )
+            XCTAssertEqual(output.string, "Before.\nHeading\nAfter.\n")
+            let index = (output.string as NSString).range(of: "Heading").location
+            let font = try XCTUnwrap(output.attribute(.font, at: index, effectiveRange: nil) as? UIFont)
+            let paragraph = try XCTUnwrap(output.attribute(.paragraphStyle, at: index, effectiveRange: nil) as? NSParagraphStyle)
+            XCTAssertEqual(font.fontName, names[level - 1])
+            XCTAssertEqual(font.pointSize, [26, 20, 16, 13, 11, 10][level - 1])
+            XCTAssertEqual(paragraph.paragraphSpacingBefore + 8, [24, 18, 14, 11, 9, 8][level - 1])
+            XCTAssertEqual(paragraph.paragraphSpacing, [8, 6, 5, 4, 3, 3][level - 1])
+        }
+    }
+
+    func testReaderHeadingFontsRetainHierarchyAcrossDynamicTypeAndFallbacks() {
+        for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+            let traits = UITraitCollection(preferredContentSizeCategory: category)
+            let fonts = (1...6).map { MobileHeadingTypography.readerFont(level: $0, compatibleWith: traits) }
+            for (larger, smaller) in zip(fonts, fonts.dropFirst()) {
+                XCTAssertGreaterThan(larger.pointSize, smaller.pointSize)
+            }
+            XCTAssertEqual(fonts[0].fontName, "AvenirNext-Bold")
+            XCTAssertEqual(fonts[1].fontName, "AvenirNext-Bold")
+            XCTAssertEqual(fonts[2].fontName, "AvenirNext-DemiBold")
+            XCTAssertEqual(fonts[5].fontName, "AvenirNext-DemiBoldItalic")
+            let body = UIFontMetrics(forTextStyle: .body).scaledValue(for: 17, compatibleWith: traits)
+            XCTAssertEqual(fonts[5].pointSize, body, accuracy: 0.01)
+            if category == .large {
+                XCTAssertEqual(fonts.map(\.pointSize), [40, 32, 26, 22, 19, 17])
+            }
+        }
+        for level in 1...6 {
+            let fallback = MobileHeadingTypography.font(level: level, size: 20, family: "Missing Font")
+            XCTAssertEqual(fallback.pointSize, 20)
+            XCTAssertEqual(fallback.fontDescriptor.symbolicTraits.contains(.traitItalic), level == 6)
+        }
+    }
+
+    func testInlineStylesPreserveHeadingWeightAndSixthLevelItalic() throws {
+        for level in [1, 2, 6] {
+            let output = try MobilePrintRenderer(configuration: .letter).render(document: MarkdownDocument(
+                title: "Heading", markdown: "\(String(repeating: "#", count: level)) Plain **strong** *emphasis* ***both***"
+            ))
+            for text in ["Plain", "strong", "emphasis", "both"] {
+                let index = (output.string as NSString).range(of: text).location
+                let font = try XCTUnwrap(output.attribute(.font, at: index, effectiveRange: nil) as? UIFont)
+                let italic = level == 6 || text == "emphasis" || text == "both"
+                XCTAssertEqual(font.fontName, level == 6 ? "AvenirNext-DemiBoldItalic" : "AvenirNext-Bold\(italic ? "Italic" : "")")
+            }
+            let firstParagraph = try XCTUnwrap(output.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle)
+            XCTAssertEqual(firstParagraph.paragraphSpacingBefore, 0)
+        }
+    }
+
+    func testReaderHeadingSpacingAccountsForEveryPrecedingBlockKind() throws {
+        let examples: [(String, CGFloat)] = [
+            ("## Heading", 6 * 1.7), ("Paragraph", 11), ("- Item", 11),
+            ("> Quote", 13), ("```\nCode\n```", 14), ("---", 14),
+            ("<div>HTML</div>", 10), ("| A |\n| --- |\n| B |", 17),
+            ("[^note]: Note", 0)
+        ]
+        XCTAssertEqual(MobileHeadingTypography.spacingBefore(level: 1, after: nil), 0)
+        for (markdown, previousSpacing) in examples {
+            let block = try XCTUnwrap(MarkdownParser().parse(markdown).first)
+            XCTAssertEqual(MobileHeadingTypography.spacingBefore(level: 2, after: block) + previousSpacing, 18 * 1.7, accuracy: 0.01)
+        }
+        XCTAssertEqual(MobileHeadingTypography.spacingBefore(level: 6, after: .thematicBreak), 0)
+    }
+
+    func testHeadingHierarchyPDFIsSearchableAndProducesVisualFixture() async throws {
+        let markdown = (1...6).map {
+            "\(String(repeating: "#", count: $0)) Heading level \($0)\n\nBody text follows this heading, with **strong** text for comparison."
+        }.joined(separator: "\n\n") + "\n\n### A longer subsection heading that wraps naturally across multiple lines to check line spacing and following content\n\nFollowing paragraph."
+        let data = try await MobilePDFExporter().pdfData(for: MarkdownDocument(title: "Headings", markdown: markdown))
+        let pdf = try XCTUnwrap(PDFDocument(data: data))
+        for level in 1...6 { XCTAssertTrue(pdfText(pdf).contains("Heading level \(level)")) }
+        XCTAssertTrue(pdfText(pdf).contains("Following paragraph."))
+        let documents = try XCTUnwrap(FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first)
+        try data.write(to: documents.appendingPathComponent("mobile-headings.pdf"), options: .atomic)
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "com.adobe.pdf")
+        attachment.name = "All six heading levels"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testShareablePDFVisualFixture() async throws {
         let paragraphs = (1...35).map { "Section \($0): A readable document keeps its typography, searchable text, and page layout when shared from any window." }.joined(separator: "\n\n")
         let markdown = """

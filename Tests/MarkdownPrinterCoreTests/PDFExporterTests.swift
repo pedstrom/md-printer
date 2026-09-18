@@ -517,6 +517,29 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertEqual(PDFDocument(data: data)?.pageCount, 1)
     }
 
+    func testCompactHeadingGroupsDoNotCascadePageBreaksIntoEarlierBodyText() async throws {
+        let fixture = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Examples/heading-hierarchy.md")
+        let rendered = MarkdownRenderer().render(document: try MarkdownDocument.load(from: fixture))
+        let exporter = PDFExporter()
+        let synchronous = try exporter.pdfData(from: rendered)
+        let asynchronous = try await exporter.pdfDataAsync(from: rendered)
+        for data in [synchronous, asynchronous] {
+            let pdf = try XCTUnwrap(PDFDocument(data: data))
+            XCTAssertEqual(pdf.pageCount, 2)
+            let firstPage = try XCTUnwrap(pdf.page(at: 0)?.string)
+            XCTAssertTrue(firstPage.contains("available inside each paragraph."))
+            XCTAssertTrue(firstPage.contains("Planning your visit"))
+            XCTAssertTrue(firstPage.contains("Exploring the coastline"))
+            XCTAssertTrue(firstPage.contains("a shorter alternative in mind."))
+            let secondPage = try XCTUnwrap(pdf.page(at: 1)?.string)
+            XCTAssertTrue(secondPage.contains("A compact outline"))
+            XCTAssertTrue(secondPage.contains("Small details"))
+            XCTAssertTrue(secondPage.contains("Consecutive headings"))
+        }
+    }
+
     private func naturalBoundaryMarkdown(
         payload: String,
         heading: String,

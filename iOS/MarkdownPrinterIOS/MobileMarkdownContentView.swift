@@ -20,7 +20,7 @@ struct MobileMarkdownContentView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(presentation.blocks) { block in
+                    ForEach(Array(presentation.blocks.enumerated()), id: \.element.id) { index, block in
                         MobileRenderedBlockView(
                             block: block.block,
                             blockID: block.id,
@@ -31,7 +31,8 @@ struct MobileMarkdownContentView: View {
                             remoteImageRevision: remoteImageRevision,
                             downloadingRemoteImageSources: downloadingRemoteImageSources,
                             onDownloadRemoteImage: onDownloadRemoteImage,
-                            onDownloadAllRemoteImages: onDownloadAllRemoteImages
+                            onDownloadAllRemoteImages: onDownloadAllRemoteImages,
+                            previousBlock: index > 0 ? presentation.blocks[index - 1].block : nil
                         )
                         .id(block.id)
                     }
@@ -104,6 +105,7 @@ private struct MobileRenderedBlockView: View {
     let downloadingRemoteImageSources: Set<String>
     let onDownloadRemoteImage: (String) -> Void
     let onDownloadAllRemoteImages: () -> Void
+    var previousBlock: MarkdownBlock? = nil
 
     var body: some View {
         Group {
@@ -122,8 +124,8 @@ private struct MobileRenderedBlockView: View {
                     onDownloadAllRemoteImages: onDownloadAllRemoteImages
                 )
                 .accessibilityAddTraits(.isHeader)
-                .padding(.top, level <= 2 ? 14 : 8)
-                .padding(.bottom, level <= 2 ? 7 : 4)
+                .padding(.top, MobileHeadingTypography.spacingBefore(level: level, after: previousBlock))
+                .padding(.bottom, HeadingTypography(level: level).spacingAfter * 1.7)
             case let .paragraph(content):
                 MobileParagraphView(
                     content: content,
@@ -154,7 +156,8 @@ private struct MobileRenderedBlockView: View {
                                 remoteImageRevision: remoteImageRevision,
                                 downloadingRemoteImageSources: downloadingRemoteImageSources,
                                 onDownloadRemoteImage: onDownloadRemoteImage,
-                                onDownloadAllRemoteImages: onDownloadAllRemoteImages
+                                onDownloadAllRemoteImages: onDownloadAllRemoteImages,
+                                previousBlock: index > 0 ? children[index - 1] : nil
                             )
                         }
                     }
@@ -184,7 +187,8 @@ private struct MobileRenderedBlockView: View {
                                         remoteImageRevision: remoteImageRevision,
                                         downloadingRemoteImageSources: downloadingRemoteImageSources,
                                         onDownloadRemoteImage: onDownloadRemoteImage,
-                                        onDownloadAllRemoteImages: onDownloadAllRemoteImages
+                                        onDownloadAllRemoteImages: onDownloadAllRemoteImages,
+                                        previousBlock: childIndex > 0 ? item.blocks[childIndex - 1] : nil
                                     )
                                 }
                             }
@@ -678,9 +682,7 @@ private struct MobileInlineText: View {
             size = 17
             textStyle = .body
         case let .heading(level):
-            name = "AvenirNext-DemiBold"
-            size = [32, 27, 23, 20, 18, 17][min(max(level - 1, 0), 5)]
-            textStyle = level <= 2 ? .title2 : .headline
+            return MobileHeadingTypography.readerFont(level: level)
         case .footnote:
             name = "AvenirNext-Regular"
             size = 14
@@ -818,11 +820,7 @@ private struct MobileInlineText: View {
     }
 
     private func variant(_ font: UIFont, bold: Bool = false, italic: Bool = false) -> UIFont {
-        var traits = font.fontDescriptor.symbolicTraits
-        if bold { traits.insert(.traitBold) }
-        if italic { traits.insert(.traitItalic) }
-        guard let descriptor = font.fontDescriptor.withSymbolicTraits(traits) else { return font }
-        return UIFont(descriptor: descriptor, size: font.pointSize)
+        MobileHeadingTypography.applyingTraits(to: font, bold: bold, italic: italic)
     }
 }
 

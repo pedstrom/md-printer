@@ -18,7 +18,7 @@ public struct RendererConfiguration: Equatable {
     public init(
         fontFamily: String = "Avenir Next",
         bodyFontSize: CGFloat = 10,
-        headingFontSizes: [CGFloat] = [24, 20, 17, 14, 12, 10],
+        headingFontSizes: [CGFloat] = HeadingTypography.printSizes,
         pageSize: CGSize = CGSize(width: 612, height: 792),
         pageMargins: NSEdgeInsets = NSEdgeInsets(top: 54, left: 54, bottom: 54, right: 54),
         textColor: NSColor = .black,

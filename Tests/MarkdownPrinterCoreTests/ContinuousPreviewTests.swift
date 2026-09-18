@@ -61,7 +61,7 @@ final class ContinuousPreviewRenderingTests: XCTestCase {
 
         XCTAssertEqual(configuration.fontFamily, "Avenir Next")
         XCTAssertEqual(configuration.bodyFontSize, 13)
-        XCTAssertEqual(configuration.headingFontSizes, [31, 26, 22, 18, 16, 13])
+        XCTAssertEqual(configuration.headingFontSizes, [34, 26, 21, 17, 14, 13])
         XCTAssertEqual(configuration.contentWidth, 680)
         XCTAssertEqual(configuration.maximumImageWidth, 680)
         XCTAssertEqual(configuration.textColor, .labelColor)
@@ -127,7 +127,7 @@ final class ContinuousPreviewRenderingTests: XCTestCase {
         let headingFont = try XCTUnwrap(
             output.attribute(.font, at: headingRange.location, effectiveRange: nil) as? NSFont
         )
-        XCTAssertEqual(headingFont.pointSize, 31)
+        XCTAssertEqual(headingFont.pointSize, 34)
 
         let referenceRange = (output.string as NSString).range(of: "note1")
         let referenceIndex = referenceRange.location + referenceRange.length - 1

@@ -26,7 +26,7 @@ final class PageConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.pageSize, CGSize(width: 842, height: 595))
         XCTAssertEqual(configuration.pageMargins.top, 54)
         XCTAssertEqual(configuration.bodyFontSize, 12.5)
-        XCTAssertEqual(configuration.headingFontSizes.first, 30)
+        XCTAssertEqual(configuration.headingFontSizes.first, 32.5)
         XCTAssertEqual(configuration.maximumImageWidth, 734)
     }
 

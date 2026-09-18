@@ -16,6 +16,14 @@ public struct FontBook {
         font(named: configuration.fontFamily + " Demi Bold", size: size, fallbackWeight: .semibold)
     }
 
+    public func heading(level: Int, size: CGFloat) -> NSFont {
+        let style = HeadingTypography(level: level)
+        if style.usesBold {
+            return font(named: configuration.fontFamily + " Bold", size: size, fallbackWeight: .bold)
+        }
+        return style.usesItalic ? boldItalic(size: size) : bold(size: size)
+    }
+
     public func italic(size: CGFloat) -> NSFont {
         NSFont(name: configuration.fontFamily + " Italic", size: size)
             ?? NSFontManager.shared.convert(regular(size: size), toHaveTrait: .italicFontMask)

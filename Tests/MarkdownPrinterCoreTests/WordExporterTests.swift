@@ -4,6 +4,21 @@ import XCTest
 
 @MainActor
 final class WordExporterTests: XCTestCase {
+    func testWordPreservesAllHeadingSizesAndItalicSixthLevel() throws {
+        let markdown = (1...6).map { "\(String(repeating: "#", count: $0)) Heading \($0)\n\nBody \($0)." }.joined(separator: "\n\n")
+        let data = try WordExporter().wordData(from: MarkdownRenderer().render(markdown: markdown))
+        let decoded = try NSAttributedString(
+            data: data, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML], documentAttributes: nil
+        )
+        for level in 1...6 {
+            let index = (decoded.string as NSString).range(of: "Heading \(level)").location
+            let font = try XCTUnwrap(decoded.attribute(.font, at: index, effectiveRange: nil) as? NSFont)
+            XCTAssertEqual(font.pointSize, [26, 20, 16, 13, 11, 10][level - 1])
+            XCTAssertTrue(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
+            XCTAssertEqual(NSFontManager.shared.traits(of: font).contains(.italicFontMask), level == 6)
+        }
+    }
+
     func testExportFormatsExposeExpectedNamesExtensionsAndContentTypes() {
         XCTAssertEqual(ExportFormat.allCases, [.pdf, .word])
         XCTAssertEqual(ExportFormat.pdf.id, "pdf")
@@ -144,7 +159,7 @@ final class WordExporterTests: XCTestCase {
         XCTAssertTrue(footerXML.contains("w:ascii=\"Avenir Next\""))
         XCTAssertTrue(footerXML.contains("<w:sz w:val=\"16\"/>"))
         XCTAssertEqual(footerXML.components(separatedBy: "<w:sz w:val=\"16\"/>").count - 1, 7)
-        XCTAssertTrue(documentXML.contains("w:sz w:val=\"60\""), documentXML)
+        XCTAssertTrue(documentXML.contains("w:sz w:val=\"65\""), documentXML)
 
         let decoded = try NSAttributedString(
             data: data,

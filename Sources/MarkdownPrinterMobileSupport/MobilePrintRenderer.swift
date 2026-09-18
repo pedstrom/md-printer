@@ -81,17 +81,20 @@ final class MobilePrintRenderer {
     ) {
         switch block {
         case let .heading(level, content):
-            let sizes: [CGFloat] = [24, 20, 17, 14, 12, 10]
-            let size = sizes[min(max(level - 1, 0), sizes.count - 1)]
+            let style = HeadingTypography(level: level)
+            let scale = configuration.bodyFontSize / 10
             let line = inline(
                 content,
-                font: font(.demiBold, size: size),
+                font: MobileHeadingTypography.font(level: level, size: style.printSize * scale),
                 baseURL: baseURL,
                 footnoteNumbers: footnoteNumbers
             )
             line.addAttribute(
                 .paragraphStyle,
-                value: paragraph(spacingBefore: level <= 2 ? 6 : 3, spacingAfter: level <= 2 ? 8 : 5),
+                value: paragraph(
+                    spacingBefore: style.additionalSpacingBefore(in: result, scale: scale),
+                    spacingAfter: style.spacingAfter * scale
+                ),
                 range: line.fullRange
             )
             result.append(line)
@@ -699,12 +702,14 @@ final class MobilePrintRenderer {
     }
 
     private func variant(of base: UIFont, bold: Bool = false, italic: Bool = false) -> UIFont {
-        switch (bold, italic) {
-        case (true, true): return font(.demiBoldItalic, size: base.pointSize)
-        case (true, false): return font(.demiBold, size: base.pointSize)
-        case (false, true): return font(.italic, size: base.pointSize)
-        case (false, false): return base
+        let traits = base.fontDescriptor.symbolicTraits
+        if bold, !traits.contains(.traitBold) {
+            return font(italic || traits.contains(.traitItalic) ? .demiBoldItalic : .demiBold, size: base.pointSize)
         }
+        if italic, !traits.contains(.traitBold) {
+            return font(.italic, size: base.pointSize)
+        }
+        return MobileHeadingTypography.applyingTraits(to: base, italic: italic)
     }
 
     private func textAlignment(for alignment: TableAlignment) -> NSTextAlignment {
