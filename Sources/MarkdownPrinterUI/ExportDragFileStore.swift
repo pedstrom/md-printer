@@ -1,5 +1,27 @@
 import AppKit
 import Foundation
+import MarkdownPrinterCore
+
+struct ExportDragPayload {
+    let format: ExportFormat
+    let fileName: String
+    let dataProvider: () throws -> Data
+    var alternateDataProvider: (() throws -> Data)?
+
+    func forAction(modifierFlags: NSEvent.ModifierFlags) -> ExportDragPayload {
+        let selectedFormat = format.forAction(modifierFlags: modifierFlags)
+        guard selectedFormat != format, let alternateDataProvider else { return self }
+        return ExportDragPayload(
+            format: selectedFormat,
+            fileName: (fileName as NSString).deletingPathExtension + "." + selectedFormat.pathExtension,
+            dataProvider: alternateDataProvider
+        )
+    }
+
+    func materialize(in store: ExportDragFileStore) throws -> ExportDragArtifact {
+        try store.materialize(data: dataProvider(), fileName: fileName)
+    }
+}
 
 struct ExportDragArtifact: Equatable {
     let fileURL: URL

@@ -608,6 +608,60 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertNil(view.outboundExportDragFeedbackView.image)
     }
 
+    func testBufferedPreviewForwardsOptionDragEventsToTheAlternateExporterAfterRefresh() async throws {
+        let first = try makeDocument(markdown: "# First")
+        let second = try makeDocument(markdown: "# Second")
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.stagingDelay = 0
+        var selectedFormats: [ExportFormat] = []
+        var reportedErrors: [PreviewTestError] = []
+        container.updateDragPayload(
+            format: .pdf,
+            fileName: "Document.pdf",
+            dataProvider: {
+                selectedFormats.append(.pdf)
+                throw PreviewTestError.example
+            },
+            alternateDataProvider: {
+                selectedFormats.append(.word)
+                throw PreviewTestError.example
+            },
+            onError: { if let error = $0 as? PreviewTestError { reportedErrors.append(error) } }
+        )
+        container.display(first.document, data: first.data, revision: 1)
+        let originalView = container.activeView
+        container.display(second.document, data: second.data, revision: 2)
+        await nextMainQueueTurn()
+        await nextMainQueueTurn()
+        XCTAssertFalse(container.activeView === originalView)
+
+        for view in [originalView, container.activeView] {
+            let modifierCases: [NSEvent.ModifierFlags] = [.option, []]
+            for modifiers in modifierCases {
+                let event = try XCTUnwrap(NSEvent.mouseEvent(
+                    with: .leftMouseDragged,
+                    location: NSPoint(x: 100, y: 100),
+                    modifierFlags: modifiers,
+                    timestamp: 0,
+                    windowNumber: 0,
+                    context: nil,
+                    eventNumber: 0,
+                    clickCount: 1,
+                    pressure: 1
+                ))
+                view.handleOutboundExportDrag(state: .began, event: event, location: event.locationInWindow)
+                XCTAssertEqual(
+                    view.outboundExportDragFeedbackView.image?.accessibilityDescription,
+                    modifiers.contains(.option) ? "Microsoft Word export" : "PDF export"
+                )
+                view.handleOutboundExportDrag(state: .changed, event: event, location: event.locationInWindow)
+                XCTAssertNil(view.outboundExportDragFeedbackView.image)
+            }
+        }
+        XCTAssertEqual(selectedFormats, [.word, .pdf, .word, .pdf])
+        XCTAssertEqual(reportedErrors, Array(repeating: .example, count: 4))
+    }
+
     func testBufferedPreviewKeepsTheOldDocumentVisibleUntilThePreparedSwapCommits() async throws {
         let first = try makeDocument(markdown: "# First\n\nThe original visible document.")
         let second = try makeDocument(markdown: "# Second\n\nThe replacement visible document.")

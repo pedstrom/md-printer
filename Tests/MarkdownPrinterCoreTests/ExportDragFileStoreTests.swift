@@ -5,6 +5,60 @@ import XCTest
 
 @MainActor
 final class ExportDragFileStoreTests: XCTestCase {
+    func testOptionDragMaterializesTheOtherFormatWithoutChangingTheNextOrdinaryDrag() throws {
+        let temporaryDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+        let store = ExportDragFileStore(temporaryDirectory: temporaryDirectory)
+        let session = DocumentSession()
+        try session.apply(MarkdownDocument(
+            title: "Quarterly Notes",
+            markdown: "# Quarterly Notes\n\nEditable content"
+        ))
+        let exportBytes: [ExportFormat: Data] = [
+            .pdf: try session.exportData(as: .pdf),
+            .word: try session.exportData(as: .word)
+        ]
+        let modifierCases: [NSEvent.ModifierFlags] = [.option, [.option, .shift], [], .command]
+
+        for preferredFormat in ExportFormat.allCases {
+            let otherFormat: ExportFormat = preferredFormat == .pdf ? .word : .pdf
+            var exportedFormats: [ExportFormat] = []
+            let payload = ExportDragPayload(
+                format: preferredFormat,
+                fileName: "Quarterly Notes.final.\(preferredFormat.pathExtension)",
+                dataProvider: {
+                    exportedFormats.append(preferredFormat)
+                    return try XCTUnwrap(exportBytes[preferredFormat])
+                },
+                alternateDataProvider: {
+                    exportedFormats.append(otherFormat)
+                    return try XCTUnwrap(exportBytes[otherFormat])
+                }
+            )
+            for modifiers in modifierCases {
+                let expectedFormat = modifiers.contains(.option) ? otherFormat : preferredFormat
+                let selected = payload.forAction(modifierFlags: modifiers)
+                XCTAssertEqual(selected.format, expectedFormat)
+                XCTAssertTrue(exportedFormats.isEmpty, "Choosing drag feedback must not export data")
+                let artifact = try selected.materialize(in: store)
+                XCTAssertEqual(exportedFormats, [expectedFormat])
+                XCTAssertEqual(artifact.fileURL.lastPathComponent, "Quarterly Notes.final.\(expectedFormat.pathExtension)")
+                XCTAssertEqual(try Data(contentsOf: artifact.fileURL), exportBytes[expectedFormat])
+                XCTAssertEqual(payload.format, preferredFormat)
+                store.remove(artifact)
+                exportedFormats.removeAll()
+            }
+        }
+    }
+
+    func testPDFOnlyDragPayloadKeepsItsFormatWhenNoAlternateExporterIsAvailable() throws {
+        let payload = ExportDragPayload(format: .pdf, fileName: "Preview.pdf", dataProvider: { Data() })
+        let selected = payload.forAction(modifierFlags: .option)
+        XCTAssertEqual(selected.format, .pdf)
+        XCTAssertEqual(selected.fileName, "Preview.pdf")
+        XCTAssertEqual(try selected.dataProvider(), Data())
+    }
+
     func testMaterializedExportsAdvertiseConcreteFileURLsWithExactNamesBytesAndPermissions() throws {
         let temporaryDirectory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }

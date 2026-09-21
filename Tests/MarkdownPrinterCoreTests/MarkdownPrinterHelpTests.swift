@@ -25,6 +25,7 @@ final class MarkdownPrinterHelpTests: XCTestCase {
         let requiredPhrases = [
             "Open Markdown Files",
             "Save, Share, and Drag Exports",
+            "Hold Option when dragging from the preview or clicking Share",
             "Navigate and Zoom the Preview",
             "Search",
             "Thumbnails",

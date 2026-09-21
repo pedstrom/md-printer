@@ -30,9 +30,10 @@ public struct ExportSettingsView: View {
                 }
             }
             .pickerStyle(.menu)
-            Text("Used by Save and when dragging a document from the preview.")
+            Text("Used by Save, Share, and dragging from the preview. Hold Option when dragging or clicking Share to use the other format just once.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             Divider()
                 .padding(.vertical, 4)

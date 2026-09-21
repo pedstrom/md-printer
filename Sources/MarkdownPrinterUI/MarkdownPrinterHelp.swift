@@ -59,7 +59,8 @@ package enum MarkdownPrinterHelpContent {
             .exporting,
             "Save, Share, and Drag Exports",
             "The preferred export format in Settings controls Save, Share, and dragging a document from the preview. PDF and Microsoft Word exports use the same page setup and footer choices.",
-            "Use the Save toolbar button or File → Save As to choose a destination. Use the Share toolbar button or File → Share PDF/Share Microsoft Word to open the macOS Share sheet. Drag from the preview to place an exported file in Finder or another accepting app."
+            "Use the Save toolbar button or File → Save As to choose a destination. Use the Share toolbar button or File → Share PDF/Share Microsoft Word to open the macOS Share sheet. Drag from the preview to place an exported file in Finder or another accepting app.",
+            "Hold Option when dragging from the preview or clicking Share to use the other format for that action: PDF becomes Microsoft Word, and Microsoft Word becomes PDF. Your default format in Settings stays unchanged."
         ),
         section(
             .preview,

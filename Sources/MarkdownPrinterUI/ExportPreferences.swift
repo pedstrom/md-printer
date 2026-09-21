@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import MarkdownPrinterCore
@@ -19,5 +20,18 @@ public final class ExportPreferences: ObservableObject {
         defaultFormat = defaults.string(forKey: Self.defaultFormatKey)
             .flatMap(ExportFormat.init(rawValue:))
             ?? .pdf
+    }
+}
+
+extension ExportFormat {
+    var alternate: ExportFormat {
+        switch self {
+        case .pdf: return .word
+        case .word: return .pdf
+        }
+    }
+
+    func forAction(modifierFlags: NSEvent.ModifierFlags) -> ExportFormat {
+        modifierFlags.contains(.option) ? alternate : self
     }
 }

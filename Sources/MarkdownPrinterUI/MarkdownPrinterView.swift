@@ -122,6 +122,7 @@ public struct MarkdownPrinterView: View {
                     viewingController: viewingController,
                     sidebarController: sidebarController,
                     exportData: { try session.exportData(as: exportFormat) },
+                    alternateExportData: { try session.exportData(as: exportFormat.alternate) },
                     openURL: openLink,
                     remoteImageSources: session.uncachedRemoteImageSources,
                     onDownloadRemoteImage: { source in

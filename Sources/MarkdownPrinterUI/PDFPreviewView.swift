@@ -11,6 +11,7 @@ public struct PDFPreviewView: NSViewRepresentable {
     public let exportFormat: ExportFormat
     public let fileName: String
     private let exportData: () throws -> Data
+    private let alternateExportData: (() throws -> Data)?
     private let openURL: (URL) -> Void
     private let remoteImageSources: [String]
     private let onDownloadRemoteImage: (String) -> Void
@@ -26,6 +27,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         exportFormat: ExportFormat,
         fileName: String,
         exportData: @escaping () throws -> Data,
+        alternateExportData: (() throws -> Data)? = nil,
         openURL: @escaping (URL) -> Void,
         remoteImageSources: [String] = [],
         onDownloadRemoteImage: @escaping (String) -> Void = { _ in },
@@ -41,6 +43,7 @@ public struct PDFPreviewView: NSViewRepresentable {
             viewingController: nil,
             sidebarController: nil,
             exportData: exportData,
+            alternateExportData: alternateExportData,
             openURL: openURL,
             remoteImageSources: remoteImageSources,
             onDownloadRemoteImage: onDownloadRemoteImage,
@@ -58,6 +61,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         viewingController: PDFViewingController,
         sidebarController: PDFThumbnailSidebarController,
         exportData: @escaping () throws -> Data,
+        alternateExportData: (() throws -> Data)? = nil,
         openURL: @escaping (URL) -> Void,
         remoteImageSources: [String] = [],
         onDownloadRemoteImage: @escaping (String) -> Void = { _ in },
@@ -73,6 +77,7 @@ public struct PDFPreviewView: NSViewRepresentable {
             viewingController: Optional(viewingController),
             sidebarController: Optional(sidebarController),
             exportData: exportData,
+            alternateExportData: alternateExportData,
             openURL: openURL,
             remoteImageSources: remoteImageSources,
             onDownloadRemoteImage: onDownloadRemoteImage,
@@ -90,6 +95,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         viewingController: PDFViewingController?,
         sidebarController: PDFThumbnailSidebarController?,
         exportData: @escaping () throws -> Data,
+        alternateExportData: (() throws -> Data)? = nil,
         openURL: @escaping (URL) -> Void,
         remoteImageSources: [String],
         onDownloadRemoteImage: @escaping (String) -> Void,
@@ -104,6 +110,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         self.viewingController = viewingController
         self.sidebarController = sidebarController
         self.exportData = exportData
+        self.alternateExportData = alternateExportData
         self.openURL = openURL
         self.remoteImageSources = remoteImageSources
         self.onDownloadRemoteImage = onDownloadRemoteImage
@@ -165,6 +172,7 @@ public struct PDFPreviewView: NSViewRepresentable {
             format: exportFormat,
             fileName: fileName,
             dataProvider: exportData,
+            alternateDataProvider: alternateExportData,
             onError: context.coordinator.reportDragError
         )
         view.updateRemoteImageActions(
@@ -531,9 +539,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
     private var viewingNotificationTokens: [NSObjectProtocol] = []
     private var searchState = PDFSearchState.empty
     private var showsAllSearchMatches = false
-    private var dragDataProvider: (() throws -> Data)?
-    private var dragFormat = ExportFormat.pdf
-    private var dragFileName = "Untitled.pdf"
+    private var dragPayload: ExportDragPayload?
     private var dragErrorHandler: ((Error) -> Void)?
     private var remoteImageSources: [String] = []
     private var remoteImageDownloadHandler: ((String) -> Void)?
@@ -843,17 +849,22 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
         format: ExportFormat,
         fileName: String,
         dataProvider: @escaping () throws -> Data,
+        alternateDataProvider: (() throws -> Data)? = nil,
         onError: @escaping (Error) -> Void
     ) {
-        dragFormat = format
-        dragFileName = fileName
-        dragDataProvider = dataProvider
+        dragPayload = ExportDragPayload(
+            format: format,
+            fileName: fileName,
+            dataProvider: dataProvider,
+            alternateDataProvider: alternateDataProvider
+        )
         dragErrorHandler = onError
         previewViews.forEach {
             $0.updateDragPayload(
                 format: format,
                 fileName: fileName,
                 dataProvider: dataProvider,
+                alternateDataProvider: alternateDataProvider,
                 onError: onError
             )
         }
@@ -886,11 +897,12 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
         view.delegate = delegate
         view.setAccessibilityElement(false)
         view.setAccessibilityHidden(true)
-        if let dragDataProvider, let dragErrorHandler {
+        if let dragPayload, let dragErrorHandler {
             view.updateDragPayload(
-                format: dragFormat,
-                fileName: dragFileName,
-                dataProvider: dragDataProvider,
+                format: dragPayload.format,
+                fileName: dragPayload.fileName,
+                dataProvider: dragPayload.dataProvider,
+                alternateDataProvider: dragPayload.alternateDataProvider,
                 onError: dragErrorHandler
             )
         }
@@ -1080,9 +1092,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     private var needsInitialPageFit = false
     private var displayRevision = 0
     private var fittedViewWidth: CGFloat?
-    private var dragDataProvider: (() throws -> Data)?
-    private var dragFormat = ExportFormat.pdf
-    private var dragFileName = "Untitled.pdf"
+    private var dragPayload: ExportDragPayload?
     private var dragErrorHandler: ((Error) -> Void)?
     private var remoteImageSources: [String] = []
     private var remoteImageDownloadHandler: ((String) -> Void)?
@@ -1171,11 +1181,15 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         format: ExportFormat,
         fileName: String,
         dataProvider: @escaping () throws -> Data,
+        alternateDataProvider: (() throws -> Data)? = nil,
         onError: @escaping (Error) -> Void
     ) {
-        dragFormat = format
-        dragFileName = fileName
-        dragDataProvider = dataProvider
+        dragPayload = ExportDragPayload(
+            format: format,
+            fileName: fileName,
+            dataProvider: dataProvider,
+            alternateDataProvider: alternateDataProvider
+        )
         dragErrorHandler = onError
     }
 
@@ -1394,16 +1408,17 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     ) {
         switch state {
         case .began:
-            guard !isDraggingExport, dragDataProvider != nil else { return }
-            showOutboundExportDragFeedback(at: location)
+            guard !isDraggingExport, let dragPayload else { return }
+            let payload = dragPayload.forAction(modifierFlags: event?.modifierFlags ?? NSEvent.modifierFlags)
+            showOutboundExportDragFeedback(at: location, format: payload.format)
         case .changed:
             guard !isDraggingExport,
-                  let dragDataProvider,
+                  let dragPayload,
                   let event,
                   event.type == .leftMouseDragged
             else { return }
             beginOutboundExportDrag(
-                dataProvider: dragDataProvider,
+                payload: dragPayload.forAction(modifierFlags: event.modifierFlags),
                 event: event,
                 location: location
             )
@@ -1415,16 +1430,13 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     }
 
     private func beginOutboundExportDrag(
-        dataProvider: () throws -> Data,
+        payload: ExportDragPayload,
         event: NSEvent,
         location: NSPoint
     ) {
         let artifact: ExportDragArtifact
         do {
-            artifact = try dragFileStore.materialize(
-                data: dataProvider(),
-                fileName: dragFileName
-            )
+            artifact = try payload.materialize(in: dragFileStore)
         } catch {
             hideOutboundExportDragFeedback()
             dragErrorHandler?(error)
@@ -1432,7 +1444,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         }
 
         let draggingItem = NSDraggingItem(pasteboardWriter: artifact.fileURL as NSURL)
-        let image = dragThumbnail()
+        let image = dragThumbnail(format: payload.format)
         draggingItem.setDraggingFrame(
             outboundExportDragFrame(for: image, centeredAt: location),
             contents: image
@@ -1444,8 +1456,8 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         beginDraggingSession(with: [draggingItem], event: event, source: self)
     }
 
-    private func showOutboundExportDragFeedback(at location: NSPoint) {
-        let image = dragThumbnail()
+    private func showOutboundExportDragFeedback(at location: NSPoint, format: ExportFormat) {
+        let image = dragThumbnail(format: format)
         outboundExportDragFeedbackView.image = image
         outboundExportDragFeedbackView.frame = outboundExportDragFrame(
             for: image,
@@ -1470,19 +1482,8 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         )
     }
 
-    private func dragThumbnail() -> NSImage {
-        let size = NSSize(width: 110, height: 142)
-        guard dragFormat == .pdf else {
-            let icon = NSWorkspace.shared.icon(for: dragFormat.contentType)
-            icon.size = size
-            return icon
-        }
-        guard let firstPage = document?.page(at: 0) else {
-            let icon = NSWorkspace.shared.icon(for: .pdf)
-            icon.size = size
-            return icon
-        }
-        return firstPage.thumbnail(of: size, for: .cropBox)
+    private func dragThumbnail(format: ExportFormat) -> NSImage {
+        ExportDragThumbnail.image(page: document?.page(at: 0), format: format)
     }
 
     private func fitFirstPage() {

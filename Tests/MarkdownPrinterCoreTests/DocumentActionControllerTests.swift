@@ -29,11 +29,70 @@ final class DocumentActionControllerTests: XCTestCase {
         XCTAssertTrue(controller.canSaveAs)
         XCTAssertTrue(controller.canShare)
         XCTAssertEqual(controller.shareCommandTitle, "Share PDF…")
+        XCTAssertEqual(controller.shareToolTip, "Share PDF. Hold Option to share Microsoft Word.")
         controller.showInFinder()
         XCTAssertEqual(revealedURLs, [sourceURL])
 
         preferences.defaultFormat = .word
         XCTAssertEqual(controller.shareCommandTitle, "Share Microsoft Word…")
+        XCTAssertEqual(controller.shareToolTip, "Share Microsoft Word. Hold Option to share PDF.")
+    }
+
+    func testOptionShareSwitchesBothFormatsForOneActionWithoutChangingThePreference() throws {
+        let defaults = makeDefaults()
+        defer { defaults.defaults.removePersistentDomain(forName: defaults.name) }
+        let preferences = ExportPreferences(defaults: defaults.defaults)
+        let session = DocumentSession()
+        try session.apply(MarkdownDocument(
+            sourceURL: URL(fileURLWithPath: "/tmp/Quarterly Notes.final.md"),
+            title: "Quarterly Notes",
+            markdown: "# Quarterly Notes\n\nEditable content"
+        ))
+        let temporaryDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+        var presentedPicker: NSSharingServicePicker?
+        let controller = DocumentActionController(
+            session: session,
+            exportPreferences: preferences,
+            activityCoordinator: ApplicationActivityCoordinator(),
+            presentSavePanel: { _, _ in nil },
+            fileStore: ExportDragFileStore(temporaryDirectory: temporaryDirectory),
+            presentSharePicker: { picker, _, _ in presentedPicker = picker }
+        )
+        let anchor = NSView(frame: NSRect(x: 0, y: 0, width: 24, height: 24))
+
+        let modifierCases: [NSEvent.ModifierFlags] = [.option, [.option, .shift], [], .shift]
+        for preferredFormat in ExportFormat.allCases {
+            preferences.defaultFormat = preferredFormat
+            for modifiers in modifierCases {
+                let expectedFormat: ExportFormat = modifiers.contains(.option)
+                    ? (preferredFormat == .pdf ? .word : .pdf)
+                    : preferredFormat
+                controller.share(anchorView: anchor, modifierFlags: modifiers)
+                let fileURL = try XCTUnwrap(controller.activeShareFileURL)
+                XCTAssertEqual(fileURL.lastPathComponent, "Quarterly Notes.final.\(expectedFormat.pathExtension)")
+                let data = try Data(contentsOf: fileURL)
+                if expectedFormat == .pdf {
+                    XCTAssertEqual(data, try session.exportData(as: .pdf))
+                } else {
+                    // DOCX archive timestamps can differ between exports; verify the actual document.
+                    XCTAssertTrue(data.starts(with: [0x50, 0x4B, 0x03, 0x04]))
+                    let content = try NSAttributedString(
+                        data: data,
+                        options: [.documentType: NSAttributedString.DocumentType.officeOpenXML],
+                        documentAttributes: nil
+                    )
+                    XCTAssertTrue(content.string.contains("Quarterly Notes"))
+                    XCTAssertTrue(content.string.contains("Editable content"))
+                }
+                XCTAssertEqual(preferences.defaultFormat, preferredFormat)
+                XCTAssertEqual(ExportPreferences(defaults: defaults.defaults).defaultFormat, preferredFormat)
+                XCTAssertEqual(controller.shareCommandTitle, "Share \(preferredFormat.displayName)…")
+                controller.sharingServicePicker(try XCTUnwrap(presentedPicker), didChoose: nil)
+                XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
+            }
+        }
     }
 
     func testSaveAsUsesPreferredSuggestionAndWritesTheSelectedExportBytes() throws {
@@ -130,7 +189,7 @@ final class DocumentActionControllerTests: XCTestCase {
             presentSharePicker: { picker, _, _ in presentedPicker = picker }
         )
 
-        controller.share(anchorView: NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100)))
+        controller.share(anchorView: NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100)), modifierFlags: [])
 
         let fileURL = try XCTUnwrap(controller.activeShareFileURL)
         XCTAssertEqual(fileURL.lastPathComponent, "Share Me.pdf")
@@ -170,7 +229,7 @@ final class DocumentActionControllerTests: XCTestCase {
             presentSharePicker: { _, _, _ in }
         )
         let anchor = NSView(frame: NSRect(x: 0, y: 0, width: 100, height: 100))
-        controller.share(anchorView: anchor)
+        controller.share(anchorView: anchor, modifierFlags: [])
         let fileURL = try XCTUnwrap(controller.activeShareFileURL)
         let service = NSSharingService(
             title: "Test Share",
@@ -214,7 +273,7 @@ final class DocumentActionControllerTests: XCTestCase {
         XCTAssertFalse(controller.canShare)
         controller.showInFinder()
         controller.saveAs()
-        controller.share(anchorView: NSView())
+        controller.share(anchorView: NSView(), modifierFlags: [])
         XCTAssertTrue(revealedURLs.isEmpty)
 
         try session.apply(MarkdownDocument(title: "Ready", markdown: "# Ready"))
@@ -243,7 +302,7 @@ final class DocumentActionControllerTests: XCTestCase {
             fileStore: ExportDragFileStore(temporaryDirectory: temporaryDirectory),
             presentSharePicker: { _, _, _ in }
         )
-        controller.share(anchorView: NSView(frame: NSRect(x: 0, y: 0, width: 24, height: 24)))
+        controller.share(anchorView: NSView(frame: NSRect(x: 0, y: 0, width: 24, height: 24)), modifierFlags: [])
         let fileURL = try XCTUnwrap(controller.activeShareFileURL)
         let service = NSSharingService(
             title: "Test Share",
@@ -279,7 +338,7 @@ final class DocumentActionControllerTests: XCTestCase {
             presentSharePicker: { _, _, _ in XCTFail("Share picker should not be presented") }
         )
 
-        controller.share(anchorView: NSView())
+        controller.share(anchorView: NSView(), modifierFlags: [])
 
         XCTAssertNotNil(session.errorMessage)
         XCTAssertFalse(controller.isPresentingSharePicker)

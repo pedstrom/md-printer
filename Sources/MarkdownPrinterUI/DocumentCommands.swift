@@ -22,7 +22,7 @@ package struct ShareToolbarButton: NSViewRepresentable {
     package func updateNSView(_ button: NSButton, context: Context) {
         context.coordinator.controller = controller
         button.isEnabled = controller.canShare
-        button.toolTip = controller.shareCommandTitle.replacingOccurrences(of: "…", with: "")
+        button.toolTip = controller.shareToolTip
         controller.attachToolbarShareAnchor(button)
     }
 

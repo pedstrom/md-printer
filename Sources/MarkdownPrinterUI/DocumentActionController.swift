@@ -67,6 +67,11 @@ package final class DocumentActionController: NSObject, ObservableObject {
         session?.hasDocument == true && !isSharing
     }
 
+    package var shareToolTip: String {
+        let format = exportPreferences?.defaultFormat ?? .pdf
+        return "Share \(format.displayName). Hold Option to share \(format.alternate.displayName)."
+    }
+
     package func refreshShareTitle() {
         let name = exportPreferences?.defaultFormat.displayName ?? ExportFormat.pdf.displayName
         shareCommandTitle = "Share \(name)…"
@@ -100,12 +105,16 @@ package final class DocumentActionController: NSObject, ObservableObject {
         toolbarShareAnchor = view
     }
 
-    package func share(anchorView: NSView? = nil) {
+    package func share(
+        anchorView: NSView? = nil,
+        modifierFlags: NSEvent.ModifierFlags = NSEvent.modifierFlags
+    ) {
         guard !isSharing,
               let session,
-              let format = exportPreferences?.defaultFormat
+              let defaultFormat = exportPreferences?.defaultFormat
         else { return }
 
+        let format = defaultFormat.forAction(modifierFlags: modifierFlags)
         do {
             let artifact = try fileStore.materialize(
                 data: session.exportData(as: format),

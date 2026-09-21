@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-09-21 — Option switches the Mac drag and share export format
+
+- Use the Settings export preference for ordinary preview drags and Share actions; holding Option selects Microsoft Word for a PDF default or PDF for a Word default for that action only.
+- Resolve the drag's local file bytes, filename extension, and thumbnail together when it starts, and preserve the alternate exporter across preview refreshes. Retain deferred export generation and existing temporary-file cleanup.
+- Keep the first-page thumbnail for both export formats and overlay a native file icon with an explicit PDF or Word badge, visible during the initial hold and the outbound drag.
+- Explain the override in Settings, the Share tooltip, and in-app Help. Add regressions for both directions, subsequent ordinary actions, unchanged saved preferences, export bytes and filenames, modifier-event forwarding, and refresh/error handling.
+
 ## 2026-09-18 — Clearer heading hierarchy on Mac, iPhone, and iPad
 
 - Define all six heading levels together: PDF sizes 26/20/16/13/11/10 points, Bold for H1–H2, Demi Bold for H3–H5, and Demi Bold Italic for H6, with regular 10-point body text.
