@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-09-22 — Preserve the native Open Recent submenu
+
+- Hide duplicate generated New Window and New Tab commands in place instead of removing them from SwiftUI's menu. Removing those items disrupted the next menu rebuild, replacing Open Recent with an empty `NSMenuItem` placeholder.
+- Preserve generated menu-item identity and order, keep one visible copy of each window command, and restore visibility when a scene rebuild leaves a previously hidden copy first.
+- Add a regression covering repeated cleanup, native recent-menu preservation, and changing command copies; confirm it fails before the repair.
+- Verify the rebuilt native app keeps Open Recent after opening a document and restarting, then successfully reopens the document from that submenu. Pass the full macOS gate with 319 tests and 95.71% production line coverage.
+
 ## 2026-09-22 — Paste into the Mac Find field
 
 - Preserve the standard Cut, Paste, Delete, Undo, and Redo menu commands so editable fields retain native keyboard shortcuts and menu actions. Let AppKit validate them against the focused control instead of removing them globally for read-only documents.

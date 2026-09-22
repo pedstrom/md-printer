@@ -261,7 +261,7 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         XCTAssertNil(editMenu.item(withTitle: "AutoFill"))
     }
 
-    func testGeneratedNewWindowAndTabDuplicatesAreRemoved() {
+    func testDuplicateWindowCommandsPreserveGeneratedSlotsAndTheNativeRecentSubmenu() throws {
         let delegate = ApplicationLifecycleDelegate()
         let mainMenu = NSMenu()
         let fileItem = NSMenuItem(title: "File", action: nil, keyEquivalent: "")
@@ -271,12 +271,42 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         fileMenu.addItem(withTitle: "New Window", action: nil, keyEquivalent: "n")
         fileMenu.addItem(withTitle: "New Tab", action: nil, keyEquivalent: "t")
         fileMenu.addItem(withTitle: "Open…", action: nil, keyEquivalent: "o")
+        let recent = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        let recentMenu = NSMenu(title: "Open Recent")
+        recentMenu.addItem(
+            withTitle: "Clear Menu",
+            action: #selector(NSDocumentController.clearRecentDocuments(_:)),
+            keyEquivalent: ""
+        )
+        recent.submenu = recentMenu
+        fileMenu.addItem(recent)
         fileItem.submenu = fileMenu
         mainMenu.addItem(fileItem)
+        let generatedItems = fileMenu.items
 
         delegate.hideGeneratedNewSubmenu(in: mainMenu)
+        delegate.hideGeneratedNewSubmenu(in: mainMenu)
 
-        XCTAssertEqual(fileMenu.items.map(\.title), ["New Window", "New Tab", "Open…"])
+        // SwiftUI reconciles these generated slots on scene changes. Detaching
+        // duplicates can replace the native Recent submenu with an NSMenuItem placeholder.
+        XCTAssertEqual(fileMenu.items, generatedItems)
+        XCTAssertEqual(
+            fileMenu.items.filter { !$0.isHidden }.map(\.title),
+            ["New Window", "New Tab", "Open…", "Open Recent"]
+        )
+        XCTAssertTrue(recent.submenu === recentMenu)
+        XCTAssertEqual(
+            recentMenu.items.first?.action,
+            #selector(NSDocumentController.clearRecentDocuments(_:))
+        )
+
+        // A scene rebuild can make either copy the first surviving command.
+        fileMenu.removeItem(generatedItems[0])
+        fileMenu.removeItem(generatedItems[1])
+        delegate.hideGeneratedNewSubmenu(in: mainMenu)
+        XCTAssertFalse(try XCTUnwrap(fileMenu.item(withTitle: "New Window")).isHidden)
+        XCTAssertFalse(try XCTUnwrap(fileMenu.item(withTitle: "New Tab")).isHidden)
+        XCTAssertTrue(recent.submenu === recentMenu)
     }
 
     func testMenuCleanupIgnoresUnrelatedNewSubmenusAndMissingMenus() {

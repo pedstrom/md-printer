@@ -80,10 +80,12 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
             .forEach { $0.isHidden = true }
 
         for title in ["New Window", "New Tab"] {
+            // Keep SwiftUI's generated item slots intact. Removing duplicates
+            // corrupts its next reconciliation of the native Open Recent submenu.
             fileMenu.items
                 .filter { $0.title == title }
-                .dropFirst()
-                .forEach { fileMenu.removeItem($0) }
+                .enumerated()
+                .forEach { index, item in item.isHidden = index > 0 }
         }
     }
 
