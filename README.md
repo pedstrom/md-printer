@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://apps.apple.com/app/id6811229585"><strong>Get the iPhone and iPad app on the App Store · Paid download</strong></a><br>
-  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.4.4 for Mac · Free</strong></a>
+  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.4.5 for Mac · Free</strong></a>
 </p>
 
 Markdown is suddenly everywhere. AI tools, coding assistants, note apps, and research workflows are producing copious `.md` files, but those files are not always pleasant to print, share, or read away from an editor. Markdown Printer gives them a polished page without sending the document anywhere.

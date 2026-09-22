@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-09-22 — Version 1.4.5
+
+- Promoted the Find-panel visibility repair, Option-key PDF/Word export overrides, format badges on drag previews, clearer heading hierarchy, pagination repair, and in-app release-history links together as Mac version 1.4.5, build 14.
+- Updated the Mac bundle metadata, public download label, release notes, and release verification assertions for the signed, notarized GitHub and Sparkle update.
+
 ## 2026-09-22 — Keep Mac Find controls on screen
 
 - Set the floating Find panel's content size after attaching its SwiftUI hosting controller and complete layout before calculating its initial position.
