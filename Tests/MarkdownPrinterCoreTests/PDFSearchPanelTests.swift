@@ -5,6 +5,74 @@ import XCTest
 
 @MainActor
 final class PDFSearchPanelTests: XCTestCase {
+    func testPasteMenuAndCommandVEditTheFindQueryButNotThePDF() async throws {
+        let fixture = try SearchPanelFixture()
+        defer { fixture.close() }
+        let controller = try await readyController(in: fixture)
+        let panel = try await present(controller, in: fixture)
+        let field = try searchField(in: panel)
+
+        let pasteboard = NSPasteboard.general
+        let savedItems = (pasteboard.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type) }
+            }
+            return copy
+        }
+        defer {
+            pasteboard.clearContents()
+            if !savedItems.isEmpty { pasteboard.writeObjects(savedItems) }
+        }
+        let previousMenu = NSApp.mainMenu
+        defer { NSApp.mainMenu = previousMenu }
+        let mainMenu = NSMenu()
+        let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        let pasteCommand = editMenu.addItem(
+            withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"
+        )
+        // The unbundled SwiftPM host has no key application window. Supply the
+        // real field editor that AppKit resolves in the running app.
+        pasteCommand.target = try XCTUnwrap(field.currentEditor())
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+        NSApp.mainMenu = mainMenu
+        let delegate = ApplicationLifecycleDelegate()
+        delegate.configureFileMenu(in: mainMenu)
+
+        pasteboard.clearContents()
+        pasteboard.setString("needle", forType: .string)
+        editMenu.update()
+        let paste = try XCTUnwrap(editMenu.item(withTitle: "Paste"))
+        XCTAssertTrue(paste.isEnabled)
+        editMenu.performActionForItem(at: editMenu.index(of: paste))
+        try await waitUntil { controller.query == "needle" }
+        XCTAssertEqual(controller.matchCount, 2)
+
+        controller.present()
+        try await waitUntil {
+            (field.currentEditor() as? NSTextView)?.selectedRange().length == "needle".utf16.count
+        }
+        pasteboard.clearContents()
+        pasteboard.setString("Gamma", forType: .string)
+        let commandV = try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
+            windowNumber: panel.windowNumber, context: nil, characters: "v",
+            charactersIgnoringModifiers: "v", isARepeat: false, keyCode: 9
+        ))
+        XCTAssertTrue(mainMenu.performKeyEquivalent(with: commandV))
+        try await waitUntil { controller.query == "Gamma" }
+        XCTAssertEqual(controller.matchCount, 1)
+
+        controller.dismiss()
+        try await waitUntil { !panel.isVisible }
+        paste.target = try XCTUnwrap(fixture.preview).activeView
+        editMenu.update()
+        XCTAssertFalse(paste.isEnabled)
+    }
+
     func testInitialPlacementUsesTheLaidOutPanelSize() async throws {
         let fixture = try SearchPanelFixture()
         defer { fixture.close() }

@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-09-22 — Paste into the Mac Find field
+
+- Preserve the standard Cut, Paste, Delete, Undo, and Redo menu commands so editable fields retain native keyboard shortcuts and menu actions. Let AppKit validate them against the focused control instead of removing them globally for read-only documents.
+- Add a native Find-panel regression covering Edit > Paste into an empty query, Command-V replacing the selected query, updated search matches, and Paste validation for the read-only PDF. Preserve and restore the clipboard around the test.
+- Confirm the menu-preservation and Find-paste regressions fail before the fix.
+- Verify clipboard paste and selected-query replacement in the rebuilt Mac app, with matching search results and an available Edit > Paste command.
+- Make the existing deferred-menu test wait for queued main-thread updates instead of relying on a 10-millisecond delay.
+
 ## 2026-09-22 — Version 1.4.5
 
 - Promoted the Find-panel visibility repair, Option-key PDF/Word export overrides, format badges on drag previews, clearer heading hierarchy, pagination repair, and in-app release-history links together as Mac version 1.4.5, build 14.

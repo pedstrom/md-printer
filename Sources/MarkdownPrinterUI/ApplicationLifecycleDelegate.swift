@@ -312,11 +312,10 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
 
     private static func isIrrelevantReadOnlyEditItem(_ item: NSMenuItem) -> Bool {
         let title = item.title.replacingOccurrences(of: "…", with: "")
-        if title.hasPrefix("Undo") || title.hasPrefix("Redo") {
-            return true
-        }
+        // Find and other native text fields still need editing commands. AppKit
+        // validates those commands against the current responder, including the read-only PDF.
         return [
-            "Cut", "Paste", "Delete", "Writing Tools", "Spelling and Grammar",
+            "Writing Tools", "Spelling and Grammar",
             "Substitutions", "Transformations", "Speech", "AutoFill", "Start Dictation",
             "Emoji & Symbols"
         ].contains(title)

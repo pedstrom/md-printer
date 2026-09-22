@@ -194,16 +194,18 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         XCTAssertTrue(fileMenu.items.contains(preferredShare))
     }
 
-    func testIrrelevantReadOnlyEditItemsAreRemovedAndSeparatorsAreNormalized() {
+    func testEditCleanupPreservesTextFieldCommandsAndNormalizesSeparators() {
         let delegate = ApplicationLifecycleDelegate()
         let mainMenu = NSMenu()
         let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
         let editMenu = NSMenu(title: "Edit")
         editMenu.addItem(withTitle: "Undo", action: nil, keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Redo Typing", action: nil, keyEquivalent: "z")
         editMenu.addItem(.separator())
         editMenu.addItem(withTitle: "Cut", action: nil, keyEquivalent: "x")
         editMenu.addItem(withTitle: "Copy", action: nil, keyEquivalent: "c")
         editMenu.addItem(withTitle: "Paste", action: nil, keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Delete", action: nil, keyEquivalent: "")
         editMenu.addItem(.separator())
         editMenu.addItem(withTitle: "Writing Tools", action: nil, keyEquivalent: "")
         editMenu.addItem(.separator())
@@ -219,7 +221,7 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
 
         XCTAssertEqual(
             editMenu.items.filter { !$0.isSeparatorItem }.map(\.title),
-            ["Copy", "Select All", "Find"]
+            ["Undo", "Redo Typing", "Cut", "Copy", "Paste", "Delete", "Select All", "Find"]
         )
         XCTAssertFalse(editMenu.items.first?.isSeparatorItem == true)
         XCTAssertFalse(editMenu.items.last?.isSeparatorItem == true)
@@ -351,7 +353,7 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         XCTAssertFalse(restored.isEnabled)
     }
 
-    func testApplicationLifecycleCallbacksKeepTheCurrentFileMenuConfigured() {
+    func testApplicationLifecycleCallbacksKeepTheCurrentFileMenuConfigured() async {
         let delegate = ApplicationLifecycleDelegate()
         let application = NSApplication.shared
         let previousMainMenu: NSMenu? = application.mainMenu
@@ -404,7 +406,9 @@ final class ApplicationLifecycleDelegateTests: XCTestCase {
         )
 
         newItem.isHidden = false
-        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+        let queuedUpdates = expectation(description: "Queued menu updates have completed")
+        DispatchQueue.main.async { queuedUpdates.fulfill() }
+        await fulfillment(of: [queuedUpdates], timeout: 2)
         XCTAssertTrue(newItem.isHidden)
     }
 
