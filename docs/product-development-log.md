@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-09-22 — Keep Mac Find controls on screen
+
+- Set the floating Find panel's content size after attaching its SwiftUI hosting controller and complete layout before calculating its initial position.
+- On Command-F, recover a panel that is not fully inside a display's usable bounds even when AppKit still reports it visible. Preserve the user's placement when the panel remains on screen, along with its query, selected match, and native text-field focus.
+- Add native-window regressions for initial placement, an off-screen panel that still accepts keyboard focus, document movement and reopening, retained query selection and text entry, and stable visible placement across resizing and document refresh. Confirm the sizing and recovery tests fail before the repair.
+
 ## 2026-09-21 — Option switches the Mac drag and share export format
 
 - Use the Settings export preference for ordinary preview drags and Share actions; holding Option selects Microsoft Word for a PDF default or PDF for a Word default for that action only.

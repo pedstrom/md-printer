@@ -445,6 +445,11 @@ private final class PDFSearchPanelHostView: NSView, NSWindowDelegate {
             panel.orderFront(nil)
         }
         if shouldFocus {
+            panel.contentView?.layoutSubtreeIfNeeded()
+            // AppKit can mark an off-screen child panel visible while its field still accepts typing.
+            if !NSScreen.screens.contains(where: { $0.visibleFrame.contains(panel.frame) }) {
+                position(panel, relativeTo: documentWindow)
+            }
             lastFocusRequest = controller.focusRequest
             panel.makeKeyAndOrderFront(nil)
         }
@@ -465,6 +470,9 @@ private final class PDFSearchPanelHostView: NSView, NSWindowDelegate {
         )
         panel.title = "Find"
         panel.contentViewController = hostingController
+        // Installing the hosting controller can reset the window to its title-bar-only size.
+        panel.setContentSize(contentSize)
+        hostingController.view.layoutSubtreeIfNeeded()
         panel.delegate = self
         panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true
