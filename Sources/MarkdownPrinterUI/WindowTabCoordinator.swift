@@ -51,6 +51,7 @@ package final class WindowTabCoordinator: ObservableObject {
     private var pendingDocumentTabSources: [URL: [PendingDocumentTabSource]] = [:]
     private var attachedWindows: [ObjectIdentifier: AttachedWindowRecord] = [:]
     private var attachedWindowOrder: [ObjectIdentifier] = []
+    private var pendingCascadeWindows: Set<ObjectIdentifier> = []
     private var pendingWorkspaceDocuments: [URL: [PendingWorkspaceTarget]] = [:]
     private var pendingWorkspaceWelcomes: [UUID: PendingWorkspaceTarget] = [:]
     private var restoredGroupAnchors: [String: WeakWindow] = [:]
@@ -106,6 +107,8 @@ package final class WindowTabCoordinator: ObservableObject {
         identifier: UUID? = nil,
         documentURL: URL? = nil
     ) {
+        removeReleasedWindowRecords()
+        let isNewWindow = attachedWindows[ObjectIdentifier(window)] == nil
         window.tabbingIdentifier = tabbingIdentifier
         if let identifier {
             welcomeWindows[identifier] = WeakWindow(window)
@@ -148,8 +151,53 @@ package final class WindowTabCoordinator: ObservableObject {
             }
         }
 
+        if isNewWindow, workspaceTarget == nil, sourceWindow == nil {
+            let needsScheduling = pendingCascadeWindows.isEmpty
+            pendingCascadeWindows.insert(ObjectIdentifier(window))
+            if needsScheduling {
+                // File loads can attach in a different order than their windows
+                // appear. Place the batch after layout, using AppKit's stacking order.
+                DispatchQueue.main.async { [weak self] in
+                    self?.cascadePendingWindows()
+                }
+            }
+        }
+
         if window.isKeyWindow || sourceWindow != nil {
             activate(window: window)
+        }
+    }
+
+    private func cascadePendingWindows() {
+        let pending = pendingCascadeWindows
+        pendingCascadeWindows.removeAll()
+        var previous: NSWindow?
+        // Backmost first, so each new front window sits below and to the right.
+        for window in NSApp.orderedWindows.reversed() {
+            guard attachedWindows[ObjectIdentifier(window)]?.window === window,
+                  window.isVisible,
+                  !window.isMiniaturized,
+                  !window.styleMask.contains(.fullScreen)
+            else { continue }
+            if pending.contains(ObjectIdentifier(window)),
+               (window.tabGroup?.windows.count ?? 1) == 1 {
+                if let previous {
+                    var nextPoint = window.cascadeTopLeft(from: NSPoint(
+                        x: previous.frame.minX,
+                        y: previous.frame.maxY
+                    ))
+                    // Unified toolbars are taller than a traditional title bar.
+                    let titleBarHeight = previous.frame.height - previous.contentLayoutRect.height
+                    nextPoint.y = min(nextPoint.y, previous.frame.maxY - ceil(titleBarHeight))
+                    window.cascadeTopLeft(from: nextPoint)
+                } else if let screen = window.screen ?? NSScreen.main {
+                    // Start high enough that tall portrait windows have room to fan down.
+                    var frame = window.frame
+                    frame.origin.y = screen.visibleFrame.maxY - frame.height
+                    window.setFrame(frame, display: true)
+                }
+            }
+            previous = window
         }
     }
 

@@ -13,7 +13,7 @@ Markdown Printer includes one full-size Finder Quick Look preview provider. It a
 ## Local-first and sandbox behavior
 
 - The extension uses Apple's App Sandbox with read-only user-selected-file access and no network entitlement.
-- Remote images are never fetched. Local images are attempted through the shared renderer. When Quick Look cannot access a sibling image, the readable existing image placeholder is the expected result.
+- Remote images are never fetched. Local images are attempted through the shared renderer. Unavailable images appear as lightly shaded, rounded rectangles with a subtle border and the filename centered horizontally and vertically. Labels omit directories, URL query strings, and fragments, and decode escaped filenames. The boxes adapt to the reading width, table cells, and explicit HTML image widths; unknown image dimensions use a bounded placeholder height.
 - User-facing preview errors are concise and never contain document content or private file paths.
 
 ## Installation, updates, and removal

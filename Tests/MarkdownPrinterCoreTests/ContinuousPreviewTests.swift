@@ -108,12 +108,12 @@ final class ContinuousPreviewRenderingTests: XCTestCase {
 
         for text in [
             "Heading", "bold", "italic", "under", "gone", "code", "link", "quote",
-            "item", "done", "ordered", "let value = 1", "Left", "Right", "Remote",
+            "item", "done", "ordered", "let value = 1", "Left", "Right",
             "Footnote text"
         ] {
             XCTAssertTrue(output.string.contains(text), "Missing \(text)")
         }
-        XCTAssertTrue(output.string.contains("[Image: Remote]"))
+        XCTAssertTrue(placeholders(in: output).contains { $0.filename == "remote.png" })
         XCTAssertTrue(output.string.contains("────"))
 
         let bodyRange = (output.string as NSString).range(of: "Paragraph")
@@ -170,7 +170,7 @@ final class ContinuousPreviewRenderingTests: XCTestCase {
         XCTAssertEqual(document.title, "Quick Look title")
         XCTAssertTrue(output.string.contains("Guide reader@example.com © Raw <span>source</span>."))
         XCTAssertFalse(output.string.contains("<img"))
-        XCTAssertTrue(output.string.contains("[Image: https://example.com/never-fetch.png]"))
+        XCTAssertEqual(placeholders(in: output).map(\.filename), ["never-fetch.png"])
         let guide = (output.string as NSString).range(of: "Guide")
         let email = (output.string as NSString).range(of: "reader@example.com")
         let raw = (output.string as NSString).range(of: "<span>")
@@ -261,5 +261,144 @@ final class ContinuousPreviewRenderingTests: XCTestCase {
         XCTAssertTrue(view.textView.string.contains("Preview unavailable"))
         XCTAssertTrue(view.textView.string.contains("couldn’t read this file"))
         XCTAssertFalse(view.textView.string.contains("/Users/"))
+    }
+
+    func testUnavailableImagesUseFilenameOnlyAndKeepFullAppFallback() throws {
+        let markdown = """
+        ![Different alt text](private/photos/mountain%20lake.png)
+
+        ![Absolute](/private/not-present/photo.jpg)
+
+        ![Remote](https://example.com/private/sunset%20view.jpg?secret=value#fragment)
+
+        <img src="file:///private/not-present/r%C3%A9sum%C3%A9.png" width="120">
+        """
+        let document = MarkdownDocument(title: "Images", markdown: markdown)
+        let output = ContinuousPreviewRenderer().render(PreparedQuickLookDocument(
+            document: document, blocks: document.blocks
+        ))
+        let boxes = placeholders(in: output)
+
+        XCTAssertEqual(boxes.map(\.filename), ["mountain lake.png", "photo.jpg", "sunset view.jpg", "résumé.png"])
+        XCTAssertEqual(boxes.last?.bounds.width, 120)
+        XCTAssertFalse(output.string.contains("private"))
+        XCTAssertFalse(output.string.contains("Different alt text"))
+        XCTAssertTrue(MarkdownRenderer().render(document: document).string.contains("[Image: Different alt text]"))
+        XCTAssertEqual(QuickLookImagePlaceholder(source: "https://example.com/", maximumWidth: 100).filename, "Image")
+    }
+
+    func testAccessibleImagesStillRenderAndTablePlaceholdersFit() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 100, pixelsHigh: 50, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0
+        ))
+        try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+            .write(to: directory.appendingPathComponent("available.png"))
+        try Data("invalid image".utf8).write(to: directory.appendingPathComponent("broken.png"))
+        let document = MarkdownDocument(
+            sourceURL: directory.appendingPathComponent("fixture.md"),
+            title: "Images",
+            markdown: """
+            ![Available](available.png)
+
+            | Photo | Notes |
+            | --- | --- |
+            | ![Missing](not-present.png) | Description |
+            | ![Corrupt](broken.png) | Description |
+            """
+        )
+        let output = ContinuousPreviewRenderer().render(PreparedQuickLookDocument(
+            document: document, blocks: document.blocks
+        ))
+        let image = try XCTUnwrap(output.attribute(.attachment, at: 0, effectiveRange: nil) as? NSTextAttachment)
+        XCTAssertFalse(image is QuickLookImagePlaceholder)
+        XCTAssertEqual(image.image?.size, NSSize(width: 100, height: 50))
+        XCTAssertEqual(placeholders(in: output).map(\.filename), ["not-present.png", "broken.png"])
+        for placeholder in placeholders(in: output) {
+            XCTAssertLessThan(placeholder.bounds.width, 340)
+        }
+    }
+
+    func testPlaceholderLayoutFitsNarrowPreviewsAndDrawsInBothAppearances() throws {
+        let placeholder = QuickLookImagePlaceholder(source: "private/mountain-lake.png", maximumWidth: 680)
+        let container = NSTextContainer(size: NSSize(width: 220, height: 500))
+        let frame = placeholder.attachmentBounds(
+            for: container, proposedLineFragment: NSRect(x: 0, y: 0, width: 220, height: 500),
+            glyphPosition: .zero, characterIndex: 0
+        )
+        XCTAssertEqual(frame.width, 210)
+        XCTAssertGreaterThan(frame.height, 60)
+        for appearanceName: NSAppearance.Name in [.aqua, .darkAqua] {
+            try XCTUnwrap(NSAppearance(named: appearanceName)).performAsCurrentDrawingAppearance {
+                let image = placeholder.image(forBounds: frame, textContainer: container, characterIndex: 0)
+                XCTAssertEqual(image?.accessibilityDescription, "Unavailable image: mountain-lake.png")
+                XCTAssertEqual(image?.size, frame.size)
+                XCTAssertNotNil(image?.tiffRepresentation)
+            }
+        }
+
+        let document = MarkdownDocument(title: "Fixture", markdown: "![Photo](missing.png)\n\nAfter image")
+        let view = ContinuousPreviewView(frame: NSRect(x: 0, y: 0, width: 780, height: 500))
+        view.display(ContinuousPreviewRenderer().render(PreparedQuickLookDocument(
+            document: document, blocks: document.blocks
+        )))
+        for width: CGFloat in [780, 280, 500] {
+            view.frame.size.width = width
+            view.layoutSubtreeIfNeeded()
+            let layout = try XCTUnwrap(view.textView.layoutManager)
+            let textContainer = try XCTUnwrap(view.textView.textContainer)
+            layout.ensureLayout(for: textContainer)
+            let glyph = layout.boundingRect(forGlyphRange: NSRange(location: 0, length: 1), in: textContainer)
+            XCTAssertGreaterThan(glyph.width, 100)
+            XCTAssertLessThanOrEqual(glyph.maxX, textContainer.size.width + 1)
+        }
+    }
+
+    func testPlaceholderCellDrawsCenteredFilenameInLightAndDarkMode() throws {
+        let placeholder = QuickLookImagePlaceholder(source: "photos/mountain.png", maximumWidth: 320)
+        let cell = try XCTUnwrap(placeholder.attachmentCell)
+        XCTAssertEqual(cell.cellSize(), placeholder.bounds.size)
+        for name: NSAppearance.Name in [.aqua, .darkAqua] {
+            var rendered: Data?
+            try XCTUnwrap(NSAppearance(named: name)).performAsCurrentDrawingAppearance {
+                let image = NSImage(size: placeholder.bounds.size, flipped: false) { rect in
+                    NSColor.textBackgroundColor.setFill()
+                    rect.fill()
+                    cell.draw(withFrame: rect, in: nil)
+                    return true
+                }
+                rendered = image.tiffRepresentation
+            }
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(rendered)))
+            let background = try XCTUnwrap(bitmap.colorAt(x: 20, y: 20)?.usingColorSpace(.deviceRGB))
+            var labelPixels: [NSPoint] = []
+            for y in 16..<(bitmap.pixelsHigh - 16) {
+                for x in 16..<(bitmap.pixelsWide - 16) {
+                    let color = try XCTUnwrap(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
+                    if abs(color.redComponent - background.redComponent) > 0.2 {
+                        labelPixels.append(NSPoint(x: x, y: y))
+                    }
+                }
+            }
+            XCTAssertGreaterThan(labelPixels.count, 50, "Filename must be visibly drawn")
+            let minX = try XCTUnwrap(labelPixels.map(\.x).min())
+            let maxX = try XCTUnwrap(labelPixels.map(\.x).max())
+            let minY = try XCTUnwrap(labelPixels.map(\.y).min())
+            let maxY = try XCTUnwrap(labelPixels.map(\.y).max())
+            XCTAssertEqual((minX + maxX) / 2, CGFloat(bitmap.pixelsWide) / 2, accuracy: 3)
+            XCTAssertEqual((minY + maxY) / 2, CGFloat(bitmap.pixelsHigh) / 2, accuracy: 4)
+        }
+    }
+
+    private func placeholders(in output: NSAttributedString) -> [QuickLookImagePlaceholder] {
+        var attachments: [QuickLookImagePlaceholder] = []
+        output.enumerateAttribute(.attachment, in: NSRange(location: 0, length: output.length)) { value, _, _ in
+            if let placeholder = value as? QuickLookImagePlaceholder { attachments.append(placeholder) }
+        }
+        return attachments
     }
 }

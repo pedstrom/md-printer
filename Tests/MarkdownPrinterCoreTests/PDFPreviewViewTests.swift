@@ -595,6 +595,31 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertNil(feedback.image)
     }
 
+    func testHeldDragThumbnailTracksOptionBeforeTheMouseMovesAndStopsAfterCancellation() throws {
+        for preferred in ExportFormat.allCases {
+            let view = PageAdvancingPDFView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+            view.updateDragPayload(
+                format: preferred, fileName: "Document.\(preferred.pathExtension)",
+                dataProvider: { XCTFail("Readiness must not export data"); return Data() },
+                alternateDataProvider: { XCTFail("Readiness must not export data"); return Data() },
+                onError: { _ in XCTFail("Readiness must not fail") }
+            )
+            let location = NSPoint(x: 120, y: 200)
+            view.handleOutboundExportDrag(state: .began, event: nil, location: location)
+            for flags: NSEvent.ModifierFlags in [[], .option, [.option, .shift], [], .option] {
+                view.updateOutboundExportDrag(modifierFlags: flags)
+                let feedback = view.outboundExportDragFeedbackView
+                XCTAssertEqual(feedback.image?.accessibilityDescription, "\(preferred.forAction(modifierFlags: flags).displayName) export")
+                XCTAssertEqual(feedback.frame.midX, location.x)
+                XCTAssertEqual(feedback.frame.midY, location.y)
+            }
+            view.handleOutboundExportDrag(state: .cancelled, event: nil, location: location)
+            view.updateOutboundExportDrag(modifierFlags: [])
+            XCTAssertNil(view.outboundExportDragFeedbackView.image)
+            XCTAssertNil(view.outboundExportDragFeedbackView.superview)
+        }
+    }
+
     func testOutboundExportDragDoesNotShowReadinessWithoutAnExportPayload() {
         let view = PageAdvancingPDFView()
 

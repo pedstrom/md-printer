@@ -1098,7 +1098,12 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     private var remoteImageDownloadHandler: ((String) -> Void)?
     private var allRemoteImagesDownloadHandler: (() -> Void)?
     private lazy var dragFileStore = ExportDragFileStore()
-    private var activeDragArtifact: ExportDragArtifact?
+    private var activeExportDrag: ExportDragSession?
+    private var activeDraggingSession: NSDraggingSession?
+    private let dragModifierMonitor = ExportDragModifierMonitor()
+    private var readinessLocation: NSPoint?
+    private var readinessFormat: ExportFormat?
+    private var pendingDragError: Error?
     private var isDraggingExport = false
     var automaticallyTakesFocus = true
     private(set) lazy var outboundExportDragFeedbackView: NSImageView = {
@@ -1373,15 +1378,26 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
 
     func draggingSession(
         _ session: NSDraggingSession,
+        movedTo screenPoint: NSPoint
+    ) {
+        updateOutboundExportDrag(modifierFlags: NSEvent.modifierFlags)
+    }
+
+    func draggingSession(
+        _ session: NSDraggingSession,
         endedAt screenPoint: NSPoint,
         operation: NSDragOperation
     ) {
-        if let activeDragArtifact {
-            dragFileStore.finish(activeDragArtifact, operation: operation)
-            self.activeDragArtifact = nil
-        }
+        dragModifierMonitor.stop()
+        activeExportDrag?.finish(operation: operation)
+        activeExportDrag = nil
+        activeDraggingSession = nil
         isDraggingExport = false
         hideOutboundExportDragFeedback()
+        if let pendingDragError {
+            self.pendingDragError = nil
+            dragErrorHandler?(pendingDragError)
+        }
     }
 
     private func configure() {
@@ -1411,6 +1427,9 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
             guard !isDraggingExport, let dragPayload else { return }
             let payload = dragPayload.forAction(modifierFlags: event?.modifierFlags ?? NSEvent.modifierFlags)
             showOutboundExportDragFeedback(at: location, format: payload.format)
+            dragModifierMonitor.start { [weak self] flags in
+                self?.updateOutboundExportDrag(modifierFlags: flags)
+            }
         case .changed:
             guard !isDraggingExport,
                   let dragPayload,
@@ -1418,11 +1437,12 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
                   event.type == .leftMouseDragged
             else { return }
             beginOutboundExportDrag(
-                payload: dragPayload.forAction(modifierFlags: event.modifierFlags),
+                payload: dragPayload,
                 event: event,
                 location: location
             )
         case .ended, .cancelled, .failed:
+            if !isDraggingExport { dragModifierMonitor.stop() }
             hideOutboundExportDragFeedback()
         default:
             break
@@ -1434,29 +1454,61 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         event: NSEvent,
         location: NSPoint
     ) {
-        let artifact: ExportDragArtifact
+        let exportDrag: ExportDragSession
         do {
-            artifact = try payload.materialize(in: dragFileStore)
+            exportDrag = try ExportDragSession(
+                payload: payload,
+                modifierFlags: event.modifierFlags,
+                store: dragFileStore
+            )
         } catch {
+            dragModifierMonitor.stop()
             hideOutboundExportDragFeedback()
             dragErrorHandler?(error)
             return
         }
 
-        let draggingItem = NSDraggingItem(pasteboardWriter: artifact.fileURL as NSURL)
-        let image = dragThumbnail(format: payload.format)
+        let draggingItem = NSDraggingItem(pasteboardWriter: exportDrag.pasteboardItem)
+        let image = dragThumbnail(format: exportDrag.format)
         draggingItem.setDraggingFrame(
             outboundExportDragFrame(for: image, centeredAt: location),
             contents: image
         )
 
-        activeDragArtifact = artifact
+        activeExportDrag = exportDrag
         isDraggingExport = true
         hideOutboundExportDragFeedback()
-        beginDraggingSession(with: [draggingItem], event: event, source: self)
+        activeDraggingSession = beginDraggingSession(with: [draggingItem], event: event, source: self)
+    }
+
+    func updateOutboundExportDrag(modifierFlags: NSEvent.ModifierFlags) {
+        if let activeExportDrag, let activeDraggingSession {
+            do {
+                guard try activeExportDrag.update(
+                    modifierFlags: modifierFlags,
+                    pasteboard: activeDraggingSession.draggingPasteboard
+                ) else { return }
+                let image = dragThumbnail(format: activeExportDrag.format)
+                activeDraggingSession.enumerateDraggingItems(
+                    options: [], for: nil, classes: [NSPasteboardItem.self], searchOptions: [:]
+                ) { item, _, _ in
+                    item.setDraggingFrame(item.draggingFrame, contents: image)
+                }
+            } catch {
+                // Keep the last usable file and badge together; report after the
+                // drag ends so an alert cannot interrupt AppKit's tracking loop.
+                pendingDragError = error
+            }
+        } else if let readinessLocation, let dragPayload {
+            let format = dragPayload.forAction(modifierFlags: modifierFlags).format
+            guard format != readinessFormat else { return }
+            showOutboundExportDragFeedback(at: readinessLocation, format: format)
+        }
     }
 
     private func showOutboundExportDragFeedback(at location: NSPoint, format: ExportFormat) {
+        readinessLocation = location
+        readinessFormat = format
         let image = dragThumbnail(format: format)
         outboundExportDragFeedbackView.image = image
         outboundExportDragFeedbackView.frame = outboundExportDragFrame(
@@ -1469,6 +1521,8 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     }
 
     private func hideOutboundExportDragFeedback() {
+        readinessLocation = nil
+        readinessFormat = nil
         outboundExportDragFeedbackView.removeFromSuperview()
         outboundExportDragFeedbackView.image = nil
     }

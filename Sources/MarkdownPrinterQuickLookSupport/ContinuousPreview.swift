@@ -137,7 +137,10 @@ public final class ContinuousPreviewRenderer {
 
     public init(configuration: RendererConfiguration? = nil) {
         renderer = MarkdownRenderer(
-            configuration: configuration ?? ContinuousPreviewStyle.rendererConfiguration
+            configuration: configuration ?? ContinuousPreviewStyle.rendererConfiguration,
+            unavailableImageAttachment: { source, maximumWidth in
+                QuickLookImagePlaceholder(source: source, maximumWidth: maximumWidth)
+            }
         )
     }
 

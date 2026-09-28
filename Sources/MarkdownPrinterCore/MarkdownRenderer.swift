@@ -6,16 +6,19 @@ public final class MarkdownRenderer {
     public let remoteImageCache: RemoteImageCache?
     private let parser: MarkdownParser
     private let fonts: FontBook
+    private let unavailableImageAttachment: ((String, CGFloat) -> NSTextAttachment)?
 
     public init(
         configuration: RendererConfiguration = RendererConfiguration(),
         parser: MarkdownParser = MarkdownParser(),
-        remoteImageCache: RemoteImageCache? = nil
+        remoteImageCache: RemoteImageCache? = nil,
+        unavailableImageAttachment: ((String, CGFloat) -> NSTextAttachment)? = nil
     ) {
         self.configuration = configuration
         self.parser = parser
         self.remoteImageCache = remoteImageCache
         self.fonts = FontBook(configuration: configuration)
+        self.unavailableImageAttachment = unavailableImageAttachment
     }
 
     public func render(document: MarkdownDocument) -> NSAttributedString {
@@ -501,12 +504,19 @@ public final class MarkdownRenderer {
         font: NSFont,
         requestedWidth: CGFloat? = nil
     ) -> NSAttributedString {
+        let maximumWidth = min(
+            min(configuration.maximumImageWidth, configuration.contentWidth),
+            requestedWidth ?? .greatestFiniteMagnitude
+        )
         let remoteURL = RemoteImageReference.remoteURL(from: source)
         let resolvedURL = remoteURL == nil
             ? imageURL(source: source, baseURL: baseURL)
             : remoteImageCache?.cachedFileURL(for: source)
         guard let url = resolvedURL,
               let image = NSImage(contentsOf: url), image.size.width > 0, image.size.height > 0 else {
+            if let unavailableImageAttachment {
+                return NSAttributedString(attachment: unavailableImageAttachment(source, maximumWidth))
+            }
             return imagePlaceholder(
                 alt: alt,
                 source: source,
@@ -515,10 +525,6 @@ public final class MarkdownRenderer {
             )
         }
 
-        let maximumWidth = min(
-            min(configuration.maximumImageWidth, configuration.contentWidth),
-            requestedWidth ?? .greatestFiniteMagnitude
-        )
         let scale = min(1, maximumWidth / image.size.width)
         let attachment = NSTextAttachment()
         attachment.image = image

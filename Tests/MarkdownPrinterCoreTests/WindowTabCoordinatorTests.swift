@@ -4,6 +4,122 @@ import XCTest
 
 @MainActor
 final class WindowTabCoordinatorTests: XCTestCase {
+    func testStandaloneWindowsCascadeOnceAfterInitialLayout() async throws {
+        let coordinator = WindowTabCoordinator()
+        let screen = try XCTUnwrap(NSScreen.main).visibleFrame
+        let initialFrame = NSRect(x: screen.minX + 100, y: screen.maxY - 500, width: 600, height: 400)
+        let windows = (0..<3).map { _ in makeWindow() }
+        defer { windows.forEach { $0.orderOut(nil) } }
+        for window in windows {
+            window.setFrame(initialFrame, display: false)
+            coordinator.attach(window: window)
+            window.orderFront(nil)
+        }
+        await finishInitialWindowPlacement()
+
+        XCTAssertEqual(windows[0].frame.minX, initialFrame.minX)
+        XCTAssertEqual(windows[0].frame.maxY, screen.maxY)
+        for index in 1..<windows.count {
+            let previous = windows[index - 1].frame
+            let current = windows[index].frame
+            XCTAssertGreaterThan(current.minX, previous.minX)
+            XCTAssertLessThan(current.maxY, previous.maxY)
+            XCTAssertGreaterThanOrEqual(previous.maxY - current.maxY, 20)
+            XCTAssertEqual(current.size, initialFrame.size)
+            XCTAssertTrue(screen.contains(current))
+        }
+
+        let manuallyMoved = windows[1].frame.offsetBy(dx: 100, dy: -60)
+        windows[1].setFrame(manuallyMoved, display: false)
+        coordinator.attach(window: windows[1])
+        coordinator.activate(window: windows[1])
+        await finishInitialWindowPlacement()
+        XCTAssertEqual(windows[1].frame, manuallyMoved)
+    }
+
+    func testCascadeSkipsHiddenWindowsAndWrapsAtScreenEdges() async throws {
+        let coordinator = WindowTabCoordinator()
+        let screen = try XCTUnwrap(NSScreen.main).visibleFrame
+        let visible = makeWindow()
+        let hidden = makeWindow()
+        let opened = makeWindow()
+        defer { [visible, hidden, opened].forEach { $0.orderOut(nil) } }
+        coordinator.attach(window: visible)
+        visible.orderFront(nil)
+        coordinator.attach(window: hidden)
+        await finishInitialWindowPlacement()
+        visible.setFrame(NSRect(x: screen.maxX - 620, y: screen.minY, width: 600, height: 400), display: false)
+        let hiddenFrame = hidden.frame
+        coordinator.attach(window: opened)
+        opened.orderFront(nil)
+        await finishInitialWindowPlacement()
+
+        XCTAssertNotEqual(opened.frame.origin, visible.frame.origin)
+        XCTAssertTrue(screen.contains(opened.frame))
+        XCTAssertEqual(hidden.frame, hiddenFrame)
+    }
+
+    func testCascadeFollowsStackingOrderInsteadOfFileLoadOrderAndExposesToolbarTitles() async throws {
+        let coordinator = WindowTabCoordinator()
+        let screen = try XCTUnwrap(NSScreen.main).visibleFrame
+        let windows = (0..<3).map { _ in makeWindow() }
+        defer { windows.forEach { $0.orderOut(nil) } }
+        let initialFrame = NSRect(x: screen.minX + 100, y: screen.minY + 10, width: 600, height: screen.height - 140)
+        for window in windows {
+            window.toolbar = NSToolbar(identifier: "CascadeToolbar")
+            window.toolbarStyle = .unified
+            window.setFrame(initialFrame, display: false)
+            coordinator.attach(window: window)
+        }
+        // The first file to finish loading can still be the frontmost window.
+        for window in windows.reversed() { window.orderFront(nil) }
+        await finishInitialWindowPlacement()
+
+        XCTAssertEqual(windows[2].frame.minX, initialFrame.minX)
+        XCTAssertEqual(windows[2].frame.maxY, screen.maxY)
+        for index in [1, 0] {
+            let behind = windows[index + 1]
+            let front = windows[index]
+            let titleBarHeight = behind.frame.height - behind.contentLayoutRect.height
+            XCTAssertGreaterThan(front.frame.minX, behind.frame.minX)
+            XCTAssertGreaterThanOrEqual(behind.frame.maxY - front.frame.maxY, titleBarHeight)
+            XCTAssertTrue(screen.contains(front.frame))
+        }
+    }
+
+    func testRequestedTabsAndRestoredWindowsKeepTheirPositions() async throws {
+        let coordinator = WindowTabCoordinator()
+        let source = makeWindow()
+        let tab = makeWindow()
+        let restored = makeWindow()
+        defer { [source, tab, restored].forEach { $0.orderOut(nil) } }
+        coordinator.attach(window: source)
+        source.orderFront(nil)
+        await finishInitialWindowPlacement()
+        let sourceFrame = source.frame
+        let tabIdentifier = coordinator.prepareNewTab(from: source)
+        coordinator.attach(window: tab, identifier: tabIdentifier)
+        tab.orderFront(nil)
+        await finishInitialWindowPlacement()
+        XCTAssertEqual(source.frame, sourceFrame)
+        XCTAssertEqual(tab.frame, source.frame)
+
+        let restoredURL = URL(fileURLWithPath: "/tmp/Restored-Placement.md")
+        coordinator.prepareWorkspaceDocument(at: restoredURL, groupIdentifier: "saved", isSelected: true, isTabBarVisible: false)
+        restored.setFrame(sourceFrame.offsetBy(dx: 120, dy: -30), display: false)
+        let savedFrame = restored.frame
+        coordinator.attach(window: restored, documentURL: restoredURL)
+        restored.orderFront(nil)
+        await finishInitialWindowPlacement()
+        XCTAssertEqual(restored.frame, savedFrame)
+    }
+
+    private func finishInitialWindowPlacement() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+    }
+
     func testAttachingWindowsConfiguresAndGroupsTheRequestedTab() throws {
         let coordinator = WindowTabCoordinator()
         let sourceWindow = makeWindow()

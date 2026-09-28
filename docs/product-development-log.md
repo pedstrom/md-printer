@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-09-28 — Prepare Mac 1.4.6 for review
+
+- Prepare version 1.4.6, build 15, with narrative release notes grouping output controls, document-workspace improvements, and everyday fixes. Include timezone footers, live PDF/Word drag switching, window cascading, Quick Look filename placeholders, Find paste, PDF footnote navigation, and Open Recent reliability.
+- Commit the remaining Mac implementation and regression tests now that the footnote fix has cleared the earlier verification blocker. Keep unrelated iOS project edits outside this release.
+- Pass focused Mac regressions and the full verification gate: 337 tests, 95.76% production line coverage, performance budgets, and universal app/extension validation. Retain the existing manual acceptance note for toggling Option during a physical drag.
+- Hold publication for Pete’s review of the completed release draft.
+
 ## 2026-09-28 — Repair exported PDF footnote navigation
 
 - Replace the PDFKit post-render annotation rewrite with Core Graphics named destinations and link rectangles written during the original PDF page generation. The previous rewrite serialized invalid destination page references; links now retain their target pages after reopening the PDF.
@@ -13,6 +20,29 @@
 - Preserve the existing footer choices and defaults. Persist the new choice independently on either side and keep missing timestamps blank.
 - Pass nine focused regressions covering seasonal abbreviations, regional formatting, missing metadata, menu ordering, preference persistence, and searchable PDF footers with room around the centered page number. Visually inspect both pages of a showcase PDF with the new footer on both sides.
 - The initial full gate reproduced the existing footnote navigation failure; repair it in the companion change above. The combined changes pass all 337 macOS tests with 95.76% testable-production line coverage (100% for `PageConfiguration.swift`).
+
+## 2026-09-25 — Cascade newly opened Mac document windows
+
+- Coalesce new standalone windows after SwiftUI's initial layout and place them in AppKit's actual stacking order: backmost at upper left, each window in front down and to the right. Keep the native horizontal cascade offset and reveal the full unified-toolbar title vertically.
+- Start a fresh cascade at the top of the usable screen so tall portrait windows have room for subsequent title bars; retain native screen-edge wrapping. Apply placement only once per window and preserve manually moved windows, requested tabs, and saved workspace positions. Skip hidden, minimized, and full-screen windows.
+- Add native-window regressions for simultaneous opens, file-loading order differing from stacking order, tall windows, retained sizes, visible title bars, screen-edge wrapping, hidden windows, repeated attachment, manual movement, tabs, and restored geometry. Pass 23 focused window and restoration tests.
+- Verify three simultaneously opened documents in the rebuilt native app: the front-to-back order matches a 29-point horizontal and 52-point vertical cascade, exposing every toolbar title. Pass the universal build and strict bundle signatures, and measure 95.74% testable-production line coverage. Of 333 macOS tests, 332 pass; the existing PDF-footnote destination failure still blocks the full gate and commit.
+
+## 2026-09-25 — Filename boxes for unavailable Quick Look images
+
+- Replace Quick Look's inline unavailable-image text with a lightly shaded, rounded rectangle and a centered Avenir Next filename. Strip directory paths, query strings, and fragments, decode escaped filenames, and truncate long names within the box.
+- Size placeholders to the preview's reading width, table cells, and explicit HTML image widths. Use adaptive light/dark colors and a bounded height when the image dimensions are unavailable; retain the offline sandbox and existing accessible-image rendering.
+- Keep the full Mac app's PDF/Word placeholders and download actions unchanged through an optional Quick Look attachment provider in the AppKit renderer.
+- Add native rendering, filename privacy, missing/corrupt/local/remote image, table, requested-width, responsive resizing, accessibility-label, and light/dark pixel-centering regressions. Verify 34 focused tests and inspect native Quick Look fixture captures in light, dark, and narrow layouts.
+- Run all 329 macOS tests: 328 pass, while the previously documented `PDFExporterTests.testPDFFootnoteReferencesAndDefinitionsLinkInBothDirections` still fails with missing destination pages, matching the untouched baseline result. Measure 95.70% testable-production line coverage, pass performance budgets, inspect the two-page showcase PDF, and validate the universal app and extension with strict signatures on a metadata-free temporary copy. The full gate and commit remain blocked by the existing footnote failure.
+
+## 2026-09-24 — Switch export format during an active Mac drag
+
+- Track Option throughout the initial hold and native drag session, including a stationary pointer and drags outside the source window. Update the first-page thumbnail's PDF/Word badge when the key changes.
+- Change the existing drag pasteboard item's file URL together with the badge. Generate each requested format once per drag, preserve the saved preference, and retain only the final dropped export for delayed cleanup.
+- Keep the previous usable file and badge if an alternate export fails, avoid retrying on every tracking tick, and report the failure after the drag finishes.
+- Add regressions for both preferred formats, Option held at drag start, repeated toggles, actual published URLs and export bytes, tracking-loop modifier observation, readiness thumbnails, cancellation, accepted-drop cleanup, and failure recovery.
+- Validate 54 focused tests, the other 324 tests with the known footnote failure excluded, 95.74% combined production line coverage, performance budgets, and the universal app build. Launch and inspect the rebuilt native preview. The full gate remains blocked by `PDFExporterTests.testPDFFootnoteReferencesAndDefinitionsLinkInBothDirections`, reproduced on untouched commit `c53267c`; leave the change uncommitted pending that separate failure. A physical mid-drag Option toggle remains a manual check because the available UI driver cannot hold the mouse while changing modifiers.
 
 ## 2026-09-22 — Preserve the native Open Recent submenu
 
