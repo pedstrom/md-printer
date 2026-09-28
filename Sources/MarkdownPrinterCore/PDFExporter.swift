@@ -22,10 +22,14 @@ public final class PDFExporter {
     ) throws -> Data {
         let output = try makePDFOutput()
         let pages = makePages(for: attributedText)
+        let navigation = footnoteNavigation(in: attributedText, pages: pages)
         for (pageIndex, page) in pages.enumerated() {
-            draw(page: page, pageNumber: pageIndex + 1, footers: footers, in: output.context)
+            draw(
+                page: page, pageNumber: pageIndex + 1, footers: footers,
+                navigation: navigation, in: output.context
+            )
         }
-        return try finishPDFOutput(output, attributedText: attributedText, pages: pages)
+        return try finishPDFOutput(output)
     }
 
     public func pdfDataAsync(
@@ -34,12 +38,16 @@ public final class PDFExporter {
     ) async throws -> Data {
         let output = try makePDFOutput()
         let pages = await makePagesAsync(for: attributedText)
+        let navigation = footnoteNavigation(in: attributedText, pages: pages)
         for (pageIndex, page) in pages.enumerated() {
             try Task.checkCancellation()
-            draw(page: page, pageNumber: pageIndex + 1, footers: footers, in: output.context)
+            draw(
+                page: page, pageNumber: pageIndex + 1, footers: footers,
+                navigation: navigation, in: output.context
+            )
             await Task.yield()
         }
-        return try finishPDFOutput(output, attributedText: attributedText, pages: pages)
+        return try finishPDFOutput(output)
     }
 
     public func write(_ attributedText: NSAttributedString, to url: URL) throws {
@@ -135,6 +143,7 @@ public final class PDFExporter {
         page: TextPage,
         pageNumber: Int,
         footers: ResolvedFooterConfiguration,
+        navigation: [FootnoteLink],
         in context: CGContext
     ) {
         context.beginPDFPage(nil)
@@ -150,21 +159,14 @@ public final class PDFExporter {
         drawFooter(pageNumber: pageNumber, footers: footers)
         NSGraphicsContext.restoreGraphicsState()
         context.restoreGState()
+        drawFootnoteNavigation(navigation, pageIndex: pageNumber - 1, in: context)
         context.endPDFPage()
     }
 
-    private func finishPDFOutput(
-        _ output: PDFOutput,
-        attributedText: NSAttributedString,
-        pages: [TextPage]
-    ) throws -> Data {
+    private func finishPDFOutput(_ output: PDFOutput) throws -> Data {
         output.context.closePDF()
         guard output.data.length > 0 else { throw PDFExporterError.renderingFailed }
-        return try addingFootnoteNavigation(
-            to: output.data as Data,
-            attributedText: attributedText,
-            pages: pages
-        )
+        return output.data as Data
     }
 
     private func appendPagesUntilCovered(
@@ -543,14 +545,13 @@ public final class PDFExporter {
         )
     }
 
-    private func addingFootnoteNavigation(
-        to data: Data,
-        attributedText: NSAttributedString,
+    private func footnoteNavigation(
+        in attributedText: NSAttributedString,
         pages: [TextPage]
-    ) throws -> Data {
+    ) -> [FootnoteLink] {
         guard containsAttribute(.markdownFootnoteReference, in: attributedText),
               containsAttribute(.markdownFootnoteDefinition, in: attributedText) else {
-            return data
+            return []
         }
         let references = footnoteLocations(
             for: .markdownFootnoteReference,
@@ -562,8 +563,7 @@ public final class PDFExporter {
             in: attributedText,
             pages: pages
         )
-        guard !references.isEmpty, !definitions.isEmpty else { return data }
-        guard let document = PDFDocument(data: data) else { throw PDFExporterError.renderingFailed }
+        guard !references.isEmpty, !definitions.isEmpty else { return [] }
 
         let definitionByLabel = Dictionary(
             uniqueKeysWithValues: definitions.map { ($0.label, $0) }
@@ -572,19 +572,17 @@ public final class PDFExporter {
             references.map { ($0.label, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        var links: [FootnoteLink] = []
         for reference in references {
             guard let definition = definitionByLabel[reference.label] else { continue }
-            addFootnoteLink(from: reference, to: definition, in: document)
+            links.append(FootnoteLink(source: reference, target: definition))
         }
         for definition in definitions {
             guard let reference = firstReferenceByLabel[definition.label] else { continue }
-            addFootnoteLink(from: definition, to: reference, in: document)
+            links.append(FootnoteLink(source: definition, target: reference))
         }
 
-        guard let linkedData = document.dataRepresentation() else {
-            throw PDFExporterError.renderingFailed
-        }
-        return linkedData
+        return links
     }
 
     private func containsAttribute(
@@ -647,22 +645,25 @@ public final class PDFExporter {
         return locations
     }
 
-    private func addFootnoteLink(
-        from source: FootnoteLocation,
-        to target: FootnoteLocation,
-        in document: PDFDocument
+    private func drawFootnoteNavigation(
+        _ links: [FootnoteLink],
+        pageIndex: Int,
+        in context: CGContext
     ) {
-        guard let sourcePage = document.page(at: source.pageIndex),
-              let targetPage = document.page(at: target.pageIndex) else { return }
-        let annotation = PDFAnnotation(bounds: source.bounds, forType: .link, withProperties: nil)
-        let border = PDFBorder()
-        border.lineWidth = 0
-        annotation.border = border
-        annotation.action = PDFActionGoTo(destination: PDFDestination(
-            page: targetPage,
-            at: CGPoint(x: target.bounds.minX, y: target.bounds.maxY + 4)
-        ))
-        sourcePage.addAnnotation(annotation)
+        // Write named destinations in the original PDF context. Rewriting GoTo
+        // actions with PDFKit can serialize malformed page references.
+        for (index, link) in links.enumerated() {
+            let name = "footnote-\(index)" as CFString
+            if link.target.pageIndex == pageIndex {
+                context.addDestination(
+                    name,
+                    at: CGPoint(x: link.target.bounds.minX, y: link.target.bounds.maxY + 4)
+                )
+            }
+            if link.source.pageIndex == pageIndex {
+                context.setDestination(name, for: link.source.bounds)
+            }
+        }
     }
 
     private func printInfo() -> NSPrintInfo {
@@ -751,6 +752,11 @@ private struct VisualRow {
     let pageIndex: Int
     let minY: CGFloat
     var isHeading: Bool
+}
+
+private struct FootnoteLink {
+    let source: FootnoteLocation
+    let target: FootnoteLocation
 }
 
 private struct FootnoteLocation {

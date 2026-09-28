@@ -110,12 +110,13 @@ public enum FooterValue: Codable, Equatable, Sendable {
     case none
     case date
     case dateTime
+    case dateTimeWithTimeZone
     case documentTitle
     case filename
     case custom(String)
 
     public static let menuValues: [FooterValue] = [
-        .none, .date, .dateTime, .documentTitle, .filename, .custom("")
+        .none, .date, .dateTime, .dateTimeWithTimeZone, .documentTitle, .filename, .custom("")
     ]
 
     public var displayName: String {
@@ -123,6 +124,7 @@ public enum FooterValue: Codable, Equatable, Sendable {
         case .none: return "None"
         case .date: return "Date"
         case .dateTime: return "Date & Time"
+        case .dateTimeWithTimeZone: return "Date & Time with Time Zone"
         case .documentTitle: return "Document Title"
         case .filename: return "Filename"
         case .custom: return "Custom…"
@@ -155,14 +157,18 @@ public enum FooterValue: Codable, Equatable, Sendable {
                 timeZone: timeZone
             ).string(from: document.sourceModificationDate ?? .distantPast)
                 .blankWhenMissing(document.sourceModificationDate)
-        case .dateTime:
-            return Self.dateFormatter(
+        case .dateTime, .dateTimeWithTimeZone:
+            guard let date = document.sourceModificationDate else { return "" }
+            let formatter = Self.dateFormatter(
                 dateStyle: .medium,
                 timeStyle: .short,
                 locale: locale,
                 timeZone: timeZone
-            ).string(from: document.sourceModificationDate ?? .distantPast)
-                .blankWhenMissing(document.sourceModificationDate)
+            )
+            let dateTime = formatter.string(from: date)
+            guard self == .dateTimeWithTimeZone else { return dateTime }
+            formatter.dateFormat = "zzz"
+            return "\(dateTime) \(formatter.string(from: date))"
         case .documentTitle:
             return document.title
         case .filename:

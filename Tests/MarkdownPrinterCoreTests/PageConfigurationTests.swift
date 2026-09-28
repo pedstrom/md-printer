@@ -74,13 +74,50 @@ final class PageConfigurationTests: XCTestCase {
         let unavailable = MarkdownDocument(title: "Untitled", markdown: "Body")
         XCTAssertEqual(FooterValue.date.resolved(for: unavailable), "")
         XCTAssertEqual(FooterValue.dateTime.resolved(for: unavailable), "")
+        XCTAssertEqual(FooterValue.dateTimeWithTimeZone.resolved(for: unavailable), "")
         XCTAssertEqual(FooterValue.filename.resolved(for: unavailable), "")
+    }
+
+    func testTimeZoneFooterUsesTimestampSeasonAndPreservesLocalizedDateTime() throws {
+        let timeZone = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let parser = ISO8601DateFormatter()
+        for (timestamp, abbreviation) in [
+            ("2026-01-02T12:00:00Z", "EST"),
+            ("2026-07-02T12:00:00Z", "EDT")
+        ] {
+            let document = MarkdownDocument(
+                sourceModificationDate: try XCTUnwrap(parser.date(from: timestamp)),
+                title: "Time zone",
+                markdown: "Body"
+            )
+            let locale = Locale(identifier: "en_US")
+            let original = FooterValue.dateTime.resolved(
+                for: document, locale: locale, timeZone: timeZone
+            )
+            XCTAssertEqual(
+                FooterValue.dateTimeWithTimeZone.resolved(
+                    for: document, locale: locale, timeZone: timeZone
+                ),
+                "\(original) \(abbreviation)"
+            )
+            let regionalLocale = Locale(identifier: "de_DE")
+            let regionalOriginal = FooterValue.dateTime.resolved(
+                for: document, locale: regionalLocale, timeZone: timeZone
+            )
+            let regionalZoned = FooterValue.dateTimeWithTimeZone.resolved(
+                for: document, locale: regionalLocale, timeZone: timeZone
+            )
+            XCTAssertTrue(regionalZoned.hasPrefix(regionalOriginal + " "))
+            XCTAssertGreaterThan(regionalZoned.count, regionalOriginal.count + 1)
+            XCTAssertFalse(regionalZoned.contains("AM"))
+        }
     }
 
     func testFooterMenuLabelsAndResolvedCustomValueCoverEveryChoice() {
         XCTAssertEqual(
             FooterValue.menuValues.map(\.displayName),
-            ["None", "Date", "Date & Time", "Document Title", "Filename", "Custom…"]
+            ["None", "Date", "Date & Time", "Date & Time with Time Zone",
+             "Document Title", "Filename", "Custom…"]
         )
         XCTAssertEqual(
             FooterValue.custom("Already normalized").resolved(

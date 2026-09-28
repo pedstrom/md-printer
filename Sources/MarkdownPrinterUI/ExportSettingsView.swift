@@ -216,6 +216,7 @@ private struct FooterPreferenceControl: View {
                 case .none: value = .none
                 case .date: value = .date
                 case .dateTime: value = .dateTime
+                case .dateTimeWithTimeZone: value = .dateTimeWithTimeZone
                 case .documentTitle: value = .documentTitle
                 case .filename: value = .filename
                 case .custom:
@@ -241,6 +242,7 @@ private enum FooterKind: String, CaseIterable, Identifiable {
     case none
     case date
     case dateTime
+    case dateTimeWithTimeZone
     case documentTitle
     case filename
     case custom
@@ -250,6 +252,7 @@ private enum FooterKind: String, CaseIterable, Identifiable {
         case .none: self = .none
         case .date: self = .date
         case .dateTime: self = .dateTime
+        case .dateTimeWithTimeZone: self = .dateTimeWithTimeZone
         case .documentTitle: self = .documentTitle
         case .filename: self = .filename
         case .custom: self = .custom
@@ -263,6 +266,7 @@ private enum FooterKind: String, CaseIterable, Identifiable {
         case .none: return "None"
         case .date: return "Date"
         case .dateTime: return "Date & Time"
+        case .dateTimeWithTimeZone: return "Date & Time with Time Zone"
         case .documentTitle: return "Document Title"
         case .filename: return "Filename"
         case .custom: return "Custom…"

@@ -1,5 +1,19 @@
 # Product Development Log
 
+## 2026-09-28 — Repair exported PDF footnote navigation
+
+- Replace the PDFKit post-render annotation rewrite with Core Graphics named destinations and link rectangles written during the original PDF page generation. The previous rewrite serialized invalid destination page references; links now retain their target pages after reopening the PDF.
+- Preserve forward links for every reference and return links to each note's first reference. Use the same navigation generation for synchronous and asynchronous export, with no second PDF serialization pass.
+- Pass the original multi-page regression for both export paths, and add a saved-file regression for same-page notes, Unicode labels, distinct destinations, repeated references, and exact first-reference return positions. Regenerate and visually inspect the showcase PDF with footnotes and timezone footers.
+- Pass the full macOS verification gate: all 337 tests, 95.76% production line coverage, performance budgets, universal release build, and native app/extension bundle validation.
+
+## 2026-09-28 — Optional time zone in date/time footers
+
+- Add “Date & Time with Time Zone” immediately after “Date & Time” in both Mac footer menus. Preserve the localized date/time and file modification timestamp, appending a short localized time zone label for that timestamp (for example, EDT in summer and EST in winter).
+- Preserve the existing footer choices and defaults. Persist the new choice independently on either side and keep missing timestamps blank.
+- Pass nine focused regressions covering seasonal abbreviations, regional formatting, missing metadata, menu ordering, preference persistence, and searchable PDF footers with room around the centered page number. Visually inspect both pages of a showcase PDF with the new footer on both sides.
+- The initial full gate reproduced the existing footnote navigation failure; repair it in the companion change above. The combined changes pass all 337 macOS tests with 95.76% testable-production line coverage (100% for `PageConfiguration.swift`).
+
 ## 2026-09-22 — Preserve the native Open Recent submenu
 
 - Hide duplicate generated New Window and New Tab commands in place instead of removing them from SwiftUI's menu. Removing those items disrupted the next menu rebuild, replacing Open Recent with an empty `NSMenuItem` placeholder.

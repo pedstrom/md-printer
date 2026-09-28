@@ -29,6 +29,18 @@ final class PagePreferencesTests: XCTestCase {
         XCTAssertEqual(reloaded.rightFooter, .custom("Pete Edstrom"))
     }
 
+    func testTimeZoneFooterPersistsForBothSides() throws {
+        let suite = "PagePreferencesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = PagePreferences(defaults: defaults)
+        preferences.leftFooter = .dateTimeWithTimeZone
+        preferences.rightFooter = .dateTimeWithTimeZone
+        let reloaded = PagePreferences(defaults: defaults)
+        XCTAssertEqual(reloaded.leftFooter, .dateTimeWithTimeZone)
+        XCTAssertEqual(reloaded.rightFooter, .dateTimeWithTimeZone)
+    }
+
     func testResolvedFootersUseTheSameDocumentMetadata() {
         let suite = "PagePreferencesTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

@@ -261,6 +261,34 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertEqual(try exporter.printOperation(forPDFData: data).printInfo.scalingFactor, 1)
     }
 
+    func testTimeZoneFootersRemainSearchableOnBothSides() throws {
+        let source = MarkdownDocument(
+            sourceModificationDate: ISO8601DateFormatter().date(from: "2026-09-28T18:35:00Z"),
+            title: "Time zone footer",
+            markdown: "# Time zone footer"
+        )
+        let footer = FooterValue.dateTimeWithTimeZone.resolved(
+            for: source,
+            locale: Locale(identifier: "en_US"),
+            timeZone: try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        )
+        let renderer = MarkdownRenderer()
+        let data = try PDFExporter(configuration: renderer.configuration).pdfData(
+            from: renderer.render(document: source),
+            footers: ResolvedFooterConfiguration(left: footer, right: footer)
+        )
+        let pdf = try XCTUnwrap(PDFDocument(data: data))
+        let page = try XCTUnwrap(pdf.page(at: 0))
+        // PDF text extraction normalizes the localized narrow space before AM/PM.
+        let searchableFooter = footer.replacingOccurrences(of: "\u{202F}", with: " ")
+        let matches = pdf.findString(searchableFooter, withOptions: [])
+        XCTAssertEqual(matches.count, 2)
+        XCTAssertTrue(footer.hasSuffix("EDT"))
+        let bounds = matches.map { $0.bounds(for: page) }.sorted { $0.minX < $1.minX }
+        XCTAssertLessThan(try XCTUnwrap(bounds.first).maxX, 300)
+        XCTAssertGreaterThan(try XCTUnwrap(bounds.last).minX, 312)
+    }
+
     func testLongSideFooterTruncatesWithoutOverlappingCenteredPageNumber() throws {
         let longFooter = "A very long custom footer " + String(repeating: "extended ", count: 40)
         let data = try PDFExporter().pdfData(
@@ -389,7 +417,7 @@ final class PDFExporterTests: XCTestCase {
         XCTAssertTrue(annotations.contains(where: { $0.url == expectedURL }))
     }
 
-    func testPDFFootnoteReferencesAndDefinitionsLinkInBothDirections() throws {
+    func testPDFFootnoteReferencesAndDefinitionsLinkInBothDirections() async throws {
         let filler = (1...80)
             .map { "Filler paragraph \($0) keeps the notes after the body." }
             .joined(separator: "\n\n")
@@ -401,35 +429,81 @@ final class PDFExporterTests: XCTestCase {
         [^source]: Supporting footnote text.
         """
         let text = MarkdownRenderer().render(markdown: markdown)
-        let document = try XCTUnwrap(PDFDocument(data: try PDFExporter().pdfData(from: text)))
-        XCTAssertGreaterThan(document.pageCount, 1)
+        let exporter = PDFExporter()
+        let synchronous = try exporter.pdfData(from: text)
+        let asynchronous = try await exporter.pdfDataAsync(from: text)
+        for data in [synchronous, asynchronous] {
+            let document = try XCTUnwrap(PDFDocument(data: data))
+            XCTAssertGreaterThan(document.pageCount, 1)
 
-        var links: [(pageIndex: Int, action: PDFActionGoTo)] = []
-        for pageIndex in 0..<document.pageCount {
-            for annotation in try XCTUnwrap(document.page(at: pageIndex)).annotations {
-                if let action = annotation.action as? PDFActionGoTo {
-                    links.append((pageIndex, action))
+            var links: [(pageIndex: Int, action: PDFActionGoTo)] = []
+            for pageIndex in 0..<document.pageCount {
+                for annotation in try XCTUnwrap(document.page(at: pageIndex)).annotations {
+                    if let action = annotation.action as? PDFActionGoTo {
+                        links.append((pageIndex, action))
+                    }
                 }
             }
+
+            XCTAssertEqual(links.count, 3)
+            XCTAssertEqual(links.filter { $0.pageIndex == 0 }.count, 2)
+            XCTAssertEqual(links.filter { $0.pageIndex == document.pageCount - 1 }.count, 1)
+            XCTAssertTrue(links.filter { $0.pageIndex == 0 }.allSatisfy {
+                $0.action.destination.page.map(document.index(for:)) == document.pageCount - 1
+            })
+            let backLink = try XCTUnwrap(links.first { $0.pageIndex == document.pageCount - 1 })
+            XCTAssertEqual(
+                document.index(for: try XCTUnwrap(backLink.action.destination.page)),
+                0
+            )
+
+            let allText = (0..<document.pageCount)
+                .compactMap { document.page(at: $0)?.string }
+                .joined(separator: "\n")
+            XCTAssertFalse(allText.contains("[^source]"))
+            XCTAssertTrue(allText.contains("Supporting footnote text."))
         }
+    }
 
-        XCTAssertEqual(links.count, 3)
-        XCTAssertEqual(links.filter { $0.pageIndex == 0 }.count, 2)
-        XCTAssertEqual(links.filter { $0.pageIndex == document.pageCount - 1 }.count, 1)
-        XCTAssertTrue(links.filter { $0.pageIndex == 0 }.allSatisfy {
-            $0.action.destination.page.map(document.index(for:)) == document.pageCount - 1
-        })
-        let backLink = try XCTUnwrap(links.first { $0.pageIndex == document.pageCount - 1 })
-        XCTAssertEqual(
-            document.index(for: try XCTUnwrap(backLink.action.destination.page)),
-            0
-        )
+    func testSavedSamePageFootnotesPreserveDistinctTargetsAndFirstReferenceBacklinks() throws {
+        let text = MarkdownRenderer().render(markdown: """
+        First[^café] and second[^other].
 
-        let allText = (0..<document.pageCount)
-            .compactMap { document.page(at: $0)?.string }
-            .joined(separator: "\n")
-        XCTAssertFalse(allText.contains("[^source]"))
-        XCTAssertTrue(allText.contains("Supporting footnote text."))
+        Repeated first[^café].
+
+        [^café]: First supporting note.
+        [^other]: Second supporting note.
+        """)
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("footnotes-\(UUID().uuidString).pdf")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try PDFExporter().write(text, to: url)
+        let document = try XCTUnwrap(PDFDocument(url: url))
+        XCTAssertEqual(document.pageCount, 1)
+        let page = try XCTUnwrap(document.page(at: 0))
+        let links = page.annotations.filter { $0.action is PDFActionGoTo }.sorted {
+            if abs($0.bounds.midY - $1.bounds.midY) > 1 {
+                return $0.bounds.midY > $1.bounds.midY
+            }
+            return $0.bounds.minX < $1.bounds.minX
+        }
+        XCTAssertEqual(links.count, 5)
+        guard links.count == 5 else { return }
+        let destinations = try links.map {
+            try XCTUnwrap(($0.action as? PDFActionGoTo)?.destination)
+        }
+        for destination in destinations {
+            XCTAssertTrue(destination.page === page)
+        }
+        // Both references to the first note jump to the same position.
+        XCTAssertEqual(destinations[0].point, destinations[2].point)
+        XCTAssertNotEqual(destinations[0].point, destinations[1].point)
+        // Each note returns to its own first reference, not the later repeat.
+        for (definitionIndex, referenceIndex) in [(3, 0), (4, 1)] {
+            XCTAssertEqual(destinations[definitionIndex].point.x, links[referenceIndex].bounds.minX, accuracy: 0.1)
+            XCTAssertEqual(destinations[definitionIndex].point.y, links[referenceIndex].bounds.maxY + 4, accuracy: 0.1)
+            XCTAssertEqual(destinations[referenceIndex].point.y, links[definitionIndex].bounds.maxY + 4, accuracy: 0.1)
+        }
     }
 
     func testFencedCodeBlockRendersWithoutStallingPagination() throws {
