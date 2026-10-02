@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 public struct MarkdownPrinterView: View {
     @ObservedObject private var session: DocumentSession
     @ObservedObject private var exportPreferences: ExportPreferences
+    @ObservedObject private var sectionNavigation = MarkdownNavigationCoordinator.shared
     private let activityCoordinator: ApplicationActivityCoordinator
     private let openFiles: ([URL]) -> Void
     @State private var isDropTargeted = false
@@ -107,6 +108,11 @@ public struct MarkdownPrinterView: View {
         } message: {
             Text(session.errorMessage ?? "An unknown error occurred.")
         }
+        .onOpenURL { url in
+            guard let request = MarkdownLinkTarget.hostAppTarget(from: url) else { return }
+            sectionNavigation.enqueue(request)
+            openFiles([request.fileURL])
+        }
     }
 
     private var preview: some View {
@@ -133,13 +139,19 @@ public struct MarkdownPrinterView: View {
                     },
                     onDragError: { session.report(error: $0) }
                 )
+                .navigatingSections(snapshot.sectionDestinations, request: sectionNavigation.request(for: snapshot.document.sourceURL)) { request, error in
+                    guard sectionNavigation.request(for: request.fileURL)?.id == request.id else { return }
+                    sectionNavigation.complete(request)
+                    if let error { session.report(error: error) }
+                }
             }
         }
     }
 
     private func openLink(_ url: URL) {
-        if let markdownURL = MarkdownLinkTarget.fileURL(from: url) {
-            openFiles([markdownURL])
+        if let target = MarkdownLinkTarget.localTarget(from: url) {
+            if target.fragment != nil { sectionNavigation.enqueue(target) }
+            if target.fileURL != session.document?.sourceURL?.standardizedFileURL { openFiles([target.fileURL]) }
         } else {
             NSWorkspace.shared.open(url)
         }

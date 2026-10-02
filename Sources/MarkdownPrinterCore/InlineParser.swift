@@ -6,7 +6,8 @@ struct LinkReferenceDefinition: Equatable, Sendable {
 }
 
 public struct InlineParser: Sendable {
-    public init() {}
+    public let extendedAutolinks: Bool
+    public init(extendedAutolinks: Bool = true) { self.extendedAutolinks = extendedAutolinks }
 
     public func parse(_ source: String) -> [InlineNode] {
         parse(source.replacingOccurrences(of: "\0", with: "\u{FFFD}"), references: [:])
@@ -15,7 +16,8 @@ public struct InlineParser: Sendable {
     func parse(
         _ source: String,
         references: [String: LinkReferenceDefinition],
-        trimFinalWhitespace: Bool = true
+        trimFinalWhitespace: Bool = true,
+        allowExtendedAutolinks: Bool = true
     ) -> [InlineNode] {
         let builder = InlineBuilder()
         var text = ""
@@ -102,7 +104,8 @@ public struct InlineParser: Sendable {
                 let labelNodes = parse(
                     parsed.label,
                     references: references,
-                    trimFinalWhitespace: false
+                    trimFinalWhitespace: false,
+                    allowExtendedAutolinks: false
                 )
                 if parsed.isImage {
                     builder.append(.image(
@@ -127,7 +130,7 @@ public struct InlineParser: Sendable {
 
             if let parsed = parseDelimited("~~", in: source, at: index) {
                 flushText()
-                builder.append(.strikethrough(parse(parsed.content, references: references, trimFinalWhitespace: false)))
+                builder.append(.strikethrough(parse(parsed.content, references: references, trimFinalWhitespace: false, allowExtendedAutolinks: allowExtendedAutolinks)))
                 index = parsed.endIndex
                 continue
             }
@@ -142,7 +145,8 @@ public struct InlineParser: Sendable {
                 builder.append(.underline(parse(
                     String(source[contentStart..<closing.lowerBound]),
                     references: references,
-                    trimFinalWhitespace: false
+                    trimFinalWhitespace: false,
+                    allowExtendedAutolinks: allowExtendedAutolinks
                 )))
                 index = closing.upperBound
                 continue
@@ -200,6 +204,13 @@ public struct InlineParser: Sendable {
                 continue
             }
 
+            if extendedAutolinks, allowExtendedAutolinks,
+               let link = ExtendedAutolink.parse(in: source, at: index) {
+                flushText()
+                builder.append(.link(children: [.text(CommonMarkEntityDecoder.decode(link.label))], destination: link.destination))
+                index = link.end
+                continue
+            }
             text.append(source[index])
             index = source.index(after: index)
         }

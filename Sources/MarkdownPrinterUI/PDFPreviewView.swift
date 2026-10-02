@@ -10,6 +10,9 @@ public struct PDFPreviewView: NSViewRepresentable {
     public let revision: UInt64
     public let exportFormat: ExportFormat
     public let fileName: String
+    private var sectionDestinations: [String: PDFSectionDestination] = [:]
+    private var navigationRequest: MarkdownNavigationRequest?
+    private var navigationCompleted: (MarkdownNavigationRequest, Error?) -> Void = { _, _ in }
     private let exportData: () throws -> Data
     private let alternateExportData: (() throws -> Data)?
     private let openURL: (URL) -> Void
@@ -147,6 +150,14 @@ public struct PDFPreviewView: NSViewRepresentable {
         )
     }
 
+    func navigatingSections(_ destinations: [String: PDFSectionDestination], request: MarkdownNavigationRequest?, completed: @escaping (MarkdownNavigationRequest, Error?) -> Void) -> Self {
+        var copy = self
+        copy.sectionDestinations = destinations
+        copy.navigationRequest = request
+        copy.navigationCompleted = completed
+        return copy
+    }
+
     public func makeNSView(context: Context) -> PDFPreviewContainerView {
         let container = PDFPreviewContainerView()
         container.previewView.delegate = context.coordinator
@@ -181,7 +192,9 @@ public struct PDFPreviewView: NSViewRepresentable {
             downloadAll: onDownloadAllRemoteImages
         )
         guard let document = PDFDocument(data: data) else { return }
+        view.requestSectionNavigation(navigationRequest, revision: revision, destinations: sectionDestinations, completed: navigationCompleted)
         view.display(document, data: data, revision: revision)
+        view.applySectionNavigation()
         windowRestorationCoordinator?.previewDidDisplayDocument()
         view.deferControllerUpdate(
             searchController: searchController,
@@ -532,6 +545,33 @@ private enum PDFSearchStartingPoint {
 
 @MainActor
 public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTarget {
+    private var pendingSectionNavigation: (MarkdownNavigationRequest, UInt64, [String: PDFSectionDestination], (MarkdownNavigationRequest, Error?) -> Void)?
+    private var completedSectionRequest: UUID?
+
+    func requestSectionNavigation(_ request: MarkdownNavigationRequest?, revision: UInt64, destinations: [String: PDFSectionDestination], completed: @escaping (MarkdownNavigationRequest, Error?) -> Void) {
+        guard let request, request.id != completedSectionRequest else { pendingSectionNavigation = nil; return }
+        pendingSectionNavigation = (request, revision, destinations, completed)
+    }
+
+    func applySectionNavigation() {
+        guard let (request, revision, destinations, completed) = pendingSectionNavigation, activeRevision == revision else { return }
+        pendingSectionNavigation = nil
+        completedSectionRequest = request.id
+        let destination = request.fragment.flatMap { destinations[$0] }
+        var error: Error?
+        if let destination, let page = activeView.document?.page(at: destination.pageIndex) {
+            activeView.prepareForSectionNavigation()
+            let target = PDFDestination(page: page, at: destination.point)
+            target.zoom = activeView.scaleFactor
+            activeView.go(to: target)
+        } else if request.fragment == "", let page = activeView.document?.page(at: 0) {
+            activeView.prepareForSectionNavigation()
+            activeView.go(to: page)
+        } else if let fragment = request.fragment {
+            error = MarkdownNavigationError.sectionNotFound(fragment)
+        }
+        DispatchQueue.main.async { completed(request, error) }
+    }
     private var pendingCommit: DispatchWorkItem?
     private var stagedView: PageAdvancingPDFView?
     private var requestSequence: UInt64 = 0
@@ -1030,6 +1070,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
         activeViewDidChange?(stagedView)
         activeData = data
         activeRevision = revision
+        applySectionNavigation()
         self.searchState = searchState
         self.stagedView = nil
         pendingCommit = nil
@@ -1162,6 +1203,13 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         needsLayout = true
         layoutSubtreeIfNeeded()
         viewport?.restore(in: self)
+    }
+
+    func prepareForSectionNavigation() {
+        displayRevision += 1
+        needsInitialPageFit = false
+        fittedViewWidth = bounds.width
+        layoutSubtreeIfNeeded()
     }
 
     func restoreRelaunchViewport(_ viewport: PreviewViewport) {

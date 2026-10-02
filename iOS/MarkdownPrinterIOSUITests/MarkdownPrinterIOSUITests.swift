@@ -32,6 +32,36 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         add(portrait)
     }
 
+    func testSectionLinksNavigateRepeatedlyAndOpenSiblingAtHeading() {
+        app.terminate()
+        app.launchArguments = ["-ui-testing", "-ui-testing-sections"]
+        app.launch()
+        let forward = app.links["Go to later"]
+        XCTAssertTrue(forward.waitForExistence(timeout: 8))
+        for _ in 0..<2 {
+            forward.tap()
+            let back = app.links["Back to first"]
+            XCTAssertTrue(back.waitForExistence(timeout: 5))
+            XCTAssertTrue(back.isHittable)
+            back.tap()
+            XCTAssertTrue(forward.waitForExistence(timeout: 3))
+            XCTAssertTrue(forward.isHittable)
+        }
+        app.links["Open sibling section"].tap()
+        let siblingBack = app.links["Sibling back"]
+        XCTAssertTrue(siblingBack.waitForExistence(timeout: 8))
+        XCTAssertTrue(siblingBack.isHittable)
+        let screenshot = XCTAttachment(screenshot: readerScreenshot())
+        screenshot.name = "Cross-file heading navigation"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        app.links["Missing sibling"].tap()
+        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 3))
+        app.alerts.buttons.firstMatch.tap()
+        siblingBack.tap()
+        XCTAssertTrue(app.staticTexts["Linked Markdown Page"].isHittable)
+    }
+
     func testAllHeadingLevelsRemainReadableInTheNativeReader() {
         app.terminate()
         app.launchArguments = ["-ui-testing", "-ui-testing-headings"]
@@ -364,7 +394,16 @@ final class MarkdownPrinterIOSUITests: XCTestCase {
         app.typeKey("z", modifierFlags: [])
         XCTAssertEqual(app.textFields["find-field"].value as? String, "z")
         app.typeKey("a", modifierFlags: .command)
-        app.textFields["find-field"].typeText("exact search phrase")
+        // Exercise native hardware keys and confirm every character before the next
+        // event, avoiding typeText's synchronization with reader highlight updates.
+        let field = app.textFields["find-field"]
+        var entered = ""
+        for character in "exact search phrase" {
+            app.typeKey(String(character), modifierFlags: [])
+            entered.append(character)
+            let input = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", entered), object: field)
+            XCTAssertEqual(XCTWaiter.wait(for: [input], timeout: 3), .completed, "Search input: \(entered)")
+        }
         XCTAssertTrue(app.staticTexts["1 of 2"].waitForExistence(timeout: 3))
         app.typeKey("g", modifierFlags: .command)
         XCTAssertTrue(app.staticTexts["2 of 2"].waitForExistence(timeout: 3))

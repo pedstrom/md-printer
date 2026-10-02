@@ -821,6 +821,11 @@ struct UITestMarkdownDocumentContainer: View {
             }.joined(separator: "\n\n")
             markdown += "\n\n### A longer heading that wraps naturally across multiple lines\n\nFollowing paragraph."
         }
+        if ProcessInfo.processInfo.arguments.contains("-ui-testing-sections") {
+            markdown = "# iPhone Viewer Fixture\n\n[Go to later](#later) [Open sibling section](linked.markdown#destination) [Missing section](#absent)\n\n" + String(repeating: "Filler paragraph for section navigation.\n\n", count: 35) + "## Later\n\n[Back to first](#iphone-viewer-fixture)"
+            let sibling = "# Linked Markdown Page\n\n" + String(repeating: "Sibling content before destination.\n\n", count: 30) + "## Destination\n\n[Sibling back](#linked-markdown-page) [Missing sibling](#absent)"
+            try? Data(sibling.utf8).write(to: linkedURL, options: .atomic)
+        }
         try? Data(markdown.utf8).write(to: sourceURL, options: .atomic)
         let document = (try? MarkdownDocument.load(from: sourceURL))
             ?? MarkdownDocument(title: "fixture", markdown: markdown)

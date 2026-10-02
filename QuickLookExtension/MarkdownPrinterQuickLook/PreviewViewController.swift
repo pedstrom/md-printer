@@ -13,6 +13,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController {
 
     override func loadView() {
         view = ContinuousPreviewView(frame: NSRect(x: 0, y: 0, width: 780, height: 900))
+        previewView.openURL = { [weak self] url in
+            // The host controls app launches from its isolated preview session.
+            guard let context = self?.extensionContext else {
+                self?.previewView.reportNavigationUnavailable()
+                return
+            }
+            context.open(url) { [weak self] success in
+                if !success {
+                    Task { @MainActor in self?.previewView.reportNavigationUnavailable() }
+                }
+            }
+        }
         preferredContentSize = NSSize(width: 780, height: 900)
     }
 

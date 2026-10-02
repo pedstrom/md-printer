@@ -32,6 +32,8 @@ public struct MobileMarkdownPresentation: Equatable, Sendable {
             }
         )
     }
+
+    public var sectionCatalog: MarkdownSectionCatalog { MarkdownSectionCatalog(blocks: blocks.map(\.block)) }
 }
 
 public struct MobileMarkdownPresentationBlock: Identifiable, Equatable, Sendable {

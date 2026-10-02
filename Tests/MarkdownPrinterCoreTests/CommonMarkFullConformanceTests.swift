@@ -8,7 +8,7 @@ final class CommonMarkFullConformanceTests: XCTestCase {
         XCTAssertEqual(fixture.commonmarkVersion, "0.31.2")
         XCTAssertEqual(fixture.examples.count, 652)
 
-        let parser = MarkdownParser()
+        let parser = MarkdownParser(inlineParser: InlineParser(extendedAutolinks: false))
         var passesBySection: [String: Int] = [:]
         var totalsBySection: [String: Int] = [:]
         var failuresBySection: [String: [Int]] = [:]

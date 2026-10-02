@@ -265,6 +265,27 @@ public struct MobilePDFExporter: Sendable {
         characterRange: NSRange,
         in context: UIGraphicsPDFRendererContext
     ) {
+        textStorage.enumerateAttribute(.markdownSectionAnchor, in: NSRange(location: 0, length: textStorage.length)) { value, range, _ in
+            guard let anchor = value as? String, NSLocationInRange(range.location, characterRange) else { return }
+            let rect = annotationRect(forCharacterRange: range, layoutManager: layoutManager, container: container)
+            guard !rect.isNull else { return }
+            context.addDestination(withName: "section-\(anchor)", at: CGPoint(x: rect.minX, y: rect.minY))
+        }
+        var anchors = Set<String>()
+        textStorage.enumerateAttribute(.markdownSectionAnchor, in: NSRange(location: 0, length: textStorage.length)) { value, _, _ in
+            if let anchor = value as? String { anchors.insert(anchor) }
+        }
+        textStorage.enumerateAttribute(.markdownSectionReference, in: characterRange) { value, range, _ in
+            guard let anchor = value as? String, anchors.contains(anchor) else { return }
+            let glyphs = layoutManager.glyphRange(forCharacterRange: NSIntersectionRange(range, characterRange), actualCharacterRange: nil)
+            layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { _, _, _, lineGlyphs, _ in
+                let visible = NSIntersectionRange(glyphs, lineGlyphs)
+                guard visible.length > 0 else { return }
+                let characters = layoutManager.characterRange(forGlyphRange: visible, actualGlyphRange: nil)
+                let rect = annotationRect(forCharacterRange: characters, layoutManager: layoutManager, container: container)
+                context.setDestinationWithName("section-\(anchor)", for: rect)
+            }
+        }
         textStorage.enumerateAttribute(
             .mobileFootnoteDefinition,
             in: characterRange,

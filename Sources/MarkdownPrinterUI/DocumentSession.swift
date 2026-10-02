@@ -218,7 +218,7 @@ public final class DocumentSession: ObservableObject {
         )
         let footers = footers ?? pagePreferences?.resolvedFooters(for: document)
             ?? ResolvedFooterConfiguration()
-        let nextPDFData = try nextExporter.pdfData(from: nextRenderedText, footers: footers)
+        let nextPDF = try nextExporter.render(from: nextRenderedText, footers: footers)
         nextRenderRevision &+= 1
         renderer = nextRenderer
         exporter = nextExporter
@@ -227,7 +227,8 @@ public final class DocumentSession: ObservableObject {
         renderedSnapshot = RenderedDocumentSnapshot(
             document: document,
             renderedText: nextRenderedText,
-            pdfData: nextPDFData,
+            pdfData: nextPDF.data,
+            sectionDestinations: nextPDF.sectionDestinations,
             pageSetup: pageSetup,
             footers: footers,
             revision: nextRenderRevision
@@ -264,10 +265,10 @@ public final class DocumentSession: ObservableObject {
         let renderedText = preparedText.value
         try Task.checkCancellation()
         guard preparationRevision == nextPreparationRevision else { return }
-        let pdfData = try await PDFExporter(
+        let pdf = try await PDFExporter(
             configuration: nextConfiguration,
             pageSetup: pageSetup
-        ).pdfDataAsync(from: renderedText, footers: resolvedFooters)
+        ).renderAsync(from: renderedText, footers: resolvedFooters)
         try Task.checkCancellation()
         guard preparationRevision == nextPreparationRevision else { return }
 
@@ -282,7 +283,8 @@ public final class DocumentSession: ObservableObject {
         renderedSnapshot = RenderedDocumentSnapshot(
             document: document,
             renderedText: renderedText,
-            pdfData: pdfData,
+            pdfData: pdf.data,
+            sectionDestinations: pdf.sectionDestinations,
             pageSetup: pageSetup,
             footers: resolvedFooters,
             revision: nextRenderRevision
@@ -493,6 +495,7 @@ public struct RenderedDocumentSnapshot {
     public let document: MarkdownDocument
     public let renderedText: NSAttributedString
     public let pdfData: Data
+    public var sectionDestinations: [String: PDFSectionDestination] = [:]
     public let pageSetup: DocumentPageSetup
     public let footers: ResolvedFooterConfiguration
     public let revision: UInt64

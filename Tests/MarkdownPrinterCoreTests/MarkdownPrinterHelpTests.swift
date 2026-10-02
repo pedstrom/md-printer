@@ -82,6 +82,13 @@ final class MarkdownPrinterHelpTests: XCTestCase {
         }
     }
 
+    func testHelpExplainsGitHubSyntaxAndExportNavigation() {
+        let content = MarkdownPrinterHelpContent.searchableText
+        for syntax in ["[Packing](#packing-list)", "[Packing](other.md#packing-list)", "- [X]", "read-only", "Word", "file URLs", "Custom HTML anchors"] {
+            XCTAssertTrue(content.contains(syntax), syntax)
+        }
+    }
+
     func testHelpSectionIdentifiersAreUniqueAndIncludeBothMenuDestinations() {
         let sectionIDs = MarkdownPrinterHelpContent.sections.map(\.id)
 

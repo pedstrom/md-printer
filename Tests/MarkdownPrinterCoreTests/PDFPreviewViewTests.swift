@@ -7,6 +7,42 @@ import XCTest
 
 @MainActor
 final class PDFPreviewViewTests: XCTestCase {
+    func testSectionRequestsWaitForSnapshotRepeatAndDiscardSupersededRequests() async throws {
+        let rendered = try makeDocument(markdown: "# First\n\n" + String(repeating: "Paragraph.\n\n", count: 80) + "## Last")
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.stagingDelay = 0
+        let file = URL(fileURLWithPath: "/tmp/example.md")
+        let destinations = ["last": PDFSectionDestination(pageIndex: rendered.document.pageCount - 1, point: CGPoint(x: 54, y: 700))]
+        let stale = MarkdownNavigationRequest(fileURL: file, fragment: "absent")
+        var completions: [(UUID, Error?)] = []
+        container.requestSectionNavigation(stale, revision: 2, destinations: destinations) { completions.append(($0.id, $1)) }
+        container.display(rendered.document, data: rendered.data, revision: 1)
+        container.applySectionNavigation()
+        XCTAssertTrue(completions.isEmpty)
+        let latest = MarkdownNavigationRequest(fileURL: file, fragment: "last")
+        container.requestSectionNavigation(latest, revision: 1, destinations: destinations) { completions.append(($0.id, $1)) }
+        container.applySectionNavigation()
+        await nextMainQueueTurn()
+        XCTAssertEqual(completions.map(\.0), [latest.id])
+        XCTAssertNil(completions[0].1)
+        XCTAssertEqual(container.activeView.currentPage, rendered.document.page(at: rendered.document.pageCount - 1))
+        for fragment in ["last", "", "absent"] {
+            let request = MarkdownNavigationRequest(fileURL: file, fragment: fragment)
+            container.requestSectionNavigation(request, revision: 1, destinations: destinations) { completions.append(($0.id, $1)) }
+            container.applySectionNavigation()
+            await nextMainQueueTurn()
+            XCTAssertEqual(completions.last?.0, request.id)
+            XCTAssertEqual(completions.last?.1 != nil, fragment == "absent")
+            let count = completions.count
+            container.requestSectionNavigation(request, revision: 1, destinations: destinations) { completions.append(($0.id, $1)) }
+            container.applySectionNavigation()
+            await nextMainQueueTurn()
+            XCTAssertEqual(completions.count, count)
+        }
+        container.requestSectionNavigation(nil, revision: 1, destinations: destinations) { _, _ in XCTFail("Cleared request") }
+        container.applySectionNavigation()
+    }
+
     func testLinkCoordinatorForwardsPDFClicks() {
         let expectedURL = URL(string: "https://example.com")!
         var openedURL: URL?

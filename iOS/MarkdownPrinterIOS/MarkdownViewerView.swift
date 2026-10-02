@@ -3,6 +3,11 @@ import MarkdownPrinterMobileSupport
 import SwiftUI
 import UIKit
 
+private struct SectionNavigationRevision: Equatable {
+    let documentRevision: UInt64
+    let requestID: UUID?
+}
+
 struct MarkdownViewerView: View {
     @ObservedObject var session: MobileDocumentSession
     @Binding var linkedDocuments: [URL]
@@ -21,6 +26,8 @@ struct MarkdownViewerView: View {
     @State private var searchOptions = MarkdownSearchOptions()
     @State private var selectedMatchIndex = 0
     @State private var requestedAnchor: String?
+    @State private var requestedAnchorRevision = UUID()
+    @ObservedObject private var sectionNavigation = MobileSectionNavigation.shared
     @State private var showingShare = false
     @State private var sharedTemporaryURL: URL?
     @State private var actionError: String?
@@ -51,6 +58,7 @@ struct MarkdownViewerView: View {
                     presentation: presentation,
                     selectedMatch: selectedMatch,
                     requestedAnchor: requestedAnchor,
+                    requestedAnchorRevision: requestedAnchorRevision,
                     remoteImageCache: session.remoteImageCache,
                     remoteImageRevision: session.remoteImageRevision,
                     downloadingRemoteImageSources: session.downloadingRemoteImageSources,
@@ -140,7 +148,17 @@ struct MarkdownViewerView: View {
             }
         }
         .onChange(of: readerRestoration) { _, state in
-            if didRestore { documentWindow?.saveReader(state, for: session.sourceURL) }
+            guard didRestore else { return }
+            let url = session.sourceURL
+            // Programmatic scrolling can report its position during a view update.
+            DispatchQueue.main.async { documentWindow?.saveReader(state, for: url) }
+        }
+        .task(id: SectionNavigationRevision(documentRevision: session.documentRevision,
+                                             requestID: sectionNavigation.request(for: session.sourceURL)?.id)) {
+            // Consume published requests after SwiftUI finishes installing the presentation.
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            applySectionRequest()
         }
         .onSubmit(of: .search) { selectNextMatch() }
         .onChange(of: searchOptions) { _, options in
@@ -166,7 +184,11 @@ struct MarkdownViewerView: View {
                 set: { showing in
                     if !showing {
                         actionError = nil
-                        session.clearError()
+                        if let error = session.errorMessage {
+                            DispatchQueue.main.async {
+                                if session.errorMessage == error { session.clearError() }
+                            }
+                        }
                     }
                 }
             )
@@ -328,19 +350,19 @@ struct MarkdownViewerView: View {
 
     private func resetSearchSelection() {
         selectedMatchIndex = 0
-        requestedAnchor = selectedMatch?.blockID
+        if let blockID = selectedMatch?.blockID { requestScroll(to: blockID) }
     }
 
     private func selectNextMatch() {
         guard !matches.isEmpty else { return }
         selectedMatchIndex = (selectedMatchIndex + 1) % matches.count
-        requestedAnchor = selectedMatch?.blockID
+        if let blockID = selectedMatch?.blockID { requestScroll(to: blockID) }
     }
 
     private func selectPreviousMatch() {
         guard !matches.isEmpty else { return }
         selectedMatchIndex = (selectedMatchIndex - 1 + matches.count) % matches.count
-        requestedAnchor = selectedMatch?.blockID
+        if let blockID = selectedMatch?.blockID { requestScroll(to: blockID) }
     }
 
     private func open(_ url: URL) {
@@ -349,14 +371,39 @@ struct MarkdownViewerView: View {
             return
         }
         if case let .definition(label)? = MobileFootnoteLink.target(from: url) {
-            requestedAnchor = "footnote-\(label)"
+            requestScroll(to: "footnote-\(label)")
             return
         }
-        if let markdownURL = MarkdownLinkTarget.fileURL(from: url) {
-            linkedDocuments.append(markdownURL)
+        if let fragment = MarkdownLinkTarget.sectionFragment(from: url, sourceURL: session.sourceURL) {
+            scrollToSection(fragment)
+            return
+        }
+        if let target = MarkdownLinkTarget.localTarget(from: url) {
+            if target.fragment != nil { sectionNavigation.enqueue(target) }
+            linkedDocuments.append(target.fileURL)
             return
         }
         UIApplication.shared.open(url)
+    }
+
+    private func requestScroll(to blockID: String) {
+        requestedAnchor = blockID
+        requestedAnchorRevision = UUID()
+    }
+
+    private func scrollToSection(_ fragment: String) {
+        guard let presentation = session.presentation else { return }
+        if let section = presentation.sectionCatalog.section(for: fragment) {
+            requestScroll(to: section.blockID)
+        } else if fragment.isEmpty, let first = presentation.blocks.first {
+            requestScroll(to: first.id)
+        } else { actionError = MarkdownNavigationError.sectionNotFound(fragment).localizedDescription }
+    }
+
+    private func applySectionRequest() {
+        guard session.presentation != nil, let request = sectionNavigation.request(for: session.sourceURL) else { return }
+        if let fragment = request.fragment { scrollToSection(fragment) }
+        sectionNavigation.complete(request)
     }
 
     private func downloadRemoteImage(_ source: String) {

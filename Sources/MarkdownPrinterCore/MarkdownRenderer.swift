@@ -22,7 +22,9 @@ public final class MarkdownRenderer {
     }
 
     public func render(document: MarkdownDocument) -> NSAttributedString {
-        render(blocks: document.blocks, baseURL: document.baseURL)
+        let text = NSMutableAttributedString(attributedString: render(blocks: document.blocks, baseURL: document.baseURL))
+        MarkdownSectionCatalog(blocks: document.blocks).annotate(text, sourceURL: document.sourceURL)
+        return text
     }
 
     public func render(markdown: String, baseURL: URL? = nil) -> NSAttributedString {
@@ -46,6 +48,7 @@ public final class MarkdownRenderer {
             if !bodyBlocks.isEmpty { result.append(NSAttributedString(string: "\n")) }
             appendFootnotes(footnotes, to: result, baseURL: baseURL)
         }
+        MarkdownSectionCatalog(blocks: blocks).annotate(result)
         return result
     }
 
@@ -77,6 +80,7 @@ public final class MarkdownRenderer {
             rendered.addAttribute(.paragraphStyle, value: paragraph, range: rendered.fullRange)
             result.append(rendered)
             result.append(NSAttributedString(string: "\n"))
+            result.addAttribute(.markdownSectionAnchor, value: UUID().uuidString, range: NSRange(location: result.length - rendered.length - 1, length: rendered.length + 1))
 
         case let .paragraph(content):
             let rendered = renderInline(content, font: fonts.regular(size: configuration.bodyFontSize), baseURL: baseURL, footnotes: footnotes)
@@ -487,14 +491,7 @@ public final class MarkdownRenderer {
     }
 
     private func linkDestination(_ destination: String, baseURL: URL?) -> Any {
-        guard let parsedURL = URL(string: destination) else { return destination }
-        guard parsedURL.scheme == nil,
-              !destination.hasPrefix("#"),
-              let baseURL,
-              let resolvedURL = URL(string: destination, relativeTo: baseURL)?.absoluteURL else {
-            return parsedURL
-        }
-        return resolvedURL
+        MarkdownLinkTarget.resolvedURL(for: destination, relativeTo: baseURL) as Any? ?? destination
     }
 
     private func imageAttachment(

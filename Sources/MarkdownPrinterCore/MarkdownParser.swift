@@ -320,9 +320,9 @@ private struct BlockParser {
             }
 
             while itemLines.last.map(isBlank) == true { itemLines.removeLast() }
-            let task = taskListItem(from: itemLines)
-            var childParser = BlockParser(lines: task.lines, references: references)
-            items.append(RawListItem(blocks: childParser.parse(), checked: task.checked))
+            var childParser = BlockParser(lines: itemLines, references: references)
+            let task = taskListItem(from: childParser.parse())
+            items.append(RawListItem(blocks: task.blocks, checked: task.checked))
 
             marker = index < lines.count && !isThematicBreak(lines[index])
                 ? listMarker(in: lines[index], mayInterruptParagraph: false)
@@ -776,19 +776,16 @@ private func expandWhitespacePrefix(_ source: String, startingColumn: Int) -> St
     return result
 }
 
-private func taskListItem(from lines: [String]) -> (lines: [String], checked: Bool?) {
-    guard var first = lines.first else { return (lines, nil) }
-    let lowered = first.lowercased()
-    let checked: Bool?
-    if first.hasPrefix("[ ] ") {
-        checked = false
-    } else if lowered.hasPrefix("[x] ") {
-        checked = true
-    } else {
-        return (lines, nil)
-    }
-    first.removeFirst(4)
-    return ([first] + lines.dropFirst(), checked)
+private func taskListItem(from blocks: [RawBlock]) -> (blocks: [RawBlock], checked: Bool?) {
+    guard case let .paragraph(source)? = blocks.first else { return (blocks, nil) }
+    let paragraph = String(source.drop(while: { $0 == " " }))
+    let marker = Array(paragraph.prefix(4))
+    func whitespace(_ character: Character) -> Bool { " \t\n\r\u{000B}\u{000C}".contains(character) }
+    guard marker.count == 4, marker[0] == "[", marker[2] == "]", whitespace(marker[3]),
+          whitespace(marker[1]) || marker[1] == "x" || marker[1] == "X" else { return (blocks, nil) }
+    let checked = !whitespace(marker[1])
+    let content = String(paragraph.dropFirst(3).drop(while: whitespace))
+    return ([.paragraph(content)] + blocks.dropFirst(), checked)
 }
 
 private func footnoteDefinition(in line: String) -> (label: String, source: String)? {

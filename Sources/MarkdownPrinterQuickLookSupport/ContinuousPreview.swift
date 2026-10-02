@@ -151,6 +151,13 @@ public final class ContinuousPreviewRenderer {
                 baseURL: prepared.document.baseURL
             )
         )
+        MarkdownSectionCatalog(blocks: prepared.blocks).annotate(attributed, sourceURL: prepared.document.sourceURL)
+        attributed.enumerateAttribute(.markdownSectionReference, in: NSRange(location: 0, length: attributed.length)) { value, range, _ in
+            guard let anchor = value as? String else { return }
+            var components = URLComponents()
+            components.fragment = anchor
+            attributed.addAttribute(.link, value: components.url!, range: range)
+        }
         addFootnoteLinks(to: attributed)
         return attributed
     }
@@ -189,7 +196,11 @@ public final class ContinuousPreviewView: NSView, NSTextViewDelegate {
     public let scrollView: NSScrollView
     public let textView: NSTextView
 
+    public var openURL: (URL) -> Void = { url in
+        NSWorkspace.shared.open(url, configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
+    }
     private let centeredTextView: CenteredQuickLookTextView
+    public let navigationNotice = NSTextField(labelWithString: "Open this file in Markdown Printer to follow links to other documents.")
 
     public override init(frame frameRect: NSRect) {
         scrollView = NSScrollView(frame: frameRect)
@@ -230,6 +241,12 @@ public final class ContinuousPreviewView: NSView, NSTextViewDelegate {
 
         scrollView.documentView = textView
         addSubview(scrollView)
+        navigationNotice.font = .systemFont(ofSize: 12)
+        navigationNotice.textColor = .secondaryLabelColor
+        navigationNotice.alignment = .center
+        navigationNotice.maximumNumberOfLines = 2
+        navigationNotice.isHidden = true
+        addSubview(navigationNotice)
     }
 
     public required init?(coder: NSCoder) {
@@ -238,7 +255,9 @@ public final class ContinuousPreviewView: NSView, NSTextViewDelegate {
 
     public override func layout() {
         super.layout()
-        scrollView.frame = bounds
+        let noticeHeight: CGFloat = navigationNotice.isHidden ? 0 : 44
+        navigationNotice.frame = NSRect(x: 12, y: 8, width: max(0, bounds.width - 24), height: 28)
+        scrollView.frame = NSRect(x: 0, y: noticeHeight, width: bounds.width, height: max(0, bounds.height - noticeHeight))
         centeredTextView.setFrameSize(NSSize(
             width: scrollView.contentSize.width,
             height: max(centeredTextView.frame.height, scrollView.contentSize.height)
@@ -246,10 +265,17 @@ public final class ContinuousPreviewView: NSView, NSTextViewDelegate {
     }
 
     public func display(_ attributedDocument: NSAttributedString) {
+        navigationNotice.isHidden = true
+        needsLayout = true
         textView.textStorage?.setAttributedString(attributedDocument)
         textView.setSelectedRange(NSRange(location: 0, length: 0))
         resizeDocumentHeight()
         textView.scrollToBeginningOfDocument(nil)
+    }
+
+    public func reportNavigationUnavailable() {
+        navigationNotice.isHidden = false
+        needsLayout = true
     }
 
     public func display(error: ContinuousPreviewError) {
@@ -307,11 +333,32 @@ public final class ContinuousPreviewView: NSView, NSTextViewDelegate {
         clickedOnLink link: Any,
         at charIndex: Int
     ) -> Bool {
+        if let url = link as? URL ?? (link as? String).flatMap(URL.init(string:)) {
+            if let fragment = MarkdownLinkTarget.sectionFragment(from: url) {
+                scrollToSection(fragment)
+                return true
+            }
+            if let target = MarkdownLinkTarget.localTarget(from: url), target.fragment != nil {
+                openURL(MarkdownLinkTarget.hostAppURL(for: target))
+                return true
+            }
+        }
         guard let target = QuickLookFootnoteLink.target(from: link),
               let range = destinationRange(for: target) else {
             return false
         }
         textView.scrollRangeToVisible(range)
+        return true
+    }
+
+    @discardableResult
+    public func scrollToSection(_ fragment: String) -> Bool {
+        var target: NSRange?
+        textView.textStorage?.enumerateAttribute(.markdownSectionAnchor, in: NSRange(location: 0, length: textView.string.utf16.count)) { value, range, stop in
+            if value as? String == fragment { target = range; stop.pointee = true }
+        }
+        guard let target else { return false }
+        textView.scrollRangeToVisible(target)
         return true
     }
 

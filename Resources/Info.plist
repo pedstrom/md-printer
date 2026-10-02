@@ -6,6 +6,17 @@
     <string>en</string>
     <key>CFBundleDisplayName</key>
     <string>Markdown Printer</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>Markdown Printer Navigation</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>markdown-printer</string>
+            </array>
+        </dict>
+    </array>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

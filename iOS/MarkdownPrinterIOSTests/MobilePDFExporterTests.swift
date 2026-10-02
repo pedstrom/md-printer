@@ -19,6 +19,69 @@ final class MobilePDFExporterTests: XCTestCase {
         directory = nil
     }
 
+    func testGitHubSectionsNestedOrderAutolinksAndTaskMarkersInMobileOutput() async throws {
+        let markdown = """
+        [Forward](#later) [Missing](#absent) [Other](other.md#later)
+
+        # First
+
+        - [X] Done https://example.com
+          - ## Nested
+
+          > ### Quoted
+          > www.example.com
+
+          #### After
+
+        | Link | Email |
+        | --- | --- |
+        | [Table](#later) | hello@example.com |
+
+        \(String(repeating: "Body paragraph.\n\n", count: 100))
+        ## Later
+
+        [Back](#first)
+
+        ## Café
+
+        [Unicode](#caf%C3%A9)
+        """
+        let document = MarkdownDocument(sourceURL: directory.appendingPathComponent("source.md"), title: "T", markdown: markdown)
+        let text = try MobilePrintRenderer(configuration: .letter).render(document: document)
+        var anchors: [String] = []
+        text.enumerateAttribute(.markdownSectionAnchor, in: NSRange(location: 0, length: text.length)) { value, _, _ in
+            if let anchor = value as? String { anchors.append(anchor) }
+        }
+        XCTAssertEqual(anchors, ["first", "nested", "quoted", "after", "later", "café"])
+        XCTAssertTrue(text.string.contains("☑"))
+        let email = (text.string as NSString).range(of: "hello@example.com").location
+        XCTAssertEqual((text.attribute(.link, at: email, effectiveRange: nil) as? URL)?.absoluteString, "mailto:hello@example.com")
+        let data = try await MobilePDFExporter().pdfData(for: document)
+        let file = directory.appendingPathComponent("sections.pdf")
+        try data.write(to: file)
+        let pdf = try XCTUnwrap(PDFDocument(url: file))
+        let actions = (0..<pdf.pageCount).flatMap { pdf.page(at: $0)!.annotations }.compactMap { $0.action as? PDFActionGoTo }
+        XCTAssertEqual(actions.count, 4)
+        XCTAssertTrue(actions.allSatisfy { $0.destination.page != nil })
+        XCTAssertTrue((actions.last?.destination.page?.string ?? "").contains("Café"))
+        XCTAssertGreaterThan(pdf.index(for: try XCTUnwrap(actions.first?.destination.page)), 0)
+        let coordinator = MobileSectionNavigation()
+        XCTAssertNil(coordinator.request(for: nil))
+        let first = MarkdownNavigationRequest(fileURL: document.sourceURL!, fragment: "first")
+        let second = MarkdownNavigationRequest(fileURL: document.sourceURL!, fragment: "later")
+        coordinator.enqueue(first)
+        coordinator.enqueue(second)
+        coordinator.complete(first)
+        XCTAssertEqual(coordinator.request(for: document.sourceURL), second)
+        coordinator.complete(second)
+        XCTAssertNil(coordinator.request(for: document.sourceURL))
+        XCTAssertEqual(MobileMarkdownPresenter().prepare(document: document).sectionCatalog.sections.map(\.anchor), anchors)
+        let links = MobileMarkdownWindowLinks.links(in: [.link(children: [.text("Other")], destination: "other.md#later"), .link(children: [.text("Other section")], destination: "other.md#first")], relativeTo: directory)
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(MarkdownLinkTarget.localTarget(from: links[0].url)?.fragment, "later")
+        XCTAssertEqual(MobileDocumentIdentity.key(for: links[0].url), MobileDocumentIdentity.key(for: directory.appendingPathComponent("other.md")))
+    }
+
     func testAllHeadingLevelsUseSharedPrintHierarchyAndTotalSpacing() throws {
         let names = ["AvenirNext-Bold", "AvenirNext-Bold", "AvenirNext-DemiBold",
                      "AvenirNext-DemiBold", "AvenirNext-DemiBold", "AvenirNext-DemiBoldItalic"]

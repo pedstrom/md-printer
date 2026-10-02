@@ -17,6 +17,7 @@ package struct MarkdownPrinterHelpSection: Identifiable, Equatable {
         case overview
         case openingFiles
         case exporting
+        case markdownFormatting
         case preview
         case search
         case thumbnails
@@ -61,6 +62,14 @@ package enum MarkdownPrinterHelpContent {
             "The preferred export format in Settings controls Save, Share, and dragging a document from the preview. PDF and Microsoft Word exports use the same page setup and footer choices.",
             "Use the Save toolbar button or File → Save As to choose a destination. Use the Share toolbar button or File → Share PDF/Share Microsoft Word to open the macOS Share sheet. Drag from the preview to place an exported file in Finder or another accepting app.",
             "Hold Option when dragging from the preview or clicking Share to use the other format for that action: PDF becomes Microsoft Word, and Microsoft Word becomes PDF. Your default format in Settings stays unchanged."
+        ),
+        section(
+            .markdownFormatting,
+            "Links, Sections, and Task Lists",
+            "Bare HTTP/HTTPS URLs, www. addresses, email addresses, mailto: links, and xmpp: links become clickable automatically. Code, image descriptions, raw HTML, and existing link labels keep their original formatting.",
+            "Use - [ ] for an unchecked task and - [x] or - [X] for a checked task. Add whitespace after the marker. Nested and mixed lists are supported; checkboxes are read-only.",
+            "Link to a heading with [Packing](#packing-list), or to a sibling document with [Packing](other.md#packing-list). Relative paths start in the source file’s folder. Heading anchors use lowercase content, remove formatting and punctuation, replace spaces with hyphens, preserve Unicode letters and underscores, and append -1, -2, and so on to resolve collisions. Custom HTML anchors are not supported.",
+            "Section links jump within the Mac preview, Finder Quick Look, and the iPhone/iPad reader. Quick Look asks its host to open cross-file sections in the Mac app. If the host declines, use the toolbar to open the source file in Markdown Printer and follow the link there. PDF exports use native destinations; Word exports use heading bookmarks. Both retain cross-file links as standard file URLs with fragments; navigation in other viewers depends on the viewer and associated app. Missing sections do not open an external app, and a successfully opened target document remains available."
         ),
         section(
             .preview,

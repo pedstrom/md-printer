@@ -94,8 +94,8 @@ final class MarkdownRendererTests: XCTestCase {
             URL(string: "../overview.md#details", relativeTo: baseURL)?.absoluteURL
         )
         XCTAssertEqual(
-            output.attribute(.link, at: sectionRange.location, effectiveRange: nil) as? URL,
-            URL(string: "#local")
+            output.attribute(.markdownSectionReference, at: sectionRange.location, effectiveRange: nil) as? String,
+            "local"
         )
     }
 

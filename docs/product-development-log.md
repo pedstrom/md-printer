@@ -1,5 +1,17 @@
 # Product Development Log
 
+## 2026-10-02 — GitHub-style links and task lists
+
+- Add GFM extended autolinks and first-paragraph task markers, including tab whitespace and uppercase checks, while retaining the core CommonMark compatibility configuration.
+- Share a heading catalog across Mac, Quick Look, mobile rendering, and export, with Unicode anchors, nested heading paths, and collision resolution in source order. Separate escaped local filenames from decoded heading fragments.
+- Add saved PDF heading destinations and wrapped GoTo link hit areas, Word-safe bookmarks and table hyperlinks, and standard cross-file export URLs with fragments.
+- Route section requests by document and unique request ID, wait for the rendered snapshot or reader presentation, and preserve repeated navigation. Quick Look scrolls local sections and hands cross-file requests to the host app through its registered local URL route.
+- Defer mobile link handling, scroll-restoration persistence, and error clearing outside view updates; consume section requests with both document and request revisions.
+- Use native hardware-key events with per-character synchronization in the iPad keyboard-search UI test; retain every shortcut and result-navigation assertion.
+- Check concurrent remote-image test requests without assuming task-start order, while still requiring each expected request exactly once.
+- Document syntax, read-only checkboxes, missing headings, and external viewer behavior in the README and built-in help.
+- Native validation found Finder declining host-mediated cross-file app launches; direct workspace launches from the isolated preview session are also rejected by macOS. Keep the supported host request and a readable fallback notice, without private entitlements or wider file access. Automatic cross-file handoff from Finder remains a platform validation blocker; same-document Quick Look navigation and the app's registered route work.
+
 ## 2026-09-28 — Prepare Mac 1.4.6 for review
 
 - Prepare version 1.4.6, build 15, with narrative release notes grouping output controls, document-workspace improvements, and everyday fixes. Include timezone footers, live PDF/Word drag switching, window cascading, Quick Look filename placeholders, Find paste, PDF footnote navigation, and Open Recent reliability.

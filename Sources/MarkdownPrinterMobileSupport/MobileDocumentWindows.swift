@@ -9,7 +9,7 @@ public enum MobileDocumentIdentity {
     }
 
     public static func key(for url: URL) -> String {
-        url.standardizedFileURL.resolvingSymlinksInPath().absoluteString
+        (MarkdownLinkTarget.fileURL(from: url) ?? url).standardizedFileURL.resolvingSymlinksInPath().absoluteString
     }
 }
 
@@ -21,8 +21,8 @@ public enum MobileMarkdownWindowLinks {
             case let .link(children, destination, _):
                 if let resolved = MarkdownLinkTarget.resolvedURL(for: destination, relativeTo: baseURL),
                    let url = MarkdownLinkTarget.fileURL(from: resolved),
-                   !result.contains(where: { $0.url == url }) {
-                    result.append((url.lastPathComponent, url))
+                   !result.contains(where: { MobileDocumentIdentity.key(for: $0.url) == MobileDocumentIdentity.key(for: url) }) {
+                    result.append((url.lastPathComponent, resolved))
                 }
                 result += links(in: children, relativeTo: baseURL)
             case let .emphasis(children), let .strong(children), let .underline(children), let .strikethrough(children):
@@ -30,8 +30,8 @@ public enum MobileMarkdownWindowLinks {
             default: break
             }
         }
-        var seen = Set<URL>()
-        return result.filter { seen.insert($0.url).inserted }
+        var seen = Set<String>()
+        return result.filter { seen.insert(MobileDocumentIdentity.key(for: $0.url)).inserted }
     }
 }
 
@@ -95,7 +95,9 @@ public final class MobileDocumentWindowState: ObservableObject {
     public var documentURLs: [URL] { rootURL.map { [$0] + linkedDocuments } ?? [] }
 
     public func open(_ url: URL) {
-        guard MobileDocumentIdentity.accepts(url) else { return }
+        guard let target = MarkdownLinkTarget.localTarget(from: url) else { return }
+        if target.fragment != nil { MobileSectionNavigation.shared.enqueue(target) }
+        let url = target.fileURL
         let key = MobileDocumentIdentity.key(for: url)
         if let index = documentURLs.firstIndex(where: { MobileDocumentIdentity.key(for: $0) == key }) {
             linkedDocuments = Array(linkedDocuments.prefix(index))
@@ -157,7 +159,7 @@ public final class MobileWindowOpenRequest {
     private let lease: SecurityScopedResourceLease
     public init(url: URL) {
         self.url = url
-        lease = SecurityScopedResourceLease(url: url)
+        lease = SecurityScopedResourceLease(url: MarkdownLinkTarget.fileURL(from: url) ?? url)
     }
 }
 

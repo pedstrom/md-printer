@@ -19,6 +19,57 @@ final class WordExporterTests: XCTestCase {
         }
     }
 
+    func testSectionsAndTableLinksUseWordSafeBookmarksAndStandardFileURLs() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let markdown = """
+        # **Café** _東京_ !
+
+        [Forward](#later) [Missing](#absent) [Sibling](other%23file.md#caf%C3%A9)
+
+        | Section | Website | File |
+        | --- | --- | --- |
+        | [Back](#caf%C3%A9-東京-) | www.example.com | [Sibling](other.md#later) |
+
+        > ## Later
+        > [Back](#caf%C3%A9-東京-)
+
+        - [X] Done
+        - [ ] Pending
+        """
+        let text = MarkdownRenderer().render(document: MarkdownDocument(sourceURL: directory.appendingPathComponent("source.md"), title: "T", markdown: markdown))
+        let data = try WordExporter().wordData(from: text)
+        let output = directory.appendingPathComponent("sections.docx")
+        try data.write(to: output)
+        let xml = try unzip(arguments: ["-p", output.path, "word/document.xml"])
+        let relationships = try unzip(arguments: ["-p", output.path, "word/_rels/document.xml.rels"])
+        XCTAssertTrue(xml.contains("w:name=\"MarkdownPrinterSection0\""))
+        XCTAssertTrue(xml.contains("w:anchor=\"MarkdownPrinterSection1\""))
+        XCTAssertTrue(xml.contains("w:anchor=\"MarkdownPrinterSection0\""))
+        XCTAssertTrue(xml.contains("rIdMarkdownPrinterTable0Link"))
+        XCTAssertFalse(xml.contains("MDPRINTERSECTION"))
+        XCTAssertTrue(relationships.contains("http://www.example.com"))
+        XCTAssertTrue(relationships.contains("other%23file.md#caf%C3%A9"))
+        XCTAssertTrue(relationships.contains("other.md#later"))
+        XCTAssertFalse(relationships.contains("markdown-printer:"))
+        let decoded = try NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML], documentAttributes: nil)
+        XCTAssertTrue(decoded.string.contains("Café 東京 !"))
+        XCTAssertTrue(decoded.string.contains("Missing"))
+        XCTAssertTrue(decoded.string.contains("☑︎"))
+        XCTAssertTrue(decoded.string.contains("☐"))
+    }
+
+    func testSectionBookmarkAtLinkedHeadingKeepsEveryFormattedRun() throws {
+        let text = MarkdownRenderer().render(markdown: "# [Linked](https://example.com) **bold** *italic* `code`\n\n[Back](#linked-bold-italic-code)")
+        let data = try WordExporter().wordData(from: text)
+        let decoded = try NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML], documentAttributes: nil)
+        XCTAssertTrue(decoded.string.contains("Linked bold italic code"))
+        XCTAssertTrue(decoded.string.contains("Back"))
+        let boldIndex = (decoded.string as NSString).range(of: "bold").location
+        let font = try XCTUnwrap(decoded.attribute(.font, at: boldIndex, effectiveRange: nil) as? NSFont)
+        XCTAssertTrue(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
+    }
+
     func testExportFormatsExposeExpectedNamesExtensionsAndContentTypes() {
         XCTAssertEqual(ExportFormat.allCases, [.pdf, .word])
         XCTAssertEqual(ExportFormat.pdf.id, "pdf")

@@ -7,6 +7,7 @@ struct MobileMarkdownContentView: View {
     let presentation: MobileMarkdownPresentation
     let selectedMatch: MarkdownSearchMatch?
     let requestedAnchor: String?
+    let requestedAnchorRevision: UUID
     let remoteImageCache: RemoteImageCache
     let remoteImageRevision: UInt64
     let downloadingRemoteImageSources: Set<String>
@@ -81,14 +82,16 @@ struct MobileMarkdownContentView: View {
             .contentShape(Rectangle())
             .simultaneousGesture(TapGesture().onEnded(onTapBackground))
             .environment(\.openURL, OpenURLAction { url in
-                onOpenURL(url)
+                DispatchQueue.main.async { onOpenURL(url) }
                 return .handled
             })
-            .onChange(of: requestedAnchor) { _, anchor in
-                guard let anchor else { return }
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    proxy.scrollTo(anchor, anchor: .center)
-                }
+            .task(id: requestedAnchorRevision) {
+                guard let anchor = requestedAnchor else { return }
+                let parts = anchor.split(separator: "-")
+                if parts.count > 2, parts.first == "block" { proxy.scrollTo(parts.prefix(2).joined(separator: "-"), anchor: .top) }
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                proxy.scrollTo(anchor, anchor: .top)
             }
         }
     }
@@ -124,6 +127,7 @@ private struct MobileRenderedBlockView: View {
                     onDownloadAllRemoteImages: onDownloadAllRemoteImages
                 )
                 .accessibilityAddTraits(.isHeader)
+                .id(blockID)
                 .padding(.top, MobileHeadingTypography.spacingBefore(level: level, after: previousBlock))
                 .padding(.bottom, HeadingTypography(level: level).spacingAfter * 1.7)
             case let .paragraph(content):

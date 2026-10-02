@@ -63,7 +63,7 @@ final class CommonMarkFeatureTests: XCTestCase {
     }
 
     func testCoreAutolinksValidateSchemesAndEmailAddressesOnlyInsideAngles() {
-        XCTAssertEqual(InlineParser().parse(
+        XCTAssertEqual(InlineParser(extendedAutolinks: false).parse(
             "<https://example.com/a?b=1> <person@example.com> <m:no> https://example.com"
         ), [
             .link(

@@ -19,7 +19,7 @@ On Mac, drop one file—or a whole batch—onto the app. Each document opens in 
 
 ## What it does on Mac
 
-- Formats ATX and Setext headings, paragraphs, bold, italics, underlining, strikethrough, inline and reference links, core autolinks, footnotes, lists, quotations, tables, fenced and indented code, entity references, and inline or reference images
+- Formats ATX and Setext headings, paragraphs, bold, italics, underlining, strikethrough, inline and reference links, core and GitHub-style bare autolinks, section links, footnotes, ordinary and task lists, quotations, tables, fenced and indented code, entity references, and inline or reference images
 - Previews Markdown directly in Finder with a continuous, screen-optimized Quick Look view: select a file and press Space or Command-Y
 - Uses Avenir Next for the document and a proper monospaced font for code
 - Produces searchable, US Letter PDFs with page numbers
@@ -53,7 +53,19 @@ The release is signed with a Developer ID certificate and notarized by Apple, so
 
 Version 1.3.0 is the first release that includes the updater. If you have an older version, install a current Mac release manually once; future stable releases can be installed with **Markdown Printer > Check for Updates…**.
 
-### iPhone and iPad app
+### Links, sections, and task lists
+
+Bare `https://example.com`, `http://example.com`, `www.example.com`, `hello@example.com`, `mailto:hello@example.com`, and `xmpp:hello@example.com/resource` become links using [GFM’s extended autolink rules](https://github.github.com/gfm/#autolinks-extension-). Visible text is preserved, with trailing punctuation and unmatched closing parentheses excluded from the link. Code, raw HTML, image descriptions, and existing link labels do not gain nested links.
+
+Use `- [ ] Pending`, `- [x] Done`, or `- [X] Done` for read-only checkboxes. Whitespace must follow the marker; tabs, nesting, continuation paragraphs, and mixed ordinary/task lists are supported.
+
+Use `[Packing](#packing-list)` to jump to `## Packing List`, or `[Packing](other.md#packing-list)` to open a section in another local Markdown file. Relative paths resolve from the source Markdown file’s folder. Following [GitHub’s heading rules](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#section-links), anchors use lowercase heading content, remove formatting and punctuation, replace spaces with hyphens, retain Unicode letters and underscores, and resolve collisions in document order with numeric suffixes such as `-1`. All six heading levels, including headings inside quotations and lists, receive anchors. Percent-escaped filenames and fragments are supported. Custom HTML anchors are outside this support.
+
+Same-document sections work in Mac preview, continuous Finder Quick Look, and the iPhone/iPad reader. Quick Look requests cross-file section navigation through the Mac app's registered local URL route without requesting access to sibling files. The Quick Look host controls whether that app launch is allowed; if it declines, the preview shows a notice to open the source file in Markdown Printer using the toolbar. Missing same-document sections do not open an external application; a cross-file heading failure in the app reports the missing section while leaving the opened document available.
+
+PDF exports contain native heading destinations and GoTo links; Word exports contain Word-safe heading bookmarks and internal hyperlinks. Cross-file links in both formats remain standard `file:` URLs with fragments. Outside Markdown Printer, heading navigation depends on the receiving viewer and associated app.
+
+## iPhone and iPad app
 
 [Get Markdown Printer on the App Store](https://apps.apple.com/app/id6811229585) for iPhone and iPad running iOS/iPadOS 26 or newer.
 

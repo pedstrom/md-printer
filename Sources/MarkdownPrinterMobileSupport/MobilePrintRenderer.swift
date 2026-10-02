@@ -70,6 +70,7 @@ final class MobilePrintRenderer {
                 result.append(line)
             }
         }
+        MarkdownSectionCatalog(blocks: document.blocks).annotate(result, sourceURL: document.sourceURL)
         return result
     }
 
@@ -99,6 +100,7 @@ final class MobilePrintRenderer {
             )
             result.append(line)
             result.append(NSAttributedString(string: "\n"))
+            result.addAttribute(.markdownSectionAnchor, value: UUID().uuidString, range: NSRange(location: result.length - line.length - 1, length: line.length + 1))
         case let .paragraph(content):
             let line = inline(
                 content,
@@ -220,7 +222,12 @@ final class MobilePrintRenderer {
         footnoteNumbers: [String: Int]
     ) -> NSAttributedString {
         switch block {
-        case let .heading(_, content), let .paragraph(content), let .footnoteDefinition(_, content):
+        case let .heading(_, content):
+            let rendered = inline(content, font: font(.regular, size: configuration.bodyFontSize), baseURL: baseURL, footnoteNumbers: footnoteNumbers)
+            if rendered.length == 0 { rendered.append(NSAttributedString(string: "\n")) }
+            rendered.addAttribute(.markdownSectionAnchor, value: UUID().uuidString, range: rendered.fullRange)
+            return rendered
+        case let .paragraph(content), let .footnoteDefinition(_, content):
             return inline(
                 content,
                 font: font(.regular, size: configuration.bodyFontSize),
@@ -228,10 +235,9 @@ final class MobilePrintRenderer {
                 footnoteNumbers: footnoteNumbers
             )
         default:
-            return NSAttributedString(
-                string: presenter.plainText(from: block, footnoteNumbers: footnoteNumbers),
-                attributes: attributes(font: font(.regular, size: configuration.bodyFontSize))
-            )
+            let rendered = NSMutableAttributedString(string: "")
+            append(block, to: rendered, baseURL: baseURL, footnoteNumbers: footnoteNumbers)
+            return rendered
         }
     }
 
@@ -262,32 +268,25 @@ final class MobilePrintRenderer {
                 string: prefix,
                 attributes: attributes(font: font(.regular, size: configuration.bodyFontSize))
             )
-            let contentBlocks = item.blocks.filter {
-                if case .list = $0 { return false }
-                return true
-            }
-            for (blockIndex, child) in contentBlocks.enumerated() {
-                if blockIndex > 0 { line.append(NSAttributedString(string: "\n")) }
-                line.append(inlineBlock(child, baseURL: baseURL, footnoteNumbers: footnoteNumbers))
-            }
-            line.addAttribute(.paragraphStyle, value: style, range: line.fullRange)
-            line.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style]))
-            result.append(line)
-
+            var segment = line
             for child in item.blocks {
-                guard case let .list(children, childOrdered, childStart, childTight) = child else {
-                    continue
+                if case let .list(children, childOrdered, childStart, childTight) = child {
+                    if segment.length > 0 {
+                        segment.addAttribute(.paragraphStyle, value: style, range: segment.fullRange)
+                        if !segment.string.hasSuffix("\n") { segment.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style])) }
+                        result.append(segment)
+                        segment = NSMutableAttributedString(string: "")
+                    }
+                    appendList(items: children, ordered: childOrdered, start: childStart, tight: childTight, depth: depth + 1, to: result, baseURL: baseURL, footnoteNumbers: footnoteNumbers)
+                } else {
+                    if segment.length > 0, segment.string != prefix, !segment.string.hasSuffix("\n") { segment.append(NSAttributedString(string: "\n")) }
+                    segment.append(inlineBlock(child, baseURL: baseURL, footnoteNumbers: footnoteNumbers))
                 }
-                appendList(
-                    items: children,
-                    ordered: childOrdered,
-                    start: childStart,
-                    tight: childTight,
-                    depth: depth + 1,
-                    to: result,
-                    baseURL: baseURL,
-                    footnoteNumbers: footnoteNumbers
-                )
+            }
+            if segment.length > 0 {
+                segment.addAttribute(.paragraphStyle, value: style, range: segment.fullRange)
+                if !segment.string.hasSuffix("\n") { segment.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: style])) }
+                result.append(segment)
             }
         }
     }

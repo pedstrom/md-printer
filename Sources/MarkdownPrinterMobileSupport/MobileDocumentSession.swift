@@ -94,6 +94,9 @@ public final class MobileDocumentSession: ObservableObject {
     }
 
     public func load(url: URL) async {
+        let target = MarkdownLinkTarget.localTarget(from: url)
+        if let target, target.fragment != nil { MobileSectionNavigation.shared.enqueue(target) }
+        let url = target?.fileURL ?? url
         cancelPDFGeneration()
         errorMessage = nil
         permissionRequest = nil

@@ -3,6 +3,16 @@ import AppKit
 import CoreGraphics
 import PDFKit
 
+public struct PDFSectionDestination: Equatable, Sendable {
+    public let pageIndex: Int
+    public let point: CGPoint
+}
+
+public struct PDFRenderResult: Sendable {
+    public let data: Data
+    public let sectionDestinations: [String: PDFSectionDestination]
+}
+
 @MainActor
 public final class PDFExporter {
     public let configuration: RendererConfiguration
@@ -20,34 +30,52 @@ public final class PDFExporter {
         from attributedText: NSAttributedString,
         footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
     ) throws -> Data {
+        try render(from: attributedText, footers: footers).data
+    }
+
+    public func render(
+        from attributedText: NSAttributedString,
+        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
+    ) throws -> PDFRenderResult {
         let output = try makePDFOutput()
         let pages = makePages(for: attributedText)
         let navigation = footnoteNavigation(in: attributedText, pages: pages)
+        let sections = sectionDestinations(in: attributedText, pages: pages)
+        let sectionLinks = sectionReferences(in: attributedText, pages: pages)
         for (pageIndex, page) in pages.enumerated() {
             draw(
                 page: page, pageNumber: pageIndex + 1, footers: footers,
-                navigation: navigation, in: output.context
+                navigation: navigation, sections: sections, sectionLinks: sectionLinks, in: output.context
             )
         }
-        return try finishPDFOutput(output)
+        return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections)
     }
 
     public func pdfDataAsync(
         from attributedText: NSAttributedString,
         footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
     ) async throws -> Data {
+        try await renderAsync(from: attributedText, footers: footers).data
+    }
+
+    public func renderAsync(
+        from attributedText: NSAttributedString,
+        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
+    ) async throws -> PDFRenderResult {
         let output = try makePDFOutput()
         let pages = await makePagesAsync(for: attributedText)
         let navigation = footnoteNavigation(in: attributedText, pages: pages)
+        let sections = sectionDestinations(in: attributedText, pages: pages)
+        let sectionLinks = sectionReferences(in: attributedText, pages: pages)
         for (pageIndex, page) in pages.enumerated() {
             try Task.checkCancellation()
             draw(
                 page: page, pageNumber: pageIndex + 1, footers: footers,
-                navigation: navigation, in: output.context
+                navigation: navigation, sections: sections, sectionLinks: sectionLinks, in: output.context
             )
             await Task.yield()
         }
-        return try finishPDFOutput(output)
+        return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections)
     }
 
     public func write(_ attributedText: NSAttributedString, to url: URL) throws {
@@ -144,6 +172,8 @@ public final class PDFExporter {
         pageNumber: Int,
         footers: ResolvedFooterConfiguration,
         navigation: [FootnoteLink],
+        sections: [String: PDFSectionDestination],
+        sectionLinks: [SectionPDFLink],
         in context: CGContext
     ) {
         context.beginPDFPage(nil)
@@ -160,6 +190,12 @@ public final class PDFExporter {
         NSGraphicsContext.restoreGraphicsState()
         context.restoreGState()
         drawFootnoteNavigation(navigation, pageIndex: pageNumber - 1, in: context)
+        for (anchor, destination) in sections where destination.pageIndex == pageNumber - 1 {
+            context.addDestination("section-\(anchor)" as CFString, at: destination.point)
+        }
+        for link in sectionLinks where link.pageIndex == pageNumber - 1 && sections[link.anchor] != nil {
+            context.setDestination("section-\(link.anchor)" as CFString, for: link.bounds)
+        }
         context.endPDFPage()
     }
 
@@ -545,6 +581,33 @@ public final class PDFExporter {
         )
     }
 
+    private func sectionDestinations(in text: NSAttributedString, pages: [TextPage]) -> [String: PDFSectionDestination] {
+        var destinations: [String: PDFSectionDestination] = [:]
+        for location in footnoteLocations(for: .markdownSectionAnchor, in: text, pages: pages) where destinations[location.label] == nil {
+            destinations[location.label] = PDFSectionDestination(pageIndex: location.pageIndex, point: CGPoint(x: location.bounds.minX, y: location.bounds.maxY + 4))
+        }
+        return destinations
+    }
+
+    private func sectionReferences(in text: NSAttributedString, pages: [TextPage]) -> [SectionPDFLink] {
+        var links: [SectionPDFLink] = []
+        for (pageIndex, page) in pages.enumerated() {
+            let characters = page.layoutManager.characterRange(forGlyphRange: page.glyphRange, actualGlyphRange: nil)
+            text.enumerateAttribute(.markdownSectionReference, in: characters) { value, range, _ in
+                guard let anchor = value as? String else { return }
+                let glyphs = NSIntersectionRange(page.glyphRange, page.layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil))
+                page.layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { _, _, container, lineGlyphs, _ in
+                    let visible = NSIntersectionRange(glyphs, lineGlyphs)
+                    guard visible.length > 0 else { return }
+                    let rect = page.layoutManager.boundingRect(forGlyphRange: visible, in: container)
+                    let pdfRect = CGRect(x: self.configuration.pageMargins.left + rect.minX, y: self.configuration.pageSize.height - self.configuration.pageMargins.top - rect.maxY, width: rect.width, height: rect.height)
+                    links.append(SectionPDFLink(anchor: anchor, pageIndex: pageIndex, bounds: pdfRect))
+                }
+            }
+        }
+        return links
+    }
+
     private func footnoteNavigation(
         in attributedText: NSAttributedString,
         pages: [TextPage]
@@ -752,6 +815,12 @@ private struct VisualRow {
     let pageIndex: Int
     let minY: CGFloat
     var isHeading: Bool
+}
+
+private struct SectionPDFLink {
+    let anchor: String
+    let pageIndex: Int
+    let bounds: CGRect
 }
 
 private struct FootnoteLink {

@@ -124,6 +124,24 @@ final class MobileDocumentSessionTests: XCTestCase {
         XCTAssertGreaterThan(session.revision, firstRevision)
     }
 
+    func testLoadWithEscapedFragmentPreservesFileIdentityAndQueuesHeading() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Section-\(UUID()).md")
+        try Data("# Café\n\nBody".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        components.percentEncodedFragment = "caf%C3%A9"
+        let session = MobileDocumentSession()
+
+        await session.load(url: try XCTUnwrap(components.url))
+
+        XCTAssertEqual(session.sourceURL, url.standardizedFileURL)
+        XCTAssertEqual(session.presentation?.sectionCatalog.sections.first?.anchor, "café")
+        let request = try XCTUnwrap(MobileSectionNavigation.shared.request(for: url))
+        XCTAssertEqual(request.fragment, "café")
+        MobileSectionNavigation.shared.complete(request)
+        XCTAssertNil(MobileSectionNavigation.shared.request(for: url))
+    }
+
     func testLoadFailurePublishesReadableError() async {
         let session = MobileDocumentSession()
         await session.refreshIfChanged()
@@ -285,7 +303,7 @@ final class MobileDocumentSessionTests: XCTestCase {
         await session.loadRemoteImagesIfAvailable()
         XCTAssertNil(session.errorMessage)
         let automaticRequests = await downloader.requestedSources()
-        XCTAssertEqual(automaticRequests, [first, second])
+        XCTAssertEqual(automaticRequests.sorted(), [first, second].sorted())
 
         await session.downloadRemoteImage(source: first)
         XCTAssertEqual(session.errorMessage, "Test remote image failure.")

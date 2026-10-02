@@ -101,7 +101,7 @@ public final class WordExporter {
             references: footnoteReferences,
             definitions: footnoteDefinitions,
             attributedText: attributedText
-        )
+        ) + renderSectionLinks(in: attributedText, excluding: tables.map(\.range))
 
         guard !images.isEmpty || !links.isEmpty || !tables.isEmpty
                 || !renderedFootnoteLinks.isEmpty || !quotes.isEmpty else {
@@ -119,7 +119,11 @@ public final class WordExporter {
 
         let renderedImages = try images.map { try render($0) }
         let renderedLinks = links.map(render)
-        let renderedTables = tables.map(render)
+        var sectionNames: [String: String] = [:]
+        attributedText.enumerateAttribute(.markdownSectionAnchor, in: NSRange(location: 0, length: attributedText.length)) { value, _, _ in
+            if let anchor = value as? String { sectionNames[anchor] = "MarkdownPrinterSection\(sectionNames.count)" }
+        }
+        let renderedTables = tables.enumerated().map { render($0.element, index: $0.offset, sectionNames: sectionNames) }
         let text = NSMutableAttributedString(attributedString: attributedText)
         let replacements = renderedImages.map {
             WordReplacement(
@@ -140,7 +144,7 @@ public final class WordExporter {
                 range: $0.range,
                 token: $0.token,
                 removedAttribute: nil,
-                preservesParagraphStyle: false
+                preservesParagraphStyle: $0.bookmarkAnchor.hasPrefix("MarkdownPrinterSection")
             )
         } + renderedTables.map {
             WordReplacement(
@@ -174,6 +178,8 @@ public final class WordExporter {
                 attributes.removeValue(forKey: .link)
                 attributes.removeValue(forKey: .markdownFootnoteReference)
                 attributes.removeValue(forKey: .markdownFootnoteDefinition)
+                // Force a separate native Word run so removing the bookmark token keeps adjacent heading text.
+                if replacement.token.hasPrefix("MDPRINTERSECTION") { attributes[.kern] = 0.25 }
             } else {
                 attributes.removeValue(forKey: .paragraphStyle)
             }
@@ -319,12 +325,40 @@ public final class WordExporter {
         )
     }
 
-    private func render(_ table: WordTable) -> RenderedWordTable {
-        RenderedWordTable(
-            token: table.token,
-            range: table.range,
-            tableXML: tableXML(for: table.cells)
-        )
+    private func render(_ table: WordTable, index: Int, sectionNames: [String: String]) -> RenderedWordTable {
+        var relationships: [String] = []
+        let xml = tableXML(for: table.cells) { attributes, run in
+            if let anchor = attributes[.markdownSectionReference] as? String,
+               let name = sectionNames[anchor] {
+                return "<w:hyperlink w:anchor=\"\(name)\">\(run)</w:hyperlink>"
+            }
+            if let destination = attributes[.link] as? URL {
+                let id = "rIdMarkdownPrinterTable\(index)Link\(relationships.count)"
+                relationships.append("<Relationship Id=\"\(id)\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"\(Self.escapeXML(destination.absoluteString))\" TargetMode=\"External\"/>")
+                return "<w:hyperlink r:id=\"\(id)\">\(run)</w:hyperlink>"
+            }
+            return run
+        }
+        return RenderedWordTable(token: table.token, range: table.range, tableXML: xml, relationships: relationships)
+    }
+
+    private func renderSectionLinks(in text: NSAttributedString, excluding tables: [NSRange]) -> [RenderedWordFootnoteLink] {
+        var headings: [(String, NSRange)] = []
+        var references: [(String, NSRange)] = []
+        let range = NSRange(location: 0, length: text.length)
+        text.enumerateAttribute(.markdownSectionAnchor, in: range) { value, range, _ in
+            if let anchor = value as? String { headings.append((anchor, NSRange(location: range.location, length: 0))) }
+        }
+        text.enumerateAttribute(.markdownSectionReference, in: range) { value, range, _ in
+            if let anchor = value as? String, !tables.contains(where: { NSIntersectionRange($0, range).length > 0 }) { references.append((anchor, range)) }
+        }
+        let names = Dictionary(uniqueKeysWithValues: headings.enumerated().map { ($0.element.0, "MarkdownPrinterSection\($0.offset)") })
+        return headings.map { anchor, range in
+            RenderedWordFootnoteLink(token: "MDPRINTERSECTION\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))", range: range, bookmarkAnchor: names[anchor]!, targetAnchor: nil, runXML: "")
+        } + references.enumerated().compactMap { index, entry in
+            guard let target = names[entry.0] else { return nil }
+            return RenderedWordFootnoteLink(token: "MDPRINTERSECTION\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))", range: entry.1, bookmarkAnchor: "MarkdownPrinterSectionReference\(index)", targetAnchor: target, runXML: runXML(for: text.attributedSubstring(from: entry.1)))
+        }
     }
 
     private func renderFootnoteLinks(
@@ -488,6 +522,7 @@ public final class WordExporter {
                 throw WordExporterError.packagingFailed
             }
             xmlReplacements.append(WordXMLReplacement(range: range, value: table.tableXML))
+            relationshipFragments.append(contentsOf: table.relationships)
         }
 
         documentXML = try applying(xmlReplacements, to: documentXML)
@@ -750,7 +785,7 @@ public final class WordExporter {
         return WordXMLReplacement(range: range, value: paragraph)
     }
 
-    private func tableXML(for cells: [WordTableCell]) -> String {
+    private func tableXML(for cells: [WordTableCell], linkRun: @escaping ([NSAttributedString.Key: Any], String) -> String) -> String {
         let rows = Dictionary(grouping: cells, by: \.row)
         let maximumColumn = cells.map(\.column).max() ?? 0
         let columns = max(maximumColumn + 1, 1)
@@ -760,14 +795,14 @@ public final class WordExporter {
             let cellsByColumn = Dictionary(uniqueKeysWithValues: rows[row, default: []].map { ($0.column, $0) })
             let content = (0..<columns).map { column in
                 let cell = cellsByColumn[column]
-                return "<w:tc><w:tcPr><w:tcW w:w=\"\(gridWidth)\" w:type=\"dxa\"/></w:tcPr><w:p>\(cell.map { runXML(for: $0.text) } ?? "<w:r><w:t></w:t></w:r>")</w:p></w:tc>"
+                return "<w:tc><w:tcPr><w:tcW w:w=\"\(gridWidth)\" w:type=\"dxa\"/></w:tcPr><w:p>\(cell.map { runXML(for: $0.text, linkRun: linkRun) } ?? "<w:r><w:t></w:t></w:r>")</w:p></w:tc>"
             }.joined()
             return "<w:tr>\(content)</w:tr>"
         }.joined()
         return "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblBorders><w:top w:val=\"single\" w:sz=\"4\" w:color=\"B8B8B8\"/><w:left w:val=\"single\" w:sz=\"4\" w:color=\"B8B8B8\"/><w:bottom w:val=\"single\" w:sz=\"4\" w:color=\"B8B8B8\"/><w:right w:val=\"single\" w:sz=\"4\" w:color=\"B8B8B8\"/><w:insideH w:val=\"single\" w:sz=\"4\" w:color=\"B8B8B8\"/><w:insideV w:val=\"single\" w:sz=\"4\" w:color=\"B8B8B8\"/></w:tblBorders></w:tblPr><w:tblGrid>\(grid)</w:tblGrid>\(rowXML)</w:tbl>"
     }
 
-    private func runXML(for text: NSAttributedString) -> String {
+    private func runXML(for text: NSAttributedString, linkRun: (([NSAttributedString.Key: Any], String) -> String)? = nil) -> String {
         guard text.length > 0 else { return "<w:r><w:t></w:t></w:r>" }
         var xml = ""
         text.enumerateAttributes(in: NSRange(location: 0, length: text.length)) { attributes, range, _ in
@@ -786,7 +821,8 @@ public final class WordExporter {
             if let baselineOffset = attributes[.baselineOffset] as? NSNumber {
                 properties += "<w:position w:val=\"\(Int(baselineOffset.doubleValue * 2))\"/>"
             }
-            xml += "<w:r><w:rPr>\(properties)</w:rPr><w:t xml:space=\"preserve\">\(Self.escapeXML(value))</w:t></w:r>"
+            let run = "<w:r><w:rPr>\(properties)</w:rPr><w:t xml:space=\"preserve\">\(Self.escapeXML(value))</w:t></w:r>"
+            xml += linkRun?(attributes, run) ?? run
         }
         return xml
     }
@@ -938,5 +974,6 @@ private struct RenderedWordTable {
     let token: String
     let range: NSRange
     let tableXML: String
+    let relationships: [String]
 }
 #endif

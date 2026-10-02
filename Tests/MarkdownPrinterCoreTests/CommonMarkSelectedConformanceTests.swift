@@ -8,7 +8,7 @@ final class CommonMarkSelectedConformanceTests: XCTestCase {
         XCTAssertEqual(fixture.commonmarkVersion, "0.31.2")
         XCTAssertEqual(fixture.examples.count, 166)
 
-        let parser = MarkdownParser()
+        let parser = MarkdownParser(inlineParser: InlineParser(extendedAutolinks: false))
         var failures: [String] = []
         for example in fixture.examples {
             let actual = CommonMarkHTMLSerializer.serialize(parser.parse(example.markdown))

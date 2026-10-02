@@ -6,6 +6,7 @@ Markdown Printer includes one full-size Finder Quick Look preview provider. It a
 
 - Finder Quick Look is a continuous, screen-optimized native TextKit view. It reuses `MarkdownPrinterCore` after parsing and before PDF pagination.
 - The full app remains unchanged: its PDF bytes are the single source of truth for app preview, save, and print.
+- Same-document heading links scroll within the continuous preview. Cross-file section links ask the Quick Look host to open the Mac app through its registered local URL route, carrying only the file URL and heading fragment. The extension does not read the linked document or expand its file-access boundary. When the host declines, keep the preview available and show a notice to open the source document in the Mac app.
 - Quick Look uses Avenir Next at 13 points for body copy, proportionally enlarged headings, a centered reading column no wider than 680 points, native monospaced code, and adaptive system colors.
 - Text is vertically scrollable, selectable, and copyable. Supported Markdown formatting, links, and bidirectional footnote navigation remain interactive.
 - The extension reads and parses asynchronously, does not monitor or retain the source file, does not generate a PDF, and does not launch the host app as part of preview generation.
