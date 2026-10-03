@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-03 — Version 1.4.7
+
+- Promote GitHub-style automatic links, task-list compatibility, heading navigation, and quiet recovery from unavailable or renamed sources together as Mac version 1.4.7, build 16.
+- Update Mac bundle metadata, the public download label, release notes, and release verification assertions for the signed, notarized GitHub and Sparkle update.
+- Describe same-document Quick Look navigation and its host-controlled cross-file limitation in the release notes. Keep the mobile app version independent.
+
 ## 2026-10-02 — Automatic recovery from unavailable or renamed sources
 
 - Keep the last successful PDF visible during background read failures. Retry quietly, show a compact status banner after a two-second grace period, and clear the status after a successful read even when content and metadata are unchanged. No Locate, Retry, or dismissal buttons are required.
