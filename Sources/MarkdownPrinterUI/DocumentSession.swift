@@ -7,6 +7,8 @@ import MarkdownPrinterCore
 public final class DocumentSession: ObservableObject {
     @Published public private(set) var renderedSnapshot: RenderedDocumentSnapshot?
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var isSourceUnavailable = false
+    public static let sourceUnavailableMessage = "Source file unavailable. Showing the last rendered version."
     @Published public private(set) var isPreparingDocument = false
     @Published public private(set) var downloadingRemoteImageSources = Set<String>()
 
@@ -23,6 +25,10 @@ public final class DocumentSession: ObservableObject {
     private let remoteImageDownloader: any RemoteImageDownloading
     private var sourceMonitor: SourceChangeMonitoring?
     private var sourceMonitorLifetime: SourceMonitorLifetime?
+    private var monitoredSourceURL: URL?
+    private var sourceUnavailableSince: TimeInterval?
+    private var pendingSourceRetry: DispatchWorkItem?
+    private let sourceRecoveryGraceInterval: TimeInterval
     private var nextRenderRevision: UInt64 = 0
     private var nextPreparationRevision: UInt64 = 0
 
@@ -56,6 +62,7 @@ public final class DocumentSession: ObservableObject {
         self.sourceMonitorFactory = { url, onChange in
             SourceFileMonitor(sourceURL: url, onChange: onChange)
         }
+        sourceRecoveryGraceInterval = 2
         observePagePreferences()
     }
 
@@ -66,7 +73,8 @@ public final class DocumentSession: ObservableObject {
         pagePreferences: PagePreferences? = nil,
         remoteImageCache: RemoteImageCache = .applicationDefault,
         remoteImageDownloader: (any RemoteImageDownloading)? = nil,
-        sourceMonitorFactory: @escaping (URL, @escaping () -> Void) -> SourceChangeMonitoring
+        sourceMonitorFactory: @escaping (URL, @escaping () -> Void) -> SourceChangeMonitoring,
+        sourceRecoveryGraceInterval: TimeInterval = 2
     ) {
         baseRendererConfiguration = renderer.configuration
         self.pagePreferences = pagePreferences
@@ -88,6 +96,7 @@ public final class DocumentSession: ObservableObject {
         )
         self.wordExporter = wordExporter ?? WordExporter()
         self.sourceMonitorFactory = sourceMonitorFactory
+        self.sourceRecoveryGraceInterval = sourceRecoveryGraceInterval
         observePagePreferences()
     }
 
@@ -200,7 +209,8 @@ public final class DocumentSession: ObservableObject {
         document: MarkdownDocument,
         pageSetup: DocumentPageSetup,
         explicit: Bool? = nil,
-        footers: ResolvedFooterConfiguration? = nil
+        footers: ResolvedFooterConfiguration? = nil,
+        clearsError: Bool = true
     ) throws {
         nextPreparationRevision &+= 1
         isPreparingDocument = false
@@ -233,7 +243,8 @@ public final class DocumentSession: ObservableObject {
             footers: footers,
             revision: nextRenderRevision
         )
-        errorMessage = nil
+        if clearsError { errorMessage = nil }
+        documentSourceDidCommit()
     }
 
     private func rebuildAsync(
@@ -290,6 +301,7 @@ public final class DocumentSession: ObservableObject {
             revision: nextRenderRevision
         )
         errorMessage = nil
+        documentSourceDidCommit()
     }
 
     @discardableResult
@@ -337,6 +349,7 @@ public final class DocumentSession: ObservableObject {
             self?.reloadSourceIfChanged()
         }
         sourceMonitor = monitor
+        monitoredSourceURL = sourceURL.standardizedFileURL
         sourceMonitorLifetime = SourceMonitorLifetime(monitor: monitor)
         monitor.start()
         reloadSourceIfChanged()
@@ -347,20 +360,71 @@ public final class DocumentSession: ObservableObject {
         sourceMonitorLifetime?.cancel()
         sourceMonitorLifetime = nil
         sourceMonitor = nil
+        monitoredSourceURL = nil
+        clearSourceRecovery()
     }
 
     private func reloadSourceIfChanged() {
-        guard let sourceURL = document?.sourceURL else { return }
+        guard let monitor = sourceMonitor, monitor.isMonitoring,
+              document?.sourceURL?.standardizedFileURL == monitoredSourceURL
+        else { return }
+        let sourceURL = monitor.sourceURL
         do {
             let accessesSecurityScopedResource = sourceURL.startAccessingSecurityScopedResource()
             defer {
                 if accessesSecurityScopedResource { sourceURL.stopAccessingSecurityScopedResource() }
             }
-            let nextDocument = try MarkdownDocument.load(from: sourceURL)
-            try synchronize(with: nextDocument)
+            let nextDocument = preservingKnownModificationDate(in: try MarkdownDocument.load(from: sourceURL))
+            if nextDocument != document {
+                try rebuild(document: nextDocument, pageSetup: activePageSetup, clearsError: false)
+            }
+            monitor.start()
+            clearSourceRecovery()
         } catch {
-            errorMessage = error.localizedDescription
+            scheduleSourceRecovery()
         }
+    }
+
+    private func documentSourceDidCommit() {
+        guard sourceMonitor?.isMonitoring == true else {
+            clearSourceRecovery()
+            return
+        }
+        guard let sourceURL = document?.sourceURL?.standardizedFileURL else {
+            stopMonitoringSourceChanges()
+            return
+        }
+        guard monitoredSourceURL != sourceURL else { return }
+        clearSourceRecovery()
+        if sourceMonitor?.sourceURL != sourceURL {
+            startMonitoringSourceChanges()
+        } else {
+            monitoredSourceURL = sourceURL
+        }
+    }
+
+    private func scheduleSourceRecovery() {
+        let now = ProcessInfo.processInfo.systemUptime
+        if sourceUnavailableSince == nil { sourceUnavailableSince = now }
+        let elapsed = now - (sourceUnavailableSince ?? now)
+        let unavailable = elapsed >= sourceRecoveryGraceInterval
+        if isSourceUnavailable != unavailable { isSourceUnavailable = unavailable }
+        pendingSourceRetry?.cancel()
+        let retry = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingSourceRetry = nil
+            self.reloadSourceIfChanged()
+        }
+        pendingSourceRetry = retry
+        let delay = unavailable ? 1 : min(0.25, sourceRecoveryGraceInterval - elapsed)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: retry)
+    }
+
+    private func clearSourceRecovery() {
+        pendingSourceRetry?.cancel()
+        pendingSourceRetry = nil
+        sourceUnavailableSince = nil
+        if isSourceUnavailable { isSourceUnavailable = false }
     }
 
     public func clearError() {

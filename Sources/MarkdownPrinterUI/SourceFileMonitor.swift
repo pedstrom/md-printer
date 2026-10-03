@@ -12,7 +12,8 @@ protocol SourceChangeMonitoring: AnyObject {
 
 @MainActor
 final class SourceFileMonitor: NSObject, SourceChangeMonitoring {
-    let sourceURL: URL
+    nonisolated var sourceURL: URL { location.url }
+    private nonisolated let location: SourceFileLocation
     private let debounceInterval: TimeInterval
     private let onChange: () -> Void
     private let operationQueue: OperationQueue
@@ -27,7 +28,7 @@ final class SourceFileMonitor: NSObject, SourceChangeMonitoring {
         debounceInterval: TimeInterval = 0.15,
         onChange: @escaping () -> Void
     ) {
-        self.sourceURL = sourceURL.standardizedFileURL
+        self.location = SourceFileLocation(url: sourceURL.standardizedFileURL)
         self.debounceInterval = debounceInterval
         self.onChange = onChange
         self.operationQueue = OperationQueue()
@@ -48,7 +49,11 @@ final class SourceFileMonitor: NSObject, SourceChangeMonitoring {
     }
 
     func start() {
-        guard !isMonitoring else { return }
+        if isMonitoring {
+            startDirectorySource()
+            startSourceFileSource()
+            return
+        }
         isMonitoring = true
         NSFileCoordinator.addFilePresenter(self)
         startDirectorySource()
@@ -86,17 +91,26 @@ final class SourceFileMonitor: NSObject, SourceChangeMonitoring {
     }
 
     private func startDirectorySource() {
+        guard isMonitoring, directorySource == nil else { return }
         let directoryURL = sourceURL.deletingLastPathComponent()
         let descriptor = open(directoryURL.path, O_EVTONLY)
         guard descriptor >= 0 else { return }
 
         let source = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: descriptor,
-            eventMask: [.write, .delete, .rename, .attrib, .extend],
+            eventMask: [.write, .delete, .rename, .attrib, .extend, .revoke],
             queue: .main
         )
         source.setEventHandler { [weak self] in
-            guard let self else { return }
+            guard let self, self.isMonitoring, self.directorySource?.handle == descriptor else { return }
+            let events = self.directorySource?.data ?? []
+            self.followSourceFileMove()
+            if !events.intersection([.delete, .rename, .revoke]).isEmpty,
+               self.directorySource?.handle == descriptor {
+                self.directorySource?.cancel()
+                self.directorySource = nil
+                self.startDirectorySource()
+            }
             self.scheduleChange()
             self.restartSourceFileSource()
         }
@@ -118,9 +132,10 @@ final class SourceFileMonitor: NSObject, SourceChangeMonitoring {
             queue: .main
         )
         source.setEventHandler { [weak self] in
-            guard let self else { return }
+            guard let self, self.isMonitoring, self.sourceFileSource?.handle == descriptor else { return }
             let events = self.sourceFileSource?.data ?? []
             let requiresRestart = !events.intersection([.delete, .rename, .revoke]).isEmpty
+            if events.contains(.rename) { self.followSourceFileMove() }
             self.scheduleChange()
             if requiresRestart {
                 self.restartSourceFileSource()
@@ -131,6 +146,39 @@ final class SourceFileMonitor: NSObject, SourceChangeMonitoring {
         }
         sourceFileSource = source
         source.resume()
+    }
+
+    // The open descriptor follows the same file through uncoordinated Finder/CLI moves.
+    // Verify its identity at the returned path before adopting that location.
+    private func followSourceFileMove() {
+        guard let descriptor = sourceFileSource?.handle else { return }
+        var path = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+        guard fcntl(descriptor, F_GETPATH, &path) == 0 else { return }
+        let url = URL(fileURLWithPath: String(cString: path)).standardizedFileURL
+        guard url != sourceURL.resolvingSymlinksInPath().standardizedFileURL else { return }
+        var descriptorInfo = stat()
+        var pathInfo = stat()
+        guard fstat(descriptor, &descriptorInfo) == 0,
+              stat(url.path, &pathInfo) == 0,
+              descriptorInfo.st_dev == pathInfo.st_dev,
+              descriptorInfo.st_ino == pathInfo.st_ino
+        else { return }
+        moveSource(to: url)
+    }
+
+    private func moveSource(to url: URL) {
+        let url = url.standardizedFileURL
+        guard isMonitoring, url != sourceURL else { return }
+        let changesDirectory = url.deletingLastPathComponent() != sourceURL.deletingLastPathComponent()
+        if changesDirectory { NSFileCoordinator.removeFilePresenter(self) }
+        location.url = url
+        if changesDirectory {
+            directorySource?.cancel()
+            directorySource = nil
+            startDirectorySource()
+            NSFileCoordinator.addFilePresenter(self)
+        }
+        restartSourceFileSource()
     }
 
     private func restartSourceFileSource() {
@@ -167,6 +215,14 @@ extension SourceFileMonitor: NSFilePresenter {
         }
     }
 
+    nonisolated func presentedItemDidMove(to newURL: URL) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.moveSource(to: newURL.appendingPathComponent(self.sourceURL.lastPathComponent))
+            self.scheduleChange()
+        }
+    }
+
     nonisolated func presentedSubitemDidChange(at url: URL) {
         Task { @MainActor [weak self] in
             guard let self, self.isSourceURL(url) else { return }
@@ -179,6 +235,7 @@ extension SourceFileMonitor: NSFilePresenter {
             guard let self,
                   self.isSourceURL(oldURL) || self.isSourceURL(newURL)
             else { return }
+            if self.isSourceURL(oldURL) { self.moveSource(to: newURL) }
             self.scheduleChange()
         }
     }
@@ -192,6 +249,27 @@ extension SourceFileMonitor: NSFilePresenter {
                 self.scheduleChange()
             }
             completionHandler(nil)
+        }
+    }
+}
+
+// File presenter properties may be read from outside the main actor.
+private final class SourceFileLocation: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedURL: URL
+
+    init(url: URL) { storedURL = url }
+
+    var url: URL {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedURL
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            storedURL = newValue
         }
     }
 }

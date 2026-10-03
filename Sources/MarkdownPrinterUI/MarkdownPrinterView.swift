@@ -76,6 +76,19 @@ public struct MarkdownPrinterView: View {
                     .allowsHitTesting(false)
             }
         }
+        .overlay(alignment: .top) {
+            if session.isSourceUnavailable {
+                Text(DocumentSession.sourceUnavailableMessage)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.regularMaterial)
+                    .accessibilityIdentifier("source-unavailable-banner")
+                    .allowsHitTesting(false)
+            }
+        }
         .onDrop(of: [UTType.fileURL.identifier], isTargeted: $isDropTargeted, perform: acceptDrop)
         .toolbar {
             if session.hasDocument {

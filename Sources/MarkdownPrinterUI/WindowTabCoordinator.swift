@@ -168,6 +168,10 @@ package final class WindowTabCoordinator: ObservableObject {
         }
     }
 
+    package func updateDocumentURL(_ url: URL?, for window: NSWindow) {
+        attachedWindows[ObjectIdentifier(window)]?.documentURL = url?.standardizedFileURL
+    }
+
     private func cascadePendingWindows() {
         let pending = pendingCascadeWindows
         pendingCascadeWindows.removeAll()
@@ -498,6 +502,7 @@ package final class WindowTabAttachmentHostView: NSView {
 
     package func attachCurrentWindow() {
         if attachedWindow === window {
+            if let window { coordinator.updateDocumentURL(documentURL, for: window) }
             if let responder = tabCommandResponder,
                responderParent?.nextResponder !== responder {
                 removeTabCommandResponder()

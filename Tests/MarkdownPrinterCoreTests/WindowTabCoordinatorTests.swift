@@ -4,6 +4,24 @@ import XCTest
 
 @MainActor
 final class WindowTabCoordinatorTests: XCTestCase {
+    func testAttachedWindowSourceMoveUpdatesWorkspaceIdentity() {
+        let coordinator = WindowTabCoordinator()
+        let window = makeWindow()
+        let oldURL = URL(fileURLWithPath: "/tmp/Original-Tab.md")
+        let newURL = URL(fileURLWithPath: "/tmp/Renamed-Tab.md")
+        let host = WindowTabAttachmentHostView(coordinator: coordinator, windowIdentifier: nil, documentURL: oldURL)
+        window.contentView = host
+        host.attachCurrentWindow()
+        host.documentURL = newURL
+        host.attachCurrentWindow()
+        let suite = "MarkdownPrinterRenameTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let restoration = OpenDocumentRestorationController(defaults: defaults)
+        XCTAssertEqual(coordinator.captureWorkspace(restorationController: restoration).documentURLs, [newURL])
+        window.contentView = nil
+    }
+
     func testStandaloneWindowsCascadeOnceAfterInitialLayout() async throws {
         let coordinator = WindowTabCoordinator()
         let screen = try XCTUnwrap(NSScreen.main).visibleFrame

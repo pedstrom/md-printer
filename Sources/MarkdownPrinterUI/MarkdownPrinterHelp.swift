@@ -54,7 +54,9 @@ package enum MarkdownPrinterHelpContent {
             .openingFiles,
             "Open Markdown Files",
             "Choose File → Open, drag Markdown files onto the welcome window, or open a supported file from Finder. Each file opens in its own document window or tab.",
-            "When another app saves the source file, Markdown Printer refreshes the preview and keeps the current viewport whenever possible."
+            "When another app saves the source file, Markdown Printer refreshes the preview and keeps the current viewport whenever possible.",
+            "If the source temporarily disappears or cannot be read, the last successful preview stays visible. After about two seconds, a compact banner says: Source file unavailable. Showing the last rendered version. Recovery is automatic and the banner disappears after a successful read, even when the content is unchanged.",
+            "Detected renames and moves are followed automatically. The source filename, folder for relative images and links, and window restoration location update together. If the source remains unavailable, close the window and open another file when ready."
         ),
         section(
             .exporting,

@@ -24,6 +24,8 @@ final class MarkdownPrinterHelpTests: XCTestCase {
         let text = MarkdownPrinterHelpContent.searchableText
         let requiredPhrases = [
             "Open Markdown Files",
+            "Source file unavailable. Showing the last rendered version.",
+            "Detected renames and moves are followed automatically",
             "Save, Share, and Drag Exports",
             "Hold Option when dragging from the preview or clicking Share",
             "Navigate and Zoom the Preview",

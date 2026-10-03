@@ -69,7 +69,8 @@ final class SourceFileMonitorTests: XCTestCase {
         await wait(milliseconds: 20)
         XCTAssertEqual(changeCount, 3)
 
-        monitor.accommodatePresentedSubitemDeletion(at: sourceURL) { error in
+        XCTAssertEqual(monitor.sourceURL, siblingURL)
+        monitor.accommodatePresentedSubitemDeletion(at: siblingURL) { error in
             XCTAssertNil(error)
         }
         await wait(milliseconds: 20)
@@ -110,6 +111,67 @@ final class SourceFileMonitorTests: XCTestCase {
         await fulfillment(of: [changed], timeout: 1)
     }
 
+    func testUncoordinatedMoveFollowsTheSameFileAndMonitorsItsNewDirectory() async throws {
+        let sourceURL = try makeSourceFile()
+        let directory = sourceURL.deletingLastPathComponent().appendingPathComponent("Moved")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let newURL = directory.appendingPathComponent("Renamed.md")
+        let moved = expectation(description: "new location delivered")
+        let written = expectation(description: "new source write delivered")
+        var sawMove = false
+        var sawWrite = false
+        let monitor = SourceFileMonitor(sourceURL: sourceURL, debounceInterval: 0.01) {
+            if !sawMove {
+                sawMove = true
+                moved.fulfill()
+            } else if !sawWrite {
+                sawWrite = true
+                written.fulfill()
+            }
+        }
+        monitor.start()
+        defer { monitor.stop() }
+        try FileManager.default.moveItem(at: sourceURL, to: newURL)
+        await fulfillment(of: [moved], timeout: 2)
+        XCTAssertEqual(monitor.sourceURL, newURL)
+        XCTAssertEqual(monitor.presentedItemURL?.path, directory.path)
+        try Data("# Updated after moving".utf8).write(to: newURL, options: .atomic)
+        await fulfillment(of: [written], timeout: 2)
+        XCTAssertEqual(monitor.sourceURL, newURL)
+    }
+
+    func testRenamedParentDirectoryIsFollowed() async throws {
+        let sourceURL = try makeSourceFile()
+        let oldDirectory = sourceURL.deletingLastPathComponent()
+        let newDirectory = oldDirectory.appendingPathExtension("moved")
+        addTeardownBlock { try? FileManager.default.removeItem(at: newDirectory) }
+        let moved = expectation(description: "parent directory move delivered")
+        var delivered = false
+        let monitor = SourceFileMonitor(sourceURL: sourceURL, debounceInterval: 0.01) {
+            if !delivered { delivered = true; moved.fulfill() }
+        }
+        monitor.start()
+        defer { monitor.stop() }
+        try FileManager.default.moveItem(at: oldDirectory, to: newDirectory)
+        await fulfillment(of: [moved], timeout: 2)
+        XCTAssertEqual(monitor.sourceURL, newDirectory.appendingPathComponent("Source.md"))
+    }
+
+    func testCoordinatedDirectoryMoveUpdatesPresenterAndStoppedMovesAreIgnored() async throws {
+        let sourceURL = try makeSourceFile()
+        let directory = sourceURL.deletingLastPathComponent().appendingPathComponent("New")
+        let monitor = SourceFileMonitor(sourceURL: sourceURL, debounceInterval: 0.01) { }
+        monitor.start()
+        monitor.presentedItemDidMove(to: directory)
+        await wait(milliseconds: 25)
+        XCTAssertEqual(monitor.sourceURL, directory.appendingPathComponent("Source.md"))
+        XCTAssertEqual(monitor.presentedItemURL?.path, directory.path)
+        monitor.stop()
+        monitor.presentedItemDidMove(to: sourceURL.deletingLastPathComponent())
+        await wait(milliseconds: 25)
+        XCTAssertEqual(monitor.sourceURL, directory.appendingPathComponent("Source.md"))
+    }
+
     func testStoppedPresenterReleasesWhenItsOwnerGoesAway() throws {
         let sourceURL = try makeSourceFile()
         weak var releasedMonitor: SourceFileMonitor?
@@ -125,7 +187,7 @@ final class SourceFileMonitorTests: XCTestCase {
     }
 
     private func makeSourceFile() throws -> URL {
-        let directory = FileManager.default.temporaryDirectory
+        let directory = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
             .appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let sourceURL = directory.appendingPathComponent("Source.md")

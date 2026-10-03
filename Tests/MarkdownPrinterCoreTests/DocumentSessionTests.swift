@@ -220,7 +220,7 @@ final class DocumentSessionTests: XCTestCase {
         monitors[0].trigger()
         XCTAssertEqual(firstSession.renderedPDFData, lastValidPDF)
         XCTAssertEqual(try XCTUnwrap(firstSession.renderedSnapshot).revision, unchangedRevision)
-        XCTAssertEqual(firstSession.errorMessage, "The file is not valid UTF-8 or UTF-16 text.")
+        XCTAssertNil(firstSession.errorMessage)
 
         try Data("# Recovered\n\nValid again.".utf8).write(to: firstURL, options: .atomic)
         monitors[0].trigger()

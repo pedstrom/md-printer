@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-02 — Automatic recovery from unavailable or renamed sources
+
+- Keep the last successful PDF visible during background read failures. Retry quietly, show a compact status banner after a two-second grace period, and clear the status after a successful read even when content and metadata are unchanged. No Locate, Retry, or dismissal buttons are required.
+- Separate source availability from opening/export action errors. Stop recovery when a window closes or a different document replaces its source; keep recovery active while output settings change.
+- Follow confirmed file and parent-folder moves using file-presenter notifications and the monitored file descriptor's verified identity. Reattach watchers and update the native document URL, filename, relative image/link resolution, and workspace restoration together.
+- Cover disappearance, unchanged recovery without another event, invalid writes, short absences, unrelated action errors, monitor lifetime, source replacement, plain filesystem moves, subsequent writes, relative assets, and native window/restoration identity. Document the automatic flow in README and built-in help.
+
 ## 2026-10-02 — GitHub-style links and task lists
 
 - Add GFM extended autolinks and first-paragraph task markers, including tab whitespace and uppercase checks, while retaining the core CommonMark compatibility configuration.

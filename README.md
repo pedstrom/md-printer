@@ -35,6 +35,8 @@ The PDF in the app preview is the same print-ready, paginated PDF that gets save
 
 Markdown Printer implements selected CommonMark 0.31.2 syntax rather than claiming complete CommonMark conformance. Its compatibility suite currently matches 641 of the specification's 652 normative examples (98.3%), including every example for headings, emphasis, code spans and blocks, references, autolinks, entities, raw HTML, images, and line breaks. The remaining gaps are uncommon block-quote and deeply nested-list edge cases plus one unusual link-label case. Arbitrary raw HTML is displayed as literal, code-styled source and is never executed. A standalone `<img>` tag is the narrow exception: it uses the same local or user-initiated remote-image pipeline as Markdown image syntax. The app's established `<u>` underline and `<br>` line-break extensions remain available.
 
+On Mac, background source changes never require dismissing a read-error dialog. If a source temporarily disappears or cannot be read, the last successful preview remains visible while the app retries. After about two seconds, a compact banner says “Source file unavailable. Showing the last rendered version.” A successful read refreshes the document as needed and clears the banner, including when its content is unchanged. Confirmed renames and moves update the source filename, relative image/link folder, and window restoration location automatically. If the source stays unavailable, you can close the window and open another file.
+
 ## Install
 
 ### Mac

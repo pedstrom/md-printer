@@ -6,6 +6,51 @@ import XCTest
 
 @MainActor
 final class DocumentWindowRestorationCoordinatorTests: XCTestCase {
+    func testSourceMoveUpdatesNativeDocumentAndRestorationIdentity() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = OpenDocumentRestorationController(defaults: defaults)
+        let oldURL = URL(fileURLWithPath: "/tmp/Original.md")
+        let newURL = URL(fileURLWithPath: "/tmp/Renamed.md")
+        let window = NSWindow(contentRect: CGRect(x: 100, y: 100, width: 760, height: 700),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        let nativeDocument = NSDocument()
+        nativeDocument.fileURL = oldURL
+        nativeDocument.addWindowController(NSWindowController(window: window))
+        NSDocumentController.shared.addDocument(nativeDocument)
+        defer { NSDocumentController.shared.removeDocument(nativeDocument) }
+        let coordinator = DocumentWindowRestorationCoordinator(sourceURL: oldURL, restorationController: controller)
+        coordinator.attach(window: window)
+        coordinator.activate()
+        XCTAssertTrue(controller.isDocumentOpen(at: oldURL))
+        coordinator.updateSourceURL(newURL)
+        coordinator.updateSourceURL(newURL)
+        XCTAssertFalse(controller.isDocumentOpen(at: oldURL))
+        XCTAssertTrue(controller.isDocumentOpen(at: newURL))
+        XCTAssertEqual(window.representedURL, newURL)
+        XCTAssertEqual(nativeDocument.fileURL, newURL)
+        XCTAssertNil(controller.currentWindowState(for: oldURL))
+        XCTAssertNotNil(controller.currentWindowState(for: newURL))
+        coordinator.deactivate()
+        XCTAssertFalse(controller.isDocumentOpen(at: newURL))
+        coordinator.updateSourceURL(nil)
+        XCTAssertNil(nativeDocument.fileURL)
+    }
+
+    func testSourceMoveBeforeActivationRegistersOnlyNewLocation() {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = OpenDocumentRestorationController(defaults: defaults)
+        let oldURL = URL(fileURLWithPath: "/tmp/Before.md")
+        let newURL = URL(fileURLWithPath: "/tmp/After.md")
+        let coordinator = DocumentWindowRestorationCoordinator(sourceURL: oldURL, restorationController: controller)
+        coordinator.updateSourceURL(newURL)
+        coordinator.activate()
+        XCTAssertFalse(controller.isDocumentOpen(at: oldURL))
+        XCTAssertTrue(controller.isDocumentOpen(at: newURL))
+        coordinator.deactivate()
+    }
+
     func testFramePolicyPreservesVisibleFramesAndClampsOffscreenGeometry() {
         let primary = CGRect(x: 0, y: 0, width: 1_440, height: 900)
         let secondary = CGRect(x: 1_440, y: 120, width: 1_000, height: 700)

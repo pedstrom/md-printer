@@ -4,7 +4,7 @@ import MarkdownPrinterCore
 
 @MainActor
 package final class DocumentWindowRestorationCoordinator: ObservableObject {
-    private let sourceURL: URL?
+    private var sourceURL: URL?
     private let restorationController: OpenDocumentRestorationController
     private let providerID = UUID()
     private weak var window: NSWindow?
@@ -54,6 +54,19 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
         restoreSequence &+= 1
         restorationController.unregisterStateProvider(at: sourceURL, id: providerID)
         restorationController.documentDidClose(at: sourceURL)
+    }
+
+    package func updateSourceURL(_ url: URL?) {
+        let url = url?.standardizedFileURL
+        guard url != sourceURL else { return }
+        let wasActive = isActive
+        if wasActive { deactivate() }
+        sourceURL = url
+        if let window {
+            window.representedURL = url
+            NSDocumentController.shared.document(for: window)?.fileURL = url
+        }
+        if wasActive { activate() }
     }
 
     package func attach(window: NSWindow?) {

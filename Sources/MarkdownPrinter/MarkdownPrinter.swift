@@ -284,7 +284,7 @@ private struct MarkdownDocumentWindow: View {
             .background(
                 WindowTabAttachmentView(
                     coordinator: windowTabCoordinator,
-                    documentURL: sourceURL
+                    documentURL: session.document?.sourceURL ?? sourceURL
                 )
             )
             .background(
@@ -302,6 +302,10 @@ private struct MarkdownDocumentWindow: View {
             }
             .onDisappear {
                 windowRestoration.deactivate()
+                session.stopMonitoringSourceChanges()
+            }
+            .onChange(of: session.document?.sourceURL) { _, url in
+                windowRestoration.updateSourceURL(url)
             }
             .task(id: fileDocument.markdown) {
                 await synchronizeFileDocument()
@@ -330,13 +334,11 @@ private struct MarkdownDocumentWindow: View {
     }
 
     private func synchronizeFileDocument() async {
+        // Once opened, the session reads the live source rather than a cached FileDocument.
+        guard !session.hasDocument else { return }
         do {
             let document = fileDocument.markdownDocument(sourceURL: sourceURL)
-            if session.hasDocument {
-                try await session.synchronizeAsync(with: document)
-            } else {
-                try await session.applyAsync(document)
-            }
+            try await session.applyAsync(document)
         } catch {
             guard !Task.isCancelled else { return }
             session.report(error: error)
