@@ -6,6 +6,25 @@ import XCTest
 
 @MainActor
 final class ExportDragThumbnailTests: XCTestCase {
+    func testTextPageHasOpaquePaperAndVisibleEdgesInBothExportFormats() throws {
+        let session = DocumentSession()
+        try session.apply(MarkdownDocument(title: "Drag preview", markdown: "# Drag preview\n\nA short document."))
+        let document = try XCTUnwrap(PDFDocument(data: session.exportData(as: .pdf)))
+        let page = try XCTUnwrap(document.page(at: 0))
+        for format in ExportFormat.allCases {
+            let image = ExportDragThumbnail.image(page: page, format: format)
+            let pixels = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(image.tiffRepresentation)))
+            let paper = try XCTUnwrap(pixels.colorAt(x: pixels.pixelsWide / 2, y: pixels.pixelsHigh / 2)?.usingColorSpace(.deviceRGB))
+            XCTAssertEqual(paper.alphaComponent, 1, accuracy: 0.01, "Blank paper must be visible before AppKit starts dragging.")
+            XCTAssertEqual(paper.redComponent, 1, accuracy: 0.01)
+            XCTAssertEqual(paper.greenComponent, 1, accuracy: 0.01)
+            XCTAssertEqual(paper.blueComponent, 1, accuracy: 0.01)
+            let edge = try XCTUnwrap(pixels.colorAt(x: 0, y: pixels.pixelsHigh / 2)?.usingColorSpace(.deviceRGB))
+            XCTAssertEqual(edge.alphaComponent, 1, accuracy: 0.01)
+            XCTAssertLessThan(edge.redComponent, 0.9, "The miniature needs an outline against the white PDF preview.")
+        }
+    }
+
     func testBothFormatsKeepThePagePreviewAndAddDistinctReadableBadges() throws {
         let pageImage = NSImage(size: NSSize(width: 612, height: 792))
         pageImage.lockFocus()

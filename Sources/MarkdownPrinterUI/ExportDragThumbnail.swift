@@ -13,6 +13,10 @@ enum ExportDragThumbnail {
         image.lockFocus()
         defer { image.unlockFocus() }
 
+        let paperRect = NSRect(origin: .zero, size: size)
+        NSColor.white.setFill()
+        paperRect.fill()
+
         let scale = min(size.width / preview.size.width, size.height / preview.size.height)
         let previewSize = NSSize(width: preview.size.width * scale, height: preview.size.height * scale)
         preview.draw(in: NSRect(
@@ -21,6 +25,13 @@ enum ExportDragThumbnail {
             width: previewSize.width,
             height: previewSize.height
         ))
+
+        // The held preview uses this bitmap before AppKit supplies native drag
+        // feedback. Include the page edge here so it is visible from the hold.
+        NSColor(white: 0.75, alpha: 1).setStroke()
+        let outline = NSBezierPath(rect: paperRect.insetBy(dx: 0.5, dy: 0.5))
+        outline.lineWidth = 1
+        outline.stroke()
 
         let badgeRect = NSRect(x: size.width - 74, y: 4, width: 70, height: 30)
         let badge = NSBezierPath(roundedRect: badgeRect, xRadius: 7, yRadius: 7)

@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-04 — Show the complete export miniature on hold
+
+- Add opaque white paper and a subtle gray page outline to the shared PDF/Word drag thumbnail. The held image previously lacked a visible edge against the white PDF preview; moving into AppKit's drag session made the page boundary appear later.
+- Add a real text-page pixel regression for white paper and opaque, visible edges in both formats, while retaining content and badge checks. The new regression fails against the prior thumbnail's transparent outer edge.
+- Pass 58 focused thumbnail/preview tests and the full macOS gate: 372 tests, 96.19% testable-production line coverage, performance budgets, and universal app/extension validation. Visually inspect the actual thumbnail code rendered for both held formats at the preview's opacity on a white background.
+
 ## 2026-10-04 — Make preview export presses explicit and test their mouse callbacks
 
 - Investigate a report that holding the PDF preview no longer shows the PDF/Word export thumbnail. The existing 63 preview/drag tests passed because they entered the export handler directly or tested materialized files, leaving native press recognition outside their coverage.
