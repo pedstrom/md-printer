@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-04 — Version 1.4.8
+
+- Release the preview hold-and-drag repairs as Mac version 1.4.8, build 17: explicit native hold recognition and a complete paper outline in both PDF and Word miniatures from the initial hold.
+- Update Mac bundle metadata, the public download label, release notes, and release verification assertions for the signed, notarized GitHub and Sparkle update.
+- Pass the complete macOS release gate: 372 tests, 96.19% testable-production line coverage, performance budgets, and universal app/extension validation. Retain the manual acceptance limitation recorded with the hold-recognition change.
+
 ## 2026-10-04 — Show the complete export miniature on hold
 
 - Add opaque white paper and a subtle gray page outline to the shared PDF/Word drag thumbnail. The held image previously lacked a visible edge against the white PDF preview; moving into AppKit's drag session made the page boundary appear later.
