@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-10-04 — Make preview export presses explicit and test their mouse callbacks
+
+- Investigate a report that holding the PDF preview no longer shows the PDF/Word export thumbnail. The existing 63 preview/drag tests passed because they entered the export handler directly or tested materialized files, leaving native press recognition outside their coverage.
+- Give preview export its own native primary-button recognizer, with a hold timer that runs during mouse tracking, retained mouse events, and explicit readiness, movement, release, and cancellation callbacks. Prevent competing PDFKit selection recognizers from defeating the hold; release ordinary clicks and early selection movement through gesture failure.
+- Exercise the recognizer's mouse callbacks through the preview before and after live refresh, for both preferred formats and Option overrides. Cover tracking-mode timers, small and early movement, quick clicks, cancellation, repeated presses, and event retention. Keep the distinction between these automated callbacks and a physical mouse gesture explicit.
+- Require physical PDF/Word drag acceptance in the versioned-release checklist, including native drop results and legacy preview interactions; automated handler or callback tests alone do not establish that acceptance.
+- Pass 68 focused preview/drag tests and the complete macOS gate: 371 tests, 96.18% testable-production line coverage, performance budgets, and universal app/extension validation. Open the verified native build and confirm text selection and Find. Physical hold-and-drop acceptance remains pending.
+
 ## 2026-10-03 — Version 1.4.7
 
 - Promote GitHub-style automatic links, task-list compatibility, heading navigation, and quiet recovery from unavailable or renamed sources together as Mac version 1.4.7, build 16.

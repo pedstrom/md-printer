@@ -588,9 +588,63 @@ final class PDFPreviewViewTests: XCTestCase {
         let view = PageAdvancingPDFView()
         let recognizer = view.outboundExportDragRecognizer
 
-        XCTAssertEqual(recognizer.buttonMask, 0x1)
+        XCTAssertTrue(recognizer.delaysPrimaryMouseButtonEvents)
         XCTAssertEqual(recognizer.minimumPressDuration, NSEvent.doubleClickInterval)
         XCTAssertTrue(view.gestureRecognizers.contains { $0 === recognizer })
+    }
+
+    func testNativePressCallbacksReachBothExportersBeforeAndAfterRefresh() async throws {
+        let first = try makeDocument(markdown: "# Native drag\n\nA preview page.")
+        let second = try makeDocument(markdown: "# Refreshed drag\n\nA new preview page.")
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 760, height: 890),
+            styleMask: [.titled], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let container = BufferedPDFPreviewView(frame: NSRect(x: 0, y: 0, width: 760, height: 890))
+        container.stagingDelay = 0
+        window.contentView = container
+        var exports: [ExportFormat] = []
+        var errors = 0
+        func event(_ type: NSEvent.EventType, modifiers: NSEvent.ModifierFlags) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: NSPoint(x: 320, y: 410), modifierFlags: modifiers,
+                timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        }
+        for (revision, rendered) in [first, second].enumerated() {
+            container.display(rendered.document, data: rendered.data, revision: UInt64(revision))
+            await nextMainQueueTurn()
+            await nextMainQueueTurn()
+            for preferred in ExportFormat.allCases {
+                container.updateDragPayload(format: preferred, fileName: "Native drag.\(preferred.pathExtension)",
+                    dataProvider: { exports.append(preferred); throw PreviewTestError.example },
+                    alternateDataProvider: { exports.append(preferred.alternate); throw PreviewTestError.example },
+                    onError: { _ in errors += 1 })
+                for modifiers: NSEvent.ModifierFlags in [[], .option] {
+                    let view = container.activeView
+                    view.currentDragModifierFlags = { modifiers }
+                    let recognizer = view.outboundExportDragRecognizer
+                    recognizer.minimumPressDuration = 0.01
+                    // Enter through native mouse callbacks, never the export handler.
+                    // The retained drag event must work even without NSApp.currentEvent.
+                    recognizer.mouseDown(with: event(.leftMouseDown, modifiers: modifiers))
+                    let deadline = Date().addingTimeInterval(0.03)
+                    while Date() < deadline { RunLoop.main.run(mode: .eventTracking, before: deadline) }
+                    XCTAssertEqual(view.outboundExportDragFeedbackView.image?.accessibilityDescription,
+                        "\(preferred.forAction(modifierFlags: modifiers).displayName) export")
+                    let previousCount = exports.count
+                    recognizer.mouseDragged(with: event(.leftMouseDragged, modifiers: modifiers))
+                    XCTAssertEqual(exports.count, previousCount + 1)
+                    XCTAssertEqual(exports.last, preferred.forAction(modifierFlags: modifiers))
+                    recognizer.mouseUp(with: event(.leftMouseUp, modifiers: modifiers))
+                    recognizer.reset()
+                    XCTAssertNil(view.outboundExportDragFeedbackView.image)
+                }
+            }
+        }
+        XCTAssertEqual(exports.count, 8)
+        XCTAssertEqual(errors, 8)
     }
 
     func testOutboundExportDragShowsReadinessThumbnailBeforeMouseMovement() throws {

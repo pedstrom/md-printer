@@ -20,6 +20,7 @@ description: Use when validating, staging, or committing Markdown Printer change
 
 1. Choose the display version and a strictly higher build number. Update both `CFBundleShortVersionString` and `CFBundleVersion`, every current-version assertion or download label, and `release-notes/<display-version>.md`.
 2. Complete the Change Flow and commit the verified source before packaging.
+   Include native acceptance of the existing document workflow: Open, Save, Print, Find, text selection, and hold-and-drag export. Physically hold the preview until its badge appears, drop both PDF and Word into a local Finder test folder, verify names and contents, and repeat after a live source refresh. Check Option switching during a held and active drag. Handler calls, recognizer callback tests, and an app launch alone do not replace this acceptance; report any unperformed step before preparing a release for publication.
 3. Confirm that Sparkle's EdDSA private key is available only through the login Keychain and that a protected, recoverable backup exists outside the repository. Keep only `SUPublicEDKey` in tracked files.
 4. From the verified commit, run `scripts/build-and-run/package_release.sh` with the full Developer ID Application identity and the notarytool Keychain profile. Require Apple acceptance, a stapled ticket, Gatekeeper acceptance, a validated universal ZIP, correct runtime linkage, and valid nested signatures.
 5. Require `build/release-assets/v<display-version>/` to contain exactly:

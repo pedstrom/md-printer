@@ -1146,6 +1146,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     private var readinessFormat: ExportFormat?
     private var pendingDragError: Error?
     private var isDraggingExport = false
+    var currentDragModifierFlags: () -> NSEvent.ModifierFlags = { NSEvent.modifierFlags }
     var automaticallyTakesFocus = true
     private(set) lazy var outboundExportDragFeedbackView: NSImageView = {
         let imageView = NSImageView()
@@ -1160,10 +1161,16 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         imageView.setAccessibilityHidden(true)
         return imageView
     }()
-    private(set) lazy var outboundExportDragRecognizer: NSPressGestureRecognizer = {
-        let recognizer = NSPressGestureRecognizer(target: self, action: #selector(handleOutboundPDFDrag(_:)))
-        recognizer.buttonMask = 0x1
-        recognizer.minimumPressDuration = NSEvent.doubleClickInterval
+    private(set) lazy var outboundExportDragRecognizer: ExportDragGestureRecognizer = {
+        let recognizer = ExportDragGestureRecognizer(target: nil, action: nil)
+        recognizer.onStateChanged = { [weak self] recognizer, state in
+            guard let self else { return }
+            self.handleOutboundExportDrag(
+                state: state,
+                event: recognizer.mouseEvent,
+                location: recognizer.location(in: self)
+            )
+        }
         return recognizer
     }()
 
@@ -1428,7 +1435,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         _ session: NSDraggingSession,
         movedTo screenPoint: NSPoint
     ) {
-        updateOutboundExportDrag(modifierFlags: NSEvent.modifierFlags)
+        updateOutboundExportDrag(modifierFlags: currentDragModifierFlags())
     }
 
     func draggingSession(
@@ -1456,15 +1463,6 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         addGestureRecognizer(outboundExportDragRecognizer)
     }
 
-    @objc
-    private func handleOutboundPDFDrag(_ recognizer: NSPressGestureRecognizer) {
-        handleOutboundExportDrag(
-            state: recognizer.state,
-            event: NSApp.currentEvent,
-            location: recognizer.location(in: self)
-        )
-    }
-
     func handleOutboundExportDrag(
         state: NSGestureRecognizer.State,
         event: NSEvent?,
@@ -1473,9 +1471,9 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         switch state {
         case .began:
             guard !isDraggingExport, let dragPayload else { return }
-            let payload = dragPayload.forAction(modifierFlags: event?.modifierFlags ?? NSEvent.modifierFlags)
+            let payload = dragPayload.forAction(modifierFlags: event?.modifierFlags ?? currentDragModifierFlags())
             showOutboundExportDragFeedback(at: location, format: payload.format)
-            dragModifierMonitor.start { [weak self] flags in
+            dragModifierMonitor.start(modifierFlags: currentDragModifierFlags) { [weak self] flags in
                 self?.updateOutboundExportDrag(modifierFlags: flags)
             }
         case .changed:
