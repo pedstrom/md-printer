@@ -109,14 +109,15 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
         let pageSetup = session?.hasExplicitPageSetup == true
             ? session?.activePageSetup
             : nil
-        guard frame != nil || viewport != nil || thumbnails != nil || pageSetup != nil else {
+        guard frame != nil || viewport != nil || thumbnails != nil || pageSetup != nil || session?.hasOriginal == true else {
             return nil
         }
         return DocumentWindowRestorationState(
             frame: frame,
             viewport: viewport,
             thumbnails: thumbnails,
-            explicitPageSetup: pageSetup
+            explicitPageSetup: pageSetup,
+            originalSnapshotID: session?.originalSnapshot?.id
         )
     }
 

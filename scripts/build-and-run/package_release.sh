@@ -36,6 +36,7 @@ codesign \
     "$ROOT/QuickLookExtension/MarkdownPrinterQuickLook/MarkdownPrinterQuickLook.entitlements" \
   --sign "$SIGNING_IDENTITY" \
   "$STAGED_APP_PATH/Contents/PlugIns/MarkdownPrinterQuickLook.appex"
+codesign --force --options runtime --timestamp --sign "$SIGNING_IDENTITY" "$STAGED_APP_PATH/Contents/MacOS/MarkdownPrinterCLI"
 codesign \
   --force \
   --options runtime \
@@ -49,6 +50,7 @@ codesign --verify --deep --strict --verbose=2 "$STAGED_APP_PATH"
 
 SPARKLE_VERSION="$STAGED_APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
 EMBEDDED_CODE=(
+  "$STAGED_APP_PATH/Contents/MacOS/MarkdownPrinterCLI"
   "$STAGED_APP_PATH/Contents/PlugIns/MarkdownPrinterQuickLook.appex"
   "$SPARKLE_VERSION/XPCServices/Downloader.xpc"
   "$SPARKLE_VERSION/XPCServices/Installer.xpc"
@@ -120,6 +122,7 @@ xcrun stapler validate --verbose "$VALIDATED_APP_PATH"
 spctl --assess --type execute --verbose=4 "$VALIDATED_APP_PATH"
 
 ARCHITECTURE_TARGETS=(
+  "$VALIDATED_APP_PATH/Contents/MacOS/MarkdownPrinterCLI"
   "$VALIDATED_APP_PATH/Contents/MacOS/MarkdownPrinter"
   "$VALIDATED_APP_PATH/Contents/PlugIns/MarkdownPrinterQuickLook.appex/Contents/MacOS/MarkdownPrinterQuickLook"
   "$VALIDATED_APP_PATH/Contents/Frameworks/Sparkle.framework/Versions/B/Sparkle"

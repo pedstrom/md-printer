@@ -6,14 +6,20 @@ public final class MarkdownRenderer {
     public let remoteImageCache: RemoteImageCache?
     private let parser: MarkdownParser
     private let fonts: FontBook
+    private let tracksRevisions: Bool
+    private let imageReferencesOnly: Bool
     private let unavailableImageAttachment: ((String, CGFloat) -> NSTextAttachment)?
 
     public init(
         configuration: RendererConfiguration = RendererConfiguration(),
         parser: MarkdownParser = MarkdownParser(),
         remoteImageCache: RemoteImageCache? = nil,
-        unavailableImageAttachment: ((String, CGFloat) -> NSTextAttachment)? = nil
+        unavailableImageAttachment: ((String, CGFloat) -> NSTextAttachment)? = nil,
+        tracksRevisions: Bool = false,
+        imageReferencesOnly: Bool = false
     ) {
+        self.tracksRevisions = tracksRevisions
+        self.imageReferencesOnly = imageReferencesOnly
         self.configuration = configuration
         self.parser = parser
         self.remoteImageCache = remoteImageCache
@@ -25,6 +31,20 @@ public final class MarkdownRenderer {
         let text = NSMutableAttributedString(attributedString: render(blocks: document.blocks, baseURL: document.baseURL))
         MarkdownSectionCatalog(blocks: document.blocks).annotate(text, sourceURL: document.sourceURL)
         return text
+    }
+
+    public func render(document: MarkdownDocument, original: MarkdownDocument?) -> RevisionRenderedText {
+        guard let original else { return RevisionRenderedText(text: render(document: document), decorations: RevisionDecorations()) }
+        let currentRenderer = MarkdownRenderer(configuration: configuration, remoteImageCache: remoteImageCache,
+                                               unavailableImageAttachment: unavailableImageAttachment, tracksRevisions: true)
+        let originalRenderer = MarkdownRenderer(configuration: configuration, tracksRevisions: true, imageReferencesOnly: true)
+        return RevisionFormatter.format(current: currentRenderer.render(document: document),
+                                        original: originalRenderer.render(document: original))
+    }
+
+    private func markRevisionUnit(_ text: NSMutableAttributedString, range: NSRange, kind: String) {
+        guard tracksRevisions, range.length > 0 else { return }
+        text.addAttributes([.revisionBlock: UUID().uuidString, .revisionKind: kind], range: range)
     }
 
     public func render(markdown: String, baseURL: URL? = nil) -> NSAttributedString {
@@ -68,6 +88,25 @@ public final class MarkdownRenderer {
         footnotes: FootnoteCatalog,
         listDepth: Int = 0
     ) {
+        let unitStart = result.length
+        defer {
+            let kind: String?
+            switch block {
+            case let .heading(level, _): kind = "heading:\(level)"
+            case .paragraph: kind = "paragraph"
+            case let .codeBlock(language, _): kind = "code:\(language ?? "")"
+            case .rawHTML: kind = "html"
+            case .thematicBreak: kind = "rule"
+            default: kind = nil
+            }
+            if let kind {
+                let range = NSRange(location: unitStart, length: result.length - unitStart)
+                markRevisionUnit(result, range: range, kind: kind)
+                if tracksRevisions, kind.hasPrefix("code:") || kind == "html" {
+                    result.addAttribute(.revisionLiteral, value: true, range: range)
+                }
+            }
+        }
         switch block {
         case let .heading(level, content):
             let size = configuration.headingSize(for: level)
@@ -106,6 +145,12 @@ public final class MarkdownRenderer {
                 .paragraphStyle: paragraph,
                 .font: fonts.italic(size: configuration.bodyFontSize)
             ], range: quote.fullRange)
+            if tracksRevisions {
+                quote.enumerateAttribute(.revisionKind, in: quote.fullRange) { kind, range, _ in
+                    guard let kind = kind as? String else { return }
+                    quote.addAttribute(.revisionKind, value: kind + ":quote", range: range)
+                }
+            }
             result.append(quote)
 
         case let .list(items, ordered, start, tight):
@@ -146,6 +191,12 @@ public final class MarkdownRenderer {
                             value: childParagraph,
                             range: NSRange(location: start, length: line.length - start)
                         )
+                    }
+                }
+                if tracksRevisions {
+                    line.enumerateAttribute(.revisionKind, in: line.fullRange) { kind, range, _ in
+                        guard let kind = kind as? String else { return }
+                        line.addAttribute(.revisionKind, value: kind + ":list:\(ordered):\(start):\(String(describing: item.checked))", range: range)
                     }
                 }
                 if line.string.hasSuffix("\n") {
@@ -279,6 +330,7 @@ public final class MarkdownRenderer {
             paragraph.lineSpacing = 1.5
             paragraph.headIndent = 18
             line.addAttribute(.paragraphStyle, value: paragraph, range: line.fullRange)
+            markRevisionUnit(line, range: line.fullRange, kind: "footnote:" + entry.label)
             result.append(line)
             result.append(NSAttributedString(string: "\n"))
         }
@@ -335,6 +387,7 @@ public final class MarkdownRenderer {
                     for: columnIndex < alignments.count ? alignments[columnIndex] : .leading
                 )
                 cell.addAttribute(.paragraphStyle, value: paragraph, range: cell.fullRange)
+                markRevisionUnit(cell, range: cell.fullRange, kind: "cell")
                 result.append(cell)
                 result.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: paragraph]))
             }
@@ -414,9 +467,11 @@ public final class MarkdownRenderer {
                 result.append(NSAttributedString(string: text, attributes: bodyAttributes(font: font)))
             case let .emphasis(children):
                 let child = renderInline(children, font: italicVariant(of: font), baseURL: baseURL, footnotes: footnotes)
+                markRevisionTrait("emphasis", in: child)
                 result.append(child)
             case let .strong(children):
                 let child = renderInline(children, font: boldVariant(of: font), baseURL: baseURL, footnotes: footnotes)
+                markRevisionTrait("strong", in: child)
                 result.append(child)
             case let .underline(children):
                 let child = renderInline(children, font: font, baseURL: baseURL, footnotes: footnotes)
@@ -427,6 +482,7 @@ public final class MarkdownRenderer {
                 child.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: child.fullRange)
                 result.append(child)
             case let .code(code):
+                let codeStart = result.length
                 result.append(NSAttributedString(
                     string: code,
                     attributes: [
@@ -435,13 +491,15 @@ public final class MarkdownRenderer {
                         .backgroundColor: configuration.codeBackgroundColor
                     ]
                 ))
-            case let .link(children, destination, _):
+                if tracksRevisions { result.addAttribute(.revisionLiteral, value: true, range: NSRange(location: codeStart, length: result.length - codeStart)) }
+            case let .link(children, destination, title):
                 let child = renderInline(children, font: font, baseURL: baseURL, footnotes: footnotes)
                 child.addAttributes([
                     .foregroundColor: configuration.accentColor,
                     .underlineStyle: NSUnderlineStyle.single.rawValue,
                     .link: linkDestination(destination, baseURL: baseURL)
                 ], range: child.fullRange)
+                if tracksRevisions { child.addAttribute(.revisionReference, value: destination + "|" + (title ?? ""), range: child.fullRange) }
                 result.append(child)
             case let .footnoteReference(label):
                 guard let number = footnotes.number(for: label) else {
@@ -462,8 +520,10 @@ public final class MarkdownRenderer {
                         .markdownFootnoteReference: label
                     ]
                 ))
-            case let .image(alt, source, _):
-                result.append(imageAttachment(alt: alt, source: source, baseURL: baseURL, font: font))
+            case let .image(alt, source, title):
+                let image = NSMutableAttributedString(attributedString: imageAttachment(alt: alt, source: source, baseURL: baseURL, font: font))
+                if tracksRevisions { image.addAttribute(.revisionImage, value: source + "|" + alt + "|" + (title ?? ""), range: image.fullRange) }
+                result.append(image)
             case let .rawHTML(source):
                 if let reference = HTMLImageReference(html: source) {
                     result.append(imageAttachment(
@@ -483,11 +543,26 @@ public final class MarkdownRenderer {
                         ]
                     ))
                 }
-            case .softBreak, .hardBreak:
+            case .softBreak:
                 result.append(NSAttributedString(string: "\n", attributes: bodyAttributes(font: font)))
+            case .hardBreak:
+                var attributes = bodyAttributes(font: font)
+                if tracksRevisions { attributes[.revisionHardBreak] = true }
+                result.append(NSAttributedString(string: "\n", attributes: attributes))
             }
         }
         return result
+    }
+
+    private func markRevisionTrait(_ trait: String, in text: NSMutableAttributedString) {
+        guard tracksRevisions else { return }
+        // A container can supply its own font after rendering children. Keep
+        // source styles separately so comparison still sees nested emphasis.
+        text.enumerateAttribute(.revisionTraits, in: text.fullRange) { value, range, _ in
+            var traits = Set(value as? [String] ?? [])
+            traits.insert(trait)
+            text.addAttribute(.revisionTraits, value: traits.sorted(), range: range)
+        }
     }
 
     private func linkDestination(_ destination: String, baseURL: URL?) -> Any {
@@ -501,6 +576,11 @@ public final class MarkdownRenderer {
         font: NSFont,
         requestedWidth: CGFloat? = nil
     ) -> NSAttributedString {
+        if imageReferencesOnly {
+            let text = NSMutableAttributedString(attachment: NSTextAttachment())
+            text.addAttribute(.revisionImage, value: source + "|" + alt + "|" + String(describing: requestedWidth), range: text.fullRange)
+            return text
+        }
         let maximumWidth = min(
             min(configuration.maximumImageWidth, configuration.contentWidth),
             requestedWidth ?? .greatestFiniteMagnitude
@@ -514,12 +594,14 @@ public final class MarkdownRenderer {
             if let unavailableImageAttachment {
                 return NSAttributedString(attachment: unavailableImageAttachment(source, maximumWidth))
             }
-            return imagePlaceholder(
+            let placeholder = NSMutableAttributedString(attributedString: imagePlaceholder(
                 alt: alt,
                 source: source,
                 font: font,
                 offersDownload: remoteURL != nil && remoteImageCache != nil
-            )
+            ))
+            if tracksRevisions { placeholder.addAttribute(.revisionImage, value: source + "|" + alt + "|" + String(describing: requestedWidth), range: placeholder.fullRange) }
+            return placeholder
         }
 
         let scale = min(1, maximumWidth / image.size.width)
@@ -531,7 +613,9 @@ public final class MarkdownRenderer {
             width: image.size.width * scale,
             height: image.size.height * scale
         )
-        return NSAttributedString(attachment: attachment)
+        let text = NSMutableAttributedString(attachment: attachment)
+        if tracksRevisions { text.addAttribute(.revisionImage, value: source + "|" + alt + "|" + String(describing: requestedWidth), range: text.fullRange) }
+        return text
     }
 
     private func imagePlaceholder(

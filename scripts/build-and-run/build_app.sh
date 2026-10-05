@@ -23,6 +23,9 @@ if [[ "${1:-}" != "--skip-build" ]]; then
     CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache" \
       SWIFTPM_CUSTOM_CACHE_PATH="$ROOT/.build/swiftpm-cache" \
       swift build --build-system native -c "$CONFIGURATION" --triple "$triple" --product MarkdownPrinter
+    CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache" \
+      SWIFTPM_CUSTOM_CACHE_PATH="$ROOT/.build/swiftpm-cache" \
+      swift build --build-system native -c "$CONFIGURATION" --triple "$triple" --product MarkdownPrinterCLI
   done
 fi
 
@@ -50,12 +53,14 @@ if [[ ! -d "$QUICK_LOOK_PRODUCT" ]]; then
 fi
 
 BINARIES=()
+CLI_BINARIES=()
 SPARKLE_FRAMEWORK=""
 for triple in "${TARGET_TRIPLES[@]}"; do
   BIN_PATH="$(CLANG_MODULE_CACHE_PATH="$ROOT/.build/module-cache" \
     SWIFTPM_CUSTOM_CACHE_PATH="$ROOT/.build/swiftpm-cache" \
     swift build --build-system native -c "$CONFIGURATION" --triple "$triple" --show-bin-path)"
   BINARIES+=("$BIN_PATH/MarkdownPrinter")
+  CLI_BINARIES+=("$BIN_PATH/MarkdownPrinterCLI")
   if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
     SPARKLE_FRAMEWORK="$BIN_PATH/Sparkle.framework"
   fi
@@ -111,6 +116,8 @@ iconutil -c icns "$DOCUMENT_ICONSET" \
   -o "$CONTENTS/Resources/MarkdownDocumentIcon.icns"
 
 lipo -create "${BINARIES[@]}" -output "$CONTENTS/MacOS/MarkdownPrinter"
+lipo -create "${CLI_BINARIES[@]}" -output "$CONTENTS/MacOS/MarkdownPrinterCLI"
+codesign --force --sign - "$CONTENTS/MacOS/MarkdownPrinterCLI"
 ditto "$SPARKLE_FRAMEWORK" "$CONTENTS/Frameworks/Sparkle.framework"
 ditto "$QUICK_LOOK_PRODUCT" "$CONTENTS/PlugIns/MarkdownPrinterQuickLook.appex"
 install_name_tool -add_rpath '@executable_path/../Frameworks' "$CONTENTS/MacOS/MarkdownPrinter"

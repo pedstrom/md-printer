@@ -28,24 +28,28 @@ public final class PDFExporter {
 
     public func pdfData(
         from attributedText: NSAttributedString,
-        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
+        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration(),
+        decorations: RevisionDecorations = RevisionDecorations()
     ) throws -> Data {
-        try render(from: attributedText, footers: footers).data
+        try render(from: attributedText, footers: footers, decorations: decorations).data
     }
 
     public func render(
         from attributedText: NSAttributedString,
-        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
+        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration(),
+        decorations: RevisionDecorations = RevisionDecorations()
     ) throws -> PDFRenderResult {
         let output = try makePDFOutput()
         let pages = makePages(for: attributedText)
+        let revisionNotes = try revisionNotes(for: decorations, text: attributedText, pages: pages)
         let navigation = footnoteNavigation(in: attributedText, pages: pages)
         let sections = sectionDestinations(in: attributedText, pages: pages)
         let sectionLinks = sectionReferences(in: attributedText, pages: pages)
         for (pageIndex, page) in pages.enumerated() {
             draw(
                 page: page, pageNumber: pageIndex + 1, footers: footers,
-                navigation: navigation, sections: sections, sectionLinks: sectionLinks, in: output.context
+                navigation: navigation, sections: sections, sectionLinks: sectionLinks,
+                decorations: decorations, revisionNotes: revisionNotes.filter { $0.page == pageIndex }, in: output.context
             )
         }
         return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections)
@@ -53,17 +57,20 @@ public final class PDFExporter {
 
     public func pdfDataAsync(
         from attributedText: NSAttributedString,
-        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
+        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration(),
+        decorations: RevisionDecorations = RevisionDecorations()
     ) async throws -> Data {
-        try await renderAsync(from: attributedText, footers: footers).data
+        try await renderAsync(from: attributedText, footers: footers, decorations: decorations).data
     }
 
     public func renderAsync(
         from attributedText: NSAttributedString,
-        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
+        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration(),
+        decorations: RevisionDecorations = RevisionDecorations()
     ) async throws -> PDFRenderResult {
         let output = try makePDFOutput()
         let pages = await makePagesAsync(for: attributedText)
+        let revisionNotes = try revisionNotes(for: decorations, text: attributedText, pages: pages)
         let navigation = footnoteNavigation(in: attributedText, pages: pages)
         let sections = sectionDestinations(in: attributedText, pages: pages)
         let sectionLinks = sectionReferences(in: attributedText, pages: pages)
@@ -71,7 +78,8 @@ public final class PDFExporter {
             try Task.checkCancellation()
             draw(
                 page: page, pageNumber: pageIndex + 1, footers: footers,
-                navigation: navigation, sections: sections, sectionLinks: sectionLinks, in: output.context
+                navigation: navigation, sections: sections, sectionLinks: sectionLinks,
+                decorations: decorations, revisionNotes: revisionNotes.filter { $0.page == pageIndex }, in: output.context
             )
             await Task.yield()
         }
@@ -174,6 +182,8 @@ public final class PDFExporter {
         navigation: [FootnoteLink],
         sections: [String: PDFSectionDestination],
         sectionLinks: [SectionPDFLink],
+        decorations: RevisionDecorations,
+        revisionNotes: [RevisionPDFNote],
         in context: CGContext
     ) {
         context.beginPDFPage(nil)
@@ -185,7 +195,30 @@ public final class PDFExporter {
         NSGraphicsContext.current = graphicsContext
         let origin = CGPoint(x: configuration.pageMargins.left, y: configuration.pageMargins.top)
         page.layoutManager.drawBackground(forGlyphRange: page.glyphRange, at: origin)
+        drawRevisionRanges(decorations.highlights, on: page, origin: origin, border: false)
         page.layoutManager.drawGlyphs(forGlyphRange: page.glyphRange, at: origin)
+        drawRevisionRanges(decorations.images, on: page, origin: origin, border: true)
+        for note in revisionNotes {
+            let font = FontBook(configuration: configuration).regular(size: 7)
+            RevisionAnnotationLayout.draw(label: note.label, frame: note.frame, font: font, context: context)
+            if abs(note.frame.minX - note.anchor.x) > 3 || abs(note.frame.minY - note.anchor.y) > 16 {
+                let leader = NSBezierPath()
+                leader.move(to: note.anchor)
+                if note.isMargin, let cell = note.cellBounds {
+                    // Leave through this cell's padding, then cross below the
+                    // row so the leader does not run across neighboring text.
+                    let exitX = cell.maxX + 2
+                    let exitY = cell.maxY - 0.5
+                    leader.line(to: CGPoint(x: exitX, y: note.anchor.y))
+                    leader.line(to: CGPoint(x: exitX, y: exitY))
+                    leader.line(to: CGPoint(x: note.frame.minX, y: exitY))
+                }
+                leader.line(to: CGPoint(x: note.frame.minX, y: note.frame.minY))
+                leader.lineWidth = 0.4
+                RevisionFormatter.deletionColor.setStroke()
+                leader.stroke()
+            }
+        }
         drawFooter(pageNumber: pageNumber, footers: footers)
         NSGraphicsContext.restoreGraphicsState()
         context.restoreGState()
@@ -197,6 +230,143 @@ public final class PDFExporter {
             context.setDestination("section-\(link.anchor)" as CFString, for: link.bounds)
         }
         context.endPDFPage()
+    }
+
+    private func drawRevisionRanges(_ ranges: [NSRange], on page: TextPage, origin: CGPoint, border: Bool) {
+        for range in ranges {
+            let glyphs = NSIntersectionRange(page.glyphRange, page.layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil))
+            guard glyphs.length > 0 else { continue }
+            if !border {
+                drawTextHighlight(glyphs, on: page, origin: origin)
+                continue
+            }
+            if let attachment = page.layoutManager.textStorage?.attribute(.attachment, at: range.location, effectiveRange: nil) as? NSTextAttachment,
+               !attachment.bounds.isEmpty {
+                // TextKit ignores the stored image baseline offset. Its glyph
+                // frame supplies the origin but can include font descenders;
+                // preserve the image's own dimensions for the border.
+                let glyphFrame = page.layoutManager.boundingRect(
+                    forGlyphRange: NSRange(location: glyphs.location, length: 1),
+                    in: page.textContainer
+                )
+                let rect = CGRect(origin: CGPoint(x: origin.x + glyphFrame.minX, y: origin.y + glyphFrame.minY),
+                                  size: attachment.bounds.size)
+                RevisionFormatter.imageBorderColor.setStroke()
+                let path = NSBezierPath(rect: rect.insetBy(dx: 1, dy: 1))
+                path.lineWidth = 2
+                path.stroke()
+                continue
+            }
+            page.layoutManager.enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: page.textContainer) { rect, _ in
+                let rect = rect.offsetBy(dx: origin.x, dy: origin.y)
+                RevisionFormatter.imageBorderColor.setStroke()
+                let path = NSBezierPath(rect: rect.insetBy(dx: 1, dy: 1))
+                path.lineWidth = 2
+                path.stroke()
+            }
+        }
+    }
+
+    private func drawTextHighlight(_ glyphs: NSRange, on page: TextPage, origin: CGPoint) {
+        guard let text = page.layoutManager.textStorage else { return }
+        let string = text.string as NSString
+        func blankEdge(_ glyph: Int) -> Bool {
+            let character = page.layoutManager.characterIndexForGlyph(at: glyph)
+            guard character < string.length else { return true }
+            let value = string.substring(with: string.rangeOfComposedCharacterSequence(at: character))
+            if value.contains("\n") || value.contains("\r") { return true }
+            return text.attribute(.revisionLiteral, at: character, effectiveRange: nil) as? Bool != true
+                && value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        RevisionFormatter.highlightColor.setFill()
+        page.layoutManager.enumerateLineFragments(forGlyphRange: glyphs) { _, _, _, lineGlyphs, _ in
+            let selected = NSIntersectionRange(glyphs, lineGlyphs)
+            var start = selected.location, end = NSMaxRange(selected)
+            while start < end && blankEdge(start) { start += 1 }
+            while end > start && blankEdge(end - 1) { end -= 1 }
+            guard end > start else { return }
+            let rect = page.layoutManager.boundingRect(forGlyphRange: NSRange(location: start, length: end - start), in: page.textContainer)
+                .offsetBy(dx: origin.x, dy: origin.y)
+            NSBezierPath(rect: rect).fill()
+        }
+    }
+
+    private func revisionNotes(for decorations: RevisionDecorations, text: NSAttributedString, pages: [TextPage]) throws -> [RevisionPDFNote] {
+        guard !decorations.deletions.isEmpty else { return [] }
+        let origin = CGPoint(x: configuration.pageMargins.left, y: configuration.pageMargins.top)
+        let content = CGRect(x: origin.x, y: origin.y, width: configuration.contentWidth,
+                             height: configuration.pageSize.height - configuration.pageMargins.top - configuration.pageMargins.bottom)
+        let pageRect = CGRect(origin: .zero, size: configuration.pageSize)
+        let font = FontBook(configuration: configuration).regular(size: 7)
+        var result: [RevisionPDFNote] = []
+        for (index, page) in pages.enumerated() {
+            var occupied: [CGRect] = []
+            page.layoutManager.enumerateLineFragments(forGlyphRange: page.glyphRange) { _, used, _, glyphs, _ in
+                occupied.append(self.revisionInkBounds(glyphs: glyphs, page: page, text: text, fallback: used)
+                    .offsetBy(dx: origin.x, dy: origin.y))
+            }
+            let characters = page.layoutManager.characterRange(forGlyphRange: page.glyphRange, actualGlyphRange: nil)
+            for note in decorations.deletions {
+                let location = min(max(0, note.location), text.length)
+                let lastPage = index == pages.count - 1
+                guard (location >= characters.location && location < NSMaxRange(characters))
+                    || (lastPage && location == text.length) else { continue }
+                var anchor = origin
+                var line = CGRect(x: origin.x, y: origin.y, width: 0, height: 0)
+                if page.glyphRange.length > 0 {
+                    let character = min(location, max(0, text.length - 1))
+                    let glyph = page.layoutManager.glyphIndexForCharacter(at: character)
+                    let fragment = page.layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+                    let glyphPosition = page.layoutManager.location(forGlyphAt: glyph)
+                    var lineGlyphs = NSRange()
+                    let used = page.layoutManager.lineFragmentUsedRect(forGlyphAt: glyph, effectiveRange: &lineGlyphs)
+                    line = revisionInkBounds(glyphs: lineGlyphs, page: page, text: text, fallback: used)
+                        .offsetBy(dx: origin.x, dy: origin.y)
+                    anchor = CGPoint(x: origin.x + glyphPosition.x + fragment.minX, y: line.maxY)
+                    if location == text.length {
+                        anchor.x = origin.x + page.layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: page.textContainer).maxX
+                    }
+                }
+                let cellBounds = RevisionAnnotationLayout.tableCellBounds(at: location, in: text,
+                    layoutManager: page.layoutManager, origin: origin)
+                if let cellBounds {
+                    anchor.x = min(max(anchor.x, cellBounds.minX), cellBounds.maxX)
+                    anchor.y = min(max(anchor.y, cellBounds.minY), cellBounds.maxY)
+                }
+                let placed = try RevisionAnnotationLayout.place(label: note.label, anchor: anchor, line: line, content: content,
+                    page: pageRect, occupied: occupied, notes: result.filter { $0.page == index }.map(\.frame), font: font,
+                    cellBounds: cellBounds)
+                result.append(RevisionPDFNote(page: index, anchor: anchor, frame: placed.0, label: placed.1,
+                    cellBounds: cellBounds, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX))
+            }
+        }
+        return result
+    }
+
+    /// TextKit's used line rectangles include leading. Only visible glyph ink
+    /// occupies the gap where an overlay can fit; attachments keep full bounds.
+    private func revisionInkBounds(glyphs: NSRange, page: TextPage, text: NSAttributedString, fallback: CGRect) -> CGRect {
+        var result = CGRect.null
+        for index in glyphs.location..<NSMaxRange(glyphs) {
+            let character = page.layoutManager.characterIndexForGlyph(at: index)
+            guard character < text.length else { continue }
+            if text.attribute(.attachment, at: character, effectiveRange: nil) != nil { return fallback }
+            guard let font = text.attribute(.font, at: character, effectiveRange: nil) as? NSFont else { continue }
+            let string = text.string as NSString
+            let visible = string.substring(with: string.rangeOfComposedCharacterSequence(at: character))
+            // TextKit can substitute a different font for Unicode glyphs. Its
+            // full line bounds are the conservative choice in that case.
+            guard visible.unicodeScalars.allSatisfy({ font.coveredCharacterSet.contains($0) || $0.properties.isWhitespace }) else { return fallback }
+            let bounds = font.boundingRect(forGlyph: page.layoutManager.glyph(at: index))
+            guard !bounds.isEmpty else { continue }
+            let position = page.layoutManager.location(forGlyphAt: index)
+            let fragment = page.layoutManager.lineFragmentRect(forGlyphAt: index, effectiveRange: nil)
+            let ink = CGRect(x: fragment.minX + position.x + bounds.minX,
+                             y: fragment.minY + position.y - bounds.maxY,
+                             width: bounds.width, height: bounds.height)
+            result = result.union(ink)
+        }
+        return result.isNull ? fallback : result
     }
 
     private func finishPDFOutput(_ output: PDFOutput) throws -> Data {

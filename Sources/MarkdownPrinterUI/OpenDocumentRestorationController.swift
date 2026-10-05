@@ -131,17 +131,20 @@ package struct DocumentWindowRestorationState: Equatable {
     let viewport: PersistedPreviewViewport?
     let thumbnails: PersistedThumbnailSidebar?
     let explicitPageSetup: DocumentPageSetup?
+    let originalSnapshotID: UUID?
 
     package init(
         frame: CGRect?,
         viewport: PersistedPreviewViewport?,
         thumbnails: PersistedThumbnailSidebar? = nil,
-        explicitPageSetup: DocumentPageSetup? = nil
+        explicitPageSetup: DocumentPageSetup? = nil,
+        originalSnapshotID: UUID? = nil
     ) {
         self.frame = frame
         self.viewport = viewport
         self.thumbnails = thumbnails
         self.explicitPageSetup = explicitPageSetup
+        self.originalSnapshotID = originalSnapshotID
     }
 
     fileprivate var propertyList: [String: Any] {
@@ -160,6 +163,7 @@ package struct DocumentWindowRestorationState: Equatable {
         if let thumbnails {
             result["thumbnails"] = thumbnails.propertyList
         }
+        if let originalSnapshotID { result["originalSnapshotID"] = originalSnapshotID.uuidString }
         if let explicitPageSetup,
            let data = try? JSONEncoder().encode(explicitPageSetup) {
             result["pageSetup"] = data
@@ -183,6 +187,7 @@ package struct DocumentWindowRestorationState: Equatable {
         thumbnails = (propertyList["thumbnails"] as? [String: Any]).flatMap(
             PersistedThumbnailSidebar.init(propertyList:)
         )
+        originalSnapshotID = (propertyList["originalSnapshotID"] as? String).flatMap(UUID.init(uuidString:))
         explicitPageSetup = (propertyList["pageSetup"] as? Data).flatMap {
             try? JSONDecoder().decode(DocumentPageSetup.self, from: $0)
         }
@@ -339,13 +344,17 @@ public final class OpenDocumentRestorationController: ObservableObject {
     }
 
     private let defaults: UserDefaults
+    private let originalCoordinator: DocumentOriginalCoordinator
+    private let collectsOriginals: Bool
     private var openDocumentCounts: [URL: Int] = [:]
     private var stateProviders: [URL: [StateProviderRegistration]] = [:]
     private var pendingWindowStates: [URL: DocumentWindowRestorationState] = [:]
     private var isPreparingUpdateRelaunch = false
 
-    public init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard, originalCoordinator: DocumentOriginalCoordinator? = nil) {
         self.defaults = defaults
+        self.originalCoordinator = originalCoordinator ?? .shared
+        collectsOriginals = originalCoordinator != nil || defaults === UserDefaults.standard
         refreshReopenAvailability()
     }
 
@@ -415,7 +424,18 @@ public final class OpenDocumentRestorationController: ObservableObject {
         } else {
             defaults.set(workspace.propertyList, forKey: Self.lastSessionKey)
         }
+        collectOriginalSnapshots()
         refreshReopenAvailability()
+    }
+
+    private func collectOriginalSnapshots() {
+        guard collectsOriginals else { return }
+        var retained = Set(lastSessionWorkspace()?.groups.flatMap(\.tabs).compactMap { $0.windowState?.originalSnapshotID } ?? [])
+        if let record = defaults.dictionary(forKey: Self.pendingRelaunchKey),
+           let plist = record["workspace"] as? [String: Any], let workspace = WorkspaceSnapshot(propertyList: plist) {
+            retained.formUnion(workspace.groups.flatMap(\.tabs).compactMap { $0.windowState?.originalSnapshotID })
+        }
+        originalCoordinator.collect(retaining: retained)
     }
 
     package func reopenLastSession() {
@@ -456,6 +476,10 @@ public final class OpenDocumentRestorationController: ObservableObject {
         for tab in workspace.groups.flatMap(\.tabs) {
             guard let url = tab.documentURL, let state = tab.windowState else { continue }
             pendingWindowStates[url.standardizedFileURL] = state
+            if let id = state.originalSnapshotID {
+                do { try originalCoordinator.enqueue(MarkdownOpenRequest(fileURL: url, originalID: id)) }
+                catch { originalCoordinator.reportRestorationError(error, for: url) }
+            }
         }
     }
 

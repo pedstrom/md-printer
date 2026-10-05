@@ -30,6 +30,16 @@ To render a Markdown file from the command line:
 scripts/build-and-run/render_markdown.sh Examples/showcase.md /private/tmp/showcase.pdf
 ```
 
+The universal app also bundles `Contents/MacOS/MarkdownPrinterCLI`. Its ordinary opening command supports an optional original:
+
+```sh
+"build/Markdown Printer.app/Contents/MacOS/MarkdownPrinterCLI" open current.md --original older.md
+"build/Markdown Printer.app/Contents/MacOS/MarkdownPrinterCLI" open first.md second.md
+```
+
+The launcher sends local app URLs to its containing app, including when already running. Original Markdown snapshots live in local application support, with only their identifiers in window-restoration metadata. Snapshots referenced by open sessions, pending handoffs, or saved workspaces are retained; other snapshots are pruned when the workspace is captured. Comparison mapping and PDF decorations are macOS-only and leave the shared parser and ordinary rendering unchanged. DOCX uses highlights, image borders, and nonwrapping text-anchored callouts rather than tracked deletions in the body.
+
+
 ### Build and install the iPhone and iPad app
 
 Personal builds and modifications are welcome. The mobile code is source-available under the [Markdown Printer iOS Source-Available License 1.0](../LICENSE-IOS.md): use at work and free sharing are allowed, while monetized redistribution of the code, app, or derivatives requires Peter Edstrom's written permission. The Mac app and shared core remain [MIT-licensed](../LICENSE), and earlier MIT grants remain valid.

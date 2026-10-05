@@ -175,7 +175,14 @@ package final class DocumentPageActionController: ObservableObject {
             _ = try session.printOperation().run()
         }
         self.clearingPageSetup = clearingPageSetup ?? { session in
-            try session.clearPageSetupOverride()
+            if session.hasOriginal {
+                Task {
+                    do { try await session.clearPageSetupOverrideAsync() }
+                    catch { session.report(error: error) }
+                }
+            } else {
+                try session.clearPageSetupOverride()
+            }
         }
     }
 
@@ -200,7 +207,14 @@ package final class DocumentPageActionController: ObservableObject {
                 case .cancelled:
                     return
                 case let .accepted(pageSetup):
-                    try session.applyExplicitPageSetup(pageSetup)
+                    if session.hasOriginal {
+                        Task {
+                            do { try await session.applyExplicitPageSetupAsync(pageSetup) }
+                            catch { session.report(error: error) }
+                        }
+                    } else {
+                        try session.applyExplicitPageSetup(pageSetup)
+                    }
                 case .useDefault:
                     try clearingPageSetup(session)
                 }

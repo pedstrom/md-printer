@@ -6,6 +6,7 @@ import MarkdownPrinterCore
 @MainActor
 public final class DocumentSession: ObservableObject {
     @Published public private(set) var renderedSnapshot: RenderedDocumentSnapshot?
+    @Published public private(set) var originalSnapshot: OriginalDocumentSnapshot?
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var isSourceUnavailable = false
     public static let sourceUnavailableMessage = "Source file unavailable. Showing the last rendered version."
@@ -24,11 +25,17 @@ public final class DocumentSession: ObservableObject {
     private let sourceMonitorFactory: (URL, @escaping () -> Void) -> SourceChangeMonitoring
     private let remoteImageDownloader: any RemoteImageDownloading
     private var sourceMonitor: SourceChangeMonitoring?
+    private var sourceMonitoringRequested = false
     private var sourceMonitorLifetime: SourceMonitorLifetime?
     private var monitoredSourceURL: URL?
     private var sourceUnavailableSince: TimeInterval?
     private var pendingSourceRetry: DispatchWorkItem?
     private let sourceRecoveryGraceInterval: TimeInterval
+    private var requestedDocument: MarkdownDocument?
+    private var requestedPageSetup: DocumentPageSetup?
+    private var requestedExplicitPageSetup: Bool?
+    private var committedOriginalSnapshot: OriginalDocumentSnapshot?
+    private var nextOriginalRevision: UInt64 = 0
     private var nextRenderRevision: UInt64 = 0
     private var nextPreparationRevision: UInt64 = 0
 
@@ -178,16 +185,44 @@ public final class DocumentSession: ObservableObject {
         }
     }
 
+    public var hasOriginal: Bool { originalSnapshot != nil }
+
+    public func setOriginalSnapshot(_ snapshot: OriginalDocumentSnapshot?) async throws {
+        nextOriginalRevision &+= 1
+        let originalRevision = nextOriginalRevision
+        originalSnapshot = snapshot
+        guard let document = requestedDocument ?? document else {
+            committedOriginalSnapshot = snapshot
+            return
+        }
+        do { try await rebuildAsync(document: document, pageSetup: requestedPageSetup ?? activePageSetup) }
+        catch {
+            guard originalRevision == nextOriginalRevision else { return }
+            originalSnapshot = committedOriginalSnapshot
+            throw error
+        }
+    }
+
+    private func prepareOriginal(for document: MarkdownDocument) throws {
+        requestedDocument = document
+        if let pending = try DocumentOriginalCoordinator.shared.register(self, for: document.sourceURL) {
+            nextOriginalRevision &+= 1
+            originalSnapshot = pending
+        }
+    }
+
     public func apply(_ document: MarkdownDocument) throws {
+        try prepareOriginal(for: document)
         try rebuild(document: document, pageSetup: activePageSetup)
     }
 
     public func applyAsync(_ document: MarkdownDocument) async throws {
-        try await rebuildAsync(document: document, pageSetup: activePageSetup)
+        try prepareOriginal(for: document)
+        try await rebuildAsync(document: document, pageSetup: requestedPageSetup ?? activePageSetup)
     }
 
     public func applyExplicitPageSetup(_ pageSetup: DocumentPageSetup) throws {
-        if let document {
+        if let document = requestedDocument ?? document {
             try rebuild(document: document, pageSetup: pageSetup, explicit: true)
         } else {
             activePageSetup = pageSetup
@@ -197,8 +232,27 @@ public final class DocumentSession: ObservableObject {
 
     public func clearPageSetupOverride() throws {
         let pageSetup = pagePreferences?.defaultPageSetup ?? .letter
-        if let document {
+        if let document = requestedDocument ?? document {
             try rebuild(document: document, pageSetup: pageSetup, explicit: false)
+        } else {
+            activePageSetup = pageSetup
+            hasExplicitPageSetup = false
+        }
+    }
+
+    public func applyExplicitPageSetupAsync(_ pageSetup: DocumentPageSetup) async throws {
+        if let document = requestedDocument ?? document {
+            try await rebuildAsync(document: document, pageSetup: pageSetup, explicit: true)
+        } else {
+            activePageSetup = pageSetup
+            hasExplicitPageSetup = true
+        }
+    }
+
+    public func clearPageSetupOverrideAsync() async throws {
+        let pageSetup = pagePreferences?.defaultPageSetup ?? .letter
+        if let document = requestedDocument ?? document {
+            try await rebuildAsync(document: document, pageSetup: pageSetup, explicit: false)
         } else {
             activePageSetup = pageSetup
             hasExplicitPageSetup = false
@@ -212,6 +266,9 @@ public final class DocumentSession: ObservableObject {
         footers: ResolvedFooterConfiguration? = nil,
         clearsError: Bool = true
     ) throws {
+        requestedDocument = document
+        requestedPageSetup = nil
+        requestedExplicitPageSetup = nil
         nextPreparationRevision &+= 1
         isPreparingDocument = false
         let nextConfiguration = baseRendererConfiguration.applying(pageSetup)
@@ -223,12 +280,11 @@ public final class DocumentSession: ObservableObject {
             configuration: nextConfiguration,
             pageSetup: pageSetup
         )
-        let nextRenderedText = NSAttributedString(
-            attributedString: nextRenderer.render(document: document)
-        )
+        let revision = nextRenderer.render(document: document, original: originalSnapshot?.document)
+        let nextRenderedText = revision.text
         let footers = footers ?? pagePreferences?.resolvedFooters(for: document)
             ?? ResolvedFooterConfiguration()
-        let nextPDF = try nextExporter.render(from: nextRenderedText, footers: footers)
+        let nextPDF = try nextExporter.render(from: nextRenderedText, footers: footers, decorations: revision.decorations)
         nextRenderRevision &+= 1
         renderer = nextRenderer
         exporter = nextExporter
@@ -241,8 +297,10 @@ public final class DocumentSession: ObservableObject {
             sectionDestinations: nextPDF.sectionDestinations,
             pageSetup: pageSetup,
             footers: footers,
-            revision: nextRenderRevision
+            revision: nextRenderRevision,
+            decorations: revision.decorations
         )
+        committedOriginalSnapshot = originalSnapshot
         if clearsError { errorMessage = nil }
         documentSourceDidCommit()
     }
@@ -253,34 +311,55 @@ public final class DocumentSession: ObservableObject {
         explicit: Bool? = nil,
         footers: ResolvedFooterConfiguration? = nil
     ) async throws {
+        requestedDocument = document
+        let explicit = explicit ?? requestedExplicitPageSetup
+        requestedPageSetup = pageSetup
+        requestedExplicitPageSetup = explicit
         nextPreparationRevision &+= 1
         let preparationRevision = nextPreparationRevision
         isPreparingDocument = true
         defer {
             if preparationRevision == nextPreparationRevision {
                 isPreparingDocument = false
+                requestedPageSetup = nil
+                requestedExplicitPageSetup = nil
             }
         }
         let nextConfiguration = baseRendererConfiguration.applying(pageSetup)
         let resolvedFooters = footers ?? pagePreferences?.resolvedFooters(for: document)
             ?? ResolvedFooterConfiguration()
+        let original = originalSnapshot
         let job = DocumentAttributedTextJob(
             document: document,
             configuration: nextConfiguration,
-            remoteImageCache: remoteImageCache
+            remoteImageCache: remoteImageCache,
+            original: original?.document
         )
-        let preparedText = try await Task.detached(priority: .userInitiated) {
+        let preparedText: PreparedAttributedText
+        do {
+            preparedText = try await Task.detached(priority: .userInitiated) {
+                try Task.checkCancellation()
+                return job.run()
+            }.value
             try Task.checkCancellation()
-            return job.run()
-        }.value
+        } catch {
+            guard preparationRevision == nextPreparationRevision else { return }
+            throw error
+        }
         let renderedText = preparedText.value
-        try Task.checkCancellation()
+        let revision = preparedText.decorations
         guard preparationRevision == nextPreparationRevision else { return }
-        let pdf = try await PDFExporter(
-            configuration: nextConfiguration,
-            pageSetup: pageSetup
-        ).renderAsync(from: renderedText, footers: resolvedFooters)
-        try Task.checkCancellation()
+        let pdf: PDFRenderResult
+        do {
+            pdf = try await PDFExporter(
+                configuration: nextConfiguration,
+                pageSetup: pageSetup
+            ).renderAsync(from: renderedText, footers: resolvedFooters, decorations: revision)
+            try Task.checkCancellation()
+        } catch {
+            guard preparationRevision == nextPreparationRevision else { return }
+            throw error
+        }
         guard preparationRevision == nextPreparationRevision else { return }
 
         nextRenderRevision &+= 1
@@ -298,8 +377,10 @@ public final class DocumentSession: ObservableObject {
             sectionDestinations: pdf.sectionDestinations,
             pageSetup: pageSetup,
             footers: resolvedFooters,
-            revision: nextRenderRevision
+            revision: nextRenderRevision,
+            decorations: revision
         )
+        committedOriginalSnapshot = original
         errorMessage = nil
         documentSourceDidCommit()
     }
@@ -337,6 +418,7 @@ public final class DocumentSession: ObservableObject {
     }
 
     public func startMonitoringSourceChanges() {
+        sourceMonitoringRequested = true
         guard let sourceURL = document?.sourceURL else { return }
         if sourceMonitor?.sourceURL == sourceURL.standardizedFileURL,
            sourceMonitor?.isMonitoring == true {
@@ -345,6 +427,7 @@ public final class DocumentSession: ObservableObject {
         }
 
         stopMonitoringSourceChanges()
+        sourceMonitoringRequested = true
         let monitor = sourceMonitorFactory(sourceURL) { [weak self] in
             self?.reloadSourceIfChanged()
         }
@@ -356,6 +439,7 @@ public final class DocumentSession: ObservableObject {
     }
 
     public func stopMonitoringSourceChanges() {
+        sourceMonitoringRequested = false
         sourceMonitor?.stop()
         sourceMonitorLifetime?.cancel()
         sourceMonitorLifetime = nil
@@ -376,7 +460,14 @@ public final class DocumentSession: ObservableObject {
             }
             let nextDocument = preservingKnownModificationDate(in: try MarkdownDocument.load(from: sourceURL))
             if nextDocument != document {
-                try rebuild(document: nextDocument, pageSetup: activePageSetup, clearsError: false)
+                if hasOriginal {
+                    Task {
+                        do { try await rebuildAsync(document: nextDocument, pageSetup: requestedPageSetup ?? activePageSetup) }
+                        catch { report(error: error) }
+                    }
+                } else {
+                    try rebuild(document: nextDocument, pageSetup: activePageSetup, clearsError: false)
+                }
             }
             monitor.start()
             clearSourceRecovery()
@@ -386,8 +477,10 @@ public final class DocumentSession: ObservableObject {
     }
 
     private func documentSourceDidCommit() {
+        DocumentOriginalCoordinator.shared.updateRegistration(self, for: document?.sourceURL)
         guard sourceMonitor?.isMonitoring == true else {
             clearSourceRecovery()
+            if sourceMonitoringRequested { startMonitoringSourceChanges() }
             return
         }
         guard let sourceURL = document?.sourceURL?.standardizedFileURL else {
@@ -509,7 +602,8 @@ public final class DocumentSession: ObservableObject {
             return try wordExporter.wordData(
                 from: renderedSnapshot.renderedText,
                 pageSetup: renderedSnapshot.pageSetup,
-                footers: renderedSnapshot.footers
+                footers: renderedSnapshot.footers,
+                decorations: renderedSnapshot.decorations
             )
         }
     }
@@ -536,20 +630,21 @@ public final class DocumentSession: ObservableObject {
         )
         .dropFirst()
         .sink { [weak self] defaultPageSetup, leftFooter, rightFooter in
-            guard let self, let document = self.document else { return }
-            let pageSetup = self.hasExplicitPageSetup ? self.activePageSetup : defaultPageSetup
+            guard let self, let document = self.requestedDocument ?? self.document else { return }
+            let hasExplicitPageSetup = self.requestedExplicitPageSetup ?? self.hasExplicitPageSetup
+            let pageSetup = hasExplicitPageSetup ? self.requestedPageSetup ?? self.activePageSetup : defaultPageSetup
             let footers = ResolvedFooterConfiguration(
                 left: leftFooter.resolved(for: document),
                 right: rightFooter.resolved(for: document)
             )
-            do {
-                try self.rebuild(
-                    document: document,
-                    pageSetup: pageSetup,
-                    footers: footers
-                )
-            } catch {
-                self.errorMessage = error.localizedDescription
+            if self.hasOriginal {
+                Task {
+                    do { try await self.rebuildAsync(document: document, pageSetup: pageSetup, footers: footers) }
+                    catch { self.errorMessage = error.localizedDescription }
+                }
+            } else {
+                do { try self.rebuild(document: document, pageSetup: pageSetup, footers: footers) }
+                catch { self.errorMessage = error.localizedDescription }
             }
         }
     }
@@ -563,28 +658,28 @@ public struct RenderedDocumentSnapshot {
     public let pageSetup: DocumentPageSetup
     public let footers: ResolvedFooterConfiguration
     public let revision: UInt64
+    public var decorations = RevisionDecorations()
 }
 
 private struct DocumentAttributedTextJob: @unchecked Sendable {
     let document: MarkdownDocument
     let configuration: RendererConfiguration
     let remoteImageCache: RemoteImageCache
+    let original: MarkdownDocument?
 
     func run() -> PreparedAttributedText {
         let renderer = MarkdownRenderer(
             configuration: configuration,
             remoteImageCache: remoteImageCache
         )
-        return PreparedAttributedText(
-            value: NSAttributedString(
-                attributedString: renderer.render(document: document)
-            )
-        )
+        let revision = renderer.render(document: document, original: original)
+        return PreparedAttributedText(value: revision.text, decorations: revision.decorations)
     }
 }
 
 private struct PreparedAttributedText: @unchecked Sendable {
     let value: NSAttributedString
+    let decorations: RevisionDecorations
 }
 
 private final class SourceMonitorLifetime {

@@ -122,9 +122,13 @@ public struct MarkdownPrinterView: View {
             Text(session.errorMessage ?? "An unknown error occurred.")
         }
         .onOpenURL { url in
-            guard let request = MarkdownLinkTarget.hostAppTarget(from: url) else { return }
-            sectionNavigation.enqueue(request)
-            openFiles([request.fileURL])
+            do {
+                guard let request = try MarkdownOpenRequest.parse(url),
+                      let navigation = MarkdownLinkTarget.hostAppTarget(from: url) else { return }
+                try DocumentOriginalCoordinator.shared.enqueue(request)
+                sectionNavigation.enqueue(navigation)
+                openFiles([request.fileURL])
+            } catch { session.report(error: error) }
         }
     }
 

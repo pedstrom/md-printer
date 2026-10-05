@@ -271,6 +271,7 @@ test -x "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Downloader.xpc/Contents/MacOS
 test -x "$SPARKLE_FRAMEWORK/Versions/B/XPCServices/Installer.xpc/Contents/MacOS/Installer"
 
 ARCHITECTURE_TARGETS=(
+  "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinterCLI"
   "build/Markdown Printer.app/Contents/MacOS/MarkdownPrinter"
   "build/Markdown Printer.app/Contents/PlugIns/MarkdownPrinterQuickLook.appex/Contents/MacOS/MarkdownPrinterQuickLook"
   "$SPARKLE_FRAMEWORK/Versions/B/Sparkle"

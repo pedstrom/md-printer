@@ -12,6 +12,7 @@ package final class DocumentActionController: NSObject, ObservableObject {
     private weak var session: DocumentSession?
     private weak var exportPreferences: ExportPreferences?
     private let activityCoordinator: ApplicationActivityCoordinator
+    private let presentOriginalPanel: @MainActor () -> URL?
     private let presentSavePanel: SavePanelPresenter
     private let fileStore: ExportDragFileStore
     private let revealFiles: ([URL]) -> Void
@@ -32,6 +33,13 @@ package final class DocumentActionController: NSObject, ObservableObject {
         revealFiles: @escaping ([URL]) -> Void = { urls in
             NSWorkspace.shared.activateFileViewerSelecting(urls)
         },
+        presentOriginalPanel: @escaping @MainActor () -> URL? = {
+            let panel = NSOpenPanel()
+            panel.title = "Choose Original Markdown Document"
+            panel.allowedContentTypes = [MarkdownFileDocument.markdownContentType]
+            panel.allowsMultipleSelection = false
+            return panel.runModal() == .OK ? panel.url : nil
+        },
         presentSharePicker: @escaping SharePickerPresenter = { picker, view, rect in
             picker.show(relativeTo: rect, of: view, preferredEdge: .minY)
         }
@@ -39,6 +47,7 @@ package final class DocumentActionController: NSObject, ObservableObject {
         self.session = session
         self.exportPreferences = exportPreferences
         self.activityCoordinator = activityCoordinator
+        self.presentOriginalPanel = presentOriginalPanel
         self.presentSavePanel = presentSavePanel
         self.fileStore = fileStore
         self.revealFiles = revealFiles
@@ -98,6 +107,40 @@ package final class DocumentActionController: NSObject, ObservableObject {
             } catch {
                 session.report(error: error)
             }
+        }
+    }
+
+    package var canCompare: Bool { session?.hasDocument == true }
+    package var canClearOriginal: Bool { session?.hasOriginal == true }
+
+    package func compareWithOlderVersion() {
+        guard let session, session.hasDocument else { return }
+        guard let url = activityCoordinator.performBlockingOperation(presentOriginalPanel) else { return }
+        applyOriginal(url: url)
+    }
+
+    package func applyOriginal(url: URL) {
+        guard let session else { return }
+        do {
+            let snapshot = OriginalDocumentSnapshot(document: try MarkdownDocument.load(from: url))
+            try DocumentOriginalCoordinator.shared.store.save(snapshot, pending: true)
+            Task {
+                do {
+                    try await session.setOriginalSnapshot(snapshot)
+                    DocumentOriginalCoordinator.shared.store.consume(snapshot.id)
+                } catch {
+                    DocumentOriginalCoordinator.shared.store.remove(snapshot.id)
+                    session.report(error: error)
+                }
+            }
+        } catch { session.report(error: error) }
+    }
+
+    package func clearOriginal() {
+        guard let session else { return }
+        Task {
+            do { try await session.setOriginalSnapshot(nil) }
+            catch { session.report(error: error) }
         }
     }
 

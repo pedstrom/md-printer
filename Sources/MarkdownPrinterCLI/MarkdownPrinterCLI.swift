@@ -7,6 +7,12 @@ struct MarkdownPrinterCLI {
     @MainActor
     static func main() async {
         let arguments = Array(CommandLine.arguments.dropFirst())
+        if arguments.first == "open" {
+            do {
+                try await MarkdownOpenLauncher.launch(arguments, executable: URL(fileURLWithPath: CommandLine.arguments[0]))
+            } catch { fail(error.localizedDescription) }
+            return
+        }
         if arguments.count == 2, arguments[0] == "--benchmark" {
             guard let targetBytes = Int(arguments[1]), targetBytes > 0 else {
                 fail("Benchmark size must be a positive byte count.")

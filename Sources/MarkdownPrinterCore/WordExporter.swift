@@ -2,10 +2,19 @@
 import AppKit
 import Foundation
 
+extension NSAttributedString.Key {
+    static let wordRevisionNoteGeometry = Self("MarkdownPrinter.wordRevisionNoteGeometry")
+    static let wordEmbeddedDrawing = Self("MarkdownPrinter.wordEmbeddedDrawing")
+    static let wordRevisionNotes = Self("MarkdownPrinter.wordRevisionNotes")
+}
+
 @MainActor
 public final class WordExporter {
     private let unzipURL: URL
     private let zipURL: URL
+    private static let tableGridWidth = 9_000
+    private static let tableCellHorizontalInset: CGFloat = 5.4
+    private static let tableCalloutRightAllowance: CGFloat = 8
 
     public init(
         unzipURL: URL = URL(fileURLWithPath: "/usr/bin/unzip"),
@@ -18,10 +27,55 @@ public final class WordExporter {
     public func wordData(
         from attributedText: NSAttributedString,
         pageSetup: DocumentPageSetup = .letter,
-        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration()
+        footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration(),
+        decorations: RevisionDecorations = RevisionDecorations()
     ) throws -> Data {
+        let decorated = NSMutableAttributedString(attributedString: attributedText)
+        for range in decorations.highlights {
+            decorated.addAttributes([.backgroundColor: RevisionFormatter.highlightColor, .revisionHighlight: true], range: range)
+        }
+        for range in decorations.images { decorated.addAttribute(.revisionImageChanged, value: true, range: range) }
+        if decorated.length == 0, !decorations.deletions.isEmpty { decorated.append(NSAttributedString(string: "\u{200b}")) }
+        let noteLayout = NSLayoutManager()
+        let noteStorage = decorations.deletions.isEmpty ? nil : NSTextStorage(attributedString: decorated)
+        defer { withExtendedLifetime(noteStorage) {} }
+        if let storage = noteStorage {
+            storage.addLayoutManager(noteLayout)
+            let container = NSTextContainer(size: CGSize(width: max(1, pageSetup.pageSize.width - 108), height: 10_000_000))
+            container.lineFragmentPadding = 0
+            noteLayout.addTextContainer(container)
+            noteLayout.ensureLayout(for: container)
+        }
+        for note in decorations.deletions {
+            var index = min(note.location, max(0, decorated.length - 1))
+            let string = decorated.string as NSString
+            while index > 0, [10, 13].contains(string.character(at: index)) { index -= 1 }
+            // Anchor to a visible glyph. Splitting a tab into an attributed
+            // note run changes the native writer's whitespace expansion.
+            var visibleIndex = index
+            while visibleIndex < string.length - 1, [9, 32].contains(string.character(at: visibleIndex)) { visibleIndex += 1 }
+            if ![10, 13].contains(string.character(at: visibleIndex)) { index = visibleIndex }
+            let range = string.rangeOfComposedCharacterSequence(at: index)
+            var notes = decorated.attribute(.wordRevisionNotes, at: index, effectiveRange: nil) as? [RevisionDeletion] ?? []
+            notes.append(note)
+            decorated.addAttribute(.wordRevisionNotes, value: notes, range: range)
+            let glyph = noteLayout.glyphIndexForCharacter(at: range.location)
+            let fragment = noteLayout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let position = noteLayout.location(forGlyphAt: glyph)
+            let remaining = max(0, fragment.width - position.x)
+            let minimumWidth = minimumCalloutWidth(for: notes)
+            let width = min(240, max(42, max(minimumWidth, remaining)))
+            let font = decorated.attribute(.font, at: index, effectiveRange: nil) as? NSFont ?? NSFont.systemFont(ofSize: 10)
+            let geometry: CGRect
+            if let cellBounds = try tableCalloutBounds(at: index, in: decorated, minimumWidth: minimumWidth) {
+                geometry = CGRect(x: cellBounds.origin.x, y: ceil(font.ascender - font.descender) - 1, width: cellBounds.width, height: 10)
+            } else {
+                geometry = CGRect(x: min(0, remaining - width), y: ceil(font.ascender - font.descender) - 1, width: width, height: 10)
+            }
+            decorated.addAttribute(.wordRevisionNoteGeometry, value: NSValue(rect: geometry), range: range)
+        }
         let preparedDocument = try prepareDocument(
-            attributedText,
+            decorated,
             pageSetup: pageSetup,
             footers: footers
         )
@@ -35,6 +89,52 @@ public final class WordExporter {
 
     public func write(_ attributedText: NSAttributedString, to url: URL) throws {
         try wordData(from: attributedText).write(to: url, options: .atomic)
+    }
+
+    private func minimumCalloutWidth(for notes: [RevisionDeletion]) -> CGFloat {
+        let font = FontBook(configuration: RendererConfiguration()).regular(size: 7)
+        return notes.map { note in
+            let firstWord = note.text.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? ""
+            let informativeStem = String(firstWord.prefix(6))
+            let label = note.isImage ? note.label : "^ deleted \(informativeStem)…"
+            let full = (label as NSString).size(withAttributes: [.font: font]).width
+            let shifted = (String(label.dropFirst(2)) as NSString).size(withAttributes: [.font: font]).width + 8
+            return max(full, shifted)
+        }.max() ?? 0
+    }
+
+    private func tableCalloutBounds(at index: Int, in text: NSAttributedString, minimumWidth: CGFloat) throws -> CGRect? {
+        var cellRange = NSRange()
+        guard let style = text.attribute(.paragraphStyle, at: index, longestEffectiveRange: &cellRange,
+                                        in: NSRange(location: 0, length: text.length)) as? NSParagraphStyle,
+              let block = style.textBlocks.first as? NSTextTableBlock else { return nil }
+        let columns = max(1, block.table.numberOfColumns)
+        // Word tables use the existing equal-column grid, independently of PDF
+        // table widths. Leave room for Word's default cell margins and border.
+        let cellWidth = CGFloat(Self.tableGridWidth / columns) / 20
+        let contentWidth = max(0, cellWidth - 2 * Self.tableCellHorizontalInset - 1)
+        // Native Word can size an autofit column slightly narrower than its
+        // preferred grid and draw text wider than AppKit's measurement.
+        let calloutRight = max(0, contentWidth - Self.tableCalloutRightAllowance)
+        guard calloutRight >= minimumWidth else { throw RevisionAnnotationError.noSpace }
+        let cell = NSMutableAttributedString(attributedString: text.attributedSubstring(from: cellRange))
+        let paragraph = style.mutableCopy() as! NSMutableParagraphStyle
+        paragraph.textBlocks = []
+        paragraph.alignment = .left
+        cell.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: cell.length))
+        let storage = NSTextStorage(attributedString: cell)
+        defer { withExtendedLifetime(storage) {} }
+        let layout = NSLayoutManager()
+        storage.addLayoutManager(layout)
+        let container = NSTextContainer(size: CGSize(width: contentWidth, height: 10_000_000))
+        container.lineFragmentPadding = 0
+        layout.addTextContainer(container)
+        layout.ensureLayout(for: container)
+        let glyph = layout.glyphIndexForCharacter(at: index - cellRange.location)
+        let anchorX = max(0, layout.location(forGlyphAt: glyph).x)
+        let remaining = calloutRight - anchorX
+        let width = min(calloutRight, min(240, max(42, max(minimumWidth, remaining))))
+        return CGRect(x: min(0, remaining - width), y: 0, width: width, height: 10)
     }
 
     private func prepareDocument(
@@ -54,7 +154,11 @@ public final class WordExporter {
             images.append(WordImage(
                 token: "MDPRINTERIMAGE\(images.count)\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))",
                 range: range,
-                attachment: attachment
+                attachment: attachment,
+                destination: attributedText.attribute(.link, at: range.location, effectiveRange: nil).flatMap { Self.linkDestination(from: $0) },
+                changed: attributedText.attribute(.revisionImageChanged, at: range.location, effectiveRange: nil) as? Bool == true,
+                notes: calloutXML(attributedText.attribute(.wordRevisionNotes, at: range.location, effectiveRange: nil) as? [RevisionDeletion] ?? [],
+                    geometry: attributedText.attribute(.wordRevisionNoteGeometry, at: range.location, effectiveRange: nil) as? NSValue)
             ))
         }
 
@@ -89,7 +193,10 @@ public final class WordExporter {
         let tables = tables(in: attributedText)
         let quotes = quotes(in: attributedText)
         images.removeAll { image in tables.contains { NSIntersectionRange($0.range, image.range).length > 0 } }
-        links.removeAll { link in tables.contains { NSIntersectionRange($0.range, link.range).length > 0 } }
+        links.removeAll { link in
+            tables.contains { NSIntersectionRange($0.range, link.range).length > 0 }
+                || images.contains { $0.range == link.range }
+        }
         footnoteReferences.removeAll { reference in
             tables.contains { NSIntersectionRange($0.range, reference.range).length > 0 }
         }
@@ -103,8 +210,44 @@ public final class WordExporter {
             attributedText: attributedText
         ) + renderSectionLinks(in: attributedText, excluding: tables.map(\.range))
 
+        var revisionRuns: [WordRevisionRun] = []
+        attributedText.enumerateAttributes(in: NSRange(location: 0, length: attributedText.length)) { attributes, range, _ in
+            guard attributes[.wordRevisionNotes] != nil || attributes[.revisionHighlight] as? Bool == true
+                    || attributes[.revisionImageChanged] as? Bool == true,
+                  !(tables.map(\.range) + images.map(\.range) + links.map(\.range) + renderedFootnoteLinks.map(\.range))
+                    .contains(where: { NSIntersectionRange($0, range).length > 0 }) else { return }
+            // Leave paragraph boundaries and tabs in the native text. A single
+            // placeholder spanning them would collapse code lines or change
+            // the native writer's whitespace handling.
+            let string = attributedText.string as NSString
+            let initialRunCount = revisionRuns.count
+            var start = range.location
+            for index in range.location..<NSMaxRange(range) {
+                guard [9, 10, 13, 0x2028, 0x2029].contains(Int(string.character(at: index))) else { continue }
+                if index > start {
+                    let content = NSRange(location: start, length: index - start)
+                    revisionRuns.append(WordRevisionRun(token: "MDPRINTERREVISION" + UUID().uuidString.replacingOccurrences(of: "-", with: ""),
+                        range: content, xml: runXML(for: attributedText.attributedSubstring(from: content))))
+                }
+                start = index + 1
+            }
+            if start < NSMaxRange(range) {
+                let content = NSRange(location: start, length: NSMaxRange(range) - start)
+                revisionRuns.append(WordRevisionRun(token: "MDPRINTERREVISION" + UUID().uuidString.replacingOccurrences(of: "-", with: ""),
+                    range: content, xml: runXML(for: attributedText.attributedSubstring(from: content))))
+            }
+            if revisionRuns.count == initialRunCount, let notes = attributes[.wordRevisionNotes] as? [RevisionDeletion] {
+                // Whitespace-only code still needs an anchor. Insert a note-only
+                // marker after the native whitespace rather than replacing it.
+                revisionRuns.append(WordRevisionRun(token: "MDPRINTERREVISION" + UUID().uuidString.replacingOccurrences(of: "-", with: ""),
+                    range: NSRange(location: NSMaxRange(range), length: 0),
+                    xml: "<w:r>" + calloutXML(notes, geometry: attributes[.wordRevisionNoteGeometry] as? NSValue) + "</w:r>",
+                    attributesSourceLocation: range.location))
+            }
+        }
+
         guard !images.isEmpty || !links.isEmpty || !tables.isEmpty
-                || !renderedFootnoteLinks.isEmpty || !quotes.isEmpty else {
+                || !renderedFootnoteLinks.isEmpty || !quotes.isEmpty || !revisionRuns.isEmpty else {
             return PreparedWordDocument(
                 text: attributedText,
                 images: [],
@@ -123,7 +266,7 @@ public final class WordExporter {
         attributedText.enumerateAttribute(.markdownSectionAnchor, in: NSRange(location: 0, length: attributedText.length)) { value, _, _ in
             if let anchor = value as? String { sectionNames[anchor] = "MarkdownPrinterSection\(sectionNames.count)" }
         }
-        let renderedTables = tables.enumerated().map { render($0.element, index: $0.offset, sectionNames: sectionNames) }
+        let renderedTables = try tables.enumerated().map { try render($0.element, index: $0.offset, sectionNames: sectionNames) }
         let text = NSMutableAttributedString(attributedString: attributedText)
         let replacements = renderedImages.map {
             WordReplacement(
@@ -147,12 +290,18 @@ public final class WordExporter {
                 preservesParagraphStyle: $0.bookmarkAnchor.hasPrefix("MarkdownPrinterSection")
             )
         } + renderedTables.map {
+            // A table replacement covers its last cell's newline. Preserve that
+            // boundary so native Word serialization keeps following content in
+            // its own paragraph before the table placeholder is replaced.
             WordReplacement(
                 range: $0.range,
-                token: $0.token,
+                token: $0.token + "\n",
                 removedAttribute: nil,
                 preservesParagraphStyle: false
             )
+        } + revisionRuns.map {
+            WordReplacement(range: $0.range, token: $0.token, removedAttribute: .wordRevisionNotes,
+                preservesParagraphStyle: true, attributesSourceLocation: $0.attributesSourceLocation)
         } + quotes.map {
             WordReplacement(
                 range: $0.range,
@@ -161,6 +310,7 @@ public final class WordExporter {
                 preservesParagraphStyle: true
             )
         }
+        var revisionRunNumber = 0
         for replacement in replacements.sorted(by: {
             if $0.range.location != $1.range.location {
                 return $0.range.location > $1.range.location
@@ -168,7 +318,7 @@ public final class WordExporter {
             return $0.range.length > $1.range.length
         }) {
             var attributes = replacement.preservesParagraphStyle
-                ? attributedText.attributes(at: replacement.range.location, effectiveRange: nil)
+                ? attributedText.attributes(at: replacement.attributesSourceLocation ?? replacement.range.location, effectiveRange: nil)
                 : text.attributes(at: replacement.range.location, effectiveRange: nil)
             if let removedAttribute = replacement.removedAttribute {
                 attributes.removeValue(forKey: removedAttribute)
@@ -180,6 +330,13 @@ public final class WordExporter {
                 attributes.removeValue(forKey: .markdownFootnoteDefinition)
                 // Force a separate native Word run so removing the bookmark token keeps adjacent heading text.
                 if replacement.token.hasPrefix("MDPRINTERSECTION") { attributes[.kern] = 0.25 }
+                if replacement.token.hasPrefix("MDPRINTERREVISION") {
+                    revisionRunNumber += 1
+                    // Distinct temporary colors keep placeholders in separate
+                    // native runs without changing character widths or tabs.
+                    attributes[.foregroundColor] = NSColor(srgbRed: CGFloat(revisionRunNumber % 251 + 1) / 255,
+                        green: 0, blue: 1, alpha: 1)
+                }
             } else {
                 attributes.removeValue(forKey: .paragraphStyle)
             }
@@ -196,6 +353,7 @@ public final class WordExporter {
             footnoteLinks: renderedFootnoteLinks,
             tables: renderedTables,
             quotes: quotes,
+            revisionRuns: revisionRuns,
             pageSetup: pageSetup,
             footers: footers
         )
@@ -312,7 +470,10 @@ public final class WordExporter {
             range: image.range,
             pngData: pngData,
             widthEMU: max(Int64(size.width * 12_700), 12_700),
-            heightEMU: max(Int64(size.height * 12_700), 12_700)
+            heightEMU: max(Int64(size.height * 12_700), 12_700),
+            destination: image.destination,
+            changed: image.changed,
+            notes: image.notes
         )
     }
 
@@ -325,9 +486,31 @@ public final class WordExporter {
         )
     }
 
-    private func render(_ table: WordTable, index: Int, sectionNames: [String: String]) -> RenderedWordTable {
+    private func render(_ table: WordTable, index: Int, sectionNames: [String: String]) throws -> RenderedWordTable {
         var relationships: [String] = []
-        let xml = tableXML(for: table.cells) { attributes, run in
+        var media: [WordEmbeddedMedia] = []
+        let cells = try table.cells.map { cell in
+            let text = NSMutableAttributedString(attributedString: cell.text)
+            var attachments: [(NSTextAttachment, NSRange)] = []
+            text.enumerateAttribute(.attachment, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+                if let attachment = value as? NSTextAttachment { attachments.append((attachment, range)) }
+            }
+            for (attachment, range) in attachments {
+                let number = media.count
+                let fileName = "markdown-printer-table-\(index)-image-\(number).png"
+                let relationshipID = "rIdMarkdownPrinterTable\(index)Image\(number)"
+                let image = try render(WordImage(token: "", range: range, attachment: attachment, destination: nil,
+                    changed: text.attribute(.revisionImageChanged, at: range.location, effectiveRange: nil) as? Bool == true,
+                    notes: calloutXML(text.attribute(.wordRevisionNotes, at: range.location, effectiveRange: nil) as? [RevisionDeletion] ?? [],
+                    geometry: text.attribute(.wordRevisionNoteGeometry, at: range.location, effectiveRange: nil) as? NSValue)))
+                text.addAttribute(.wordEmbeddedDrawing, value: drawingXML(image: image, relationshipID: relationshipID,
+                    fileName: fileName, index: 10_000 + index * 1000 + number), range: range)
+                media.append(WordEmbeddedMedia(fileName: fileName, data: image.pngData))
+                relationships.append("<Relationship Id=\"\(relationshipID)\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"media/\(fileName)\"/>")
+            }
+            return WordTableCell(row: cell.row, column: cell.column, sourceRange: cell.sourceRange, text: text)
+        }
+        let xml = tableXML(for: cells) { attributes, run in
             if let anchor = attributes[.markdownSectionReference] as? String,
                let name = sectionNames[anchor] {
                 return "<w:hyperlink w:anchor=\"\(name)\">\(run)</w:hyperlink>"
@@ -339,7 +522,7 @@ public final class WordExporter {
             }
             return run
         }
-        return RenderedWordTable(token: table.token, range: table.range, tableXML: xml, relationships: relationships)
+        return RenderedWordTable(token: table.token, range: table.range, tableXML: xml, relationships: relationships, media: media)
     }
 
     private func renderSectionLinks(in text: NSAttributedString, excluding tables: [NSRange]) -> [RenderedWordFootnoteLink] {
@@ -447,29 +630,38 @@ public final class WordExporter {
         let nativeXML = documentXML as NSString
         let nativeTokens = document.images.map(\.token) + document.links.map(\.token)
             + document.footnoteLinks.map(\.token) + document.tables.map(\.token)
-            + document.quotes.map(\.token)
+            + document.quotes.map(\.token) + document.revisionRuns.map(\.token)
         let nativeTokenRanges = tokenRanges(in: nativeXML, expectedTokens: nativeTokens)
+        for run in document.revisionRuns {
+            guard let tokenRange = nativeTokenRanges[run.token],
+                  let range = elementRange(containing: tokenRange, opening: "<w:r>", closing: "</w:r>", in: nativeXML) else {
+                throw WordExporterError.packagingFailed
+            }
+            let nativeRun = nativeXML.substring(with: range)
+            var properties = ""
+            if let start = nativeRun.range(of: "<w:rPr>"),
+               let end = nativeRun.range(of: "</w:rPr>", range: start.lowerBound..<nativeRun.endIndex) {
+                properties = String(nativeRun[start.lowerBound..<end.upperBound])
+            }
+            // The native writer may put expanded tab spaces in the same run
+            // as a marker. Split only at the marker, retaining surrounding text.
+            let insertion = "</w:t></w:r>" + run.xml + "<w:r>" + properties + "<w:t xml:space=\"preserve\">"
+            xmlReplacements.append(WordXMLReplacement(range: tokenRange, value: insertion))
+        }
         for (offset, image) in document.images.enumerated() {
             let index = offset + 1
             let relationshipID = "rIdMarkdownPrinterImage\(index)"
             let fileName = "markdown-printer-image-\(index).png"
-            guard let range = elementRange(
-                containing: nativeTokenRanges[image.token],
-                opening: "<w:t",
-                closing: "</w:t>",
-                in: nativeXML
-            ) else {
+            guard let range = elementRange(containing: nativeTokenRanges[image.token], opening: "<w:r>", closing: "</w:r>", in: nativeXML) else {
                 throw WordExporterError.packagingFailed
             }
-            xmlReplacements.append(WordXMLReplacement(
-                range: range,
-                value: drawingXML(
-                    image: image,
-                    relationshipID: relationshipID,
-                    fileName: fileName,
-                    index: index
-                )
-            ))
+            var drawing = "<w:r>" + drawingXML(image: image, relationshipID: relationshipID, fileName: fileName, index: index) + "</w:r>"
+            if let destination = image.destination {
+                let linkID = "rIdMarkdownPrinterImageLink\(index)"
+                drawing = "<w:hyperlink r:id=\"\(linkID)\">" + drawing + "</w:hyperlink>"
+                relationshipFragments.append("<Relationship Id=\"\(linkID)\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\" Target=\"\(Self.escapeXML(destination))\" TargetMode=\"External\"/>")
+            }
+            xmlReplacements.append(WordXMLReplacement(range: range, value: drawing))
             relationshipFragments.append(
                 "<Relationship Id=\"\(relationshipID)\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\" Target=\"media/\(fileName)\"/>",
             )
@@ -523,6 +715,7 @@ public final class WordExporter {
             }
             xmlReplacements.append(WordXMLReplacement(range: range, value: table.tableXML))
             relationshipFragments.append(contentsOf: table.relationships)
+            for media in table.media { try media.data.write(to: mediaURL.appendingPathComponent(media.fileName), options: .atomic) }
         }
 
         documentXML = try applying(xmlReplacements, to: documentXML)
@@ -789,7 +982,7 @@ public final class WordExporter {
         let rows = Dictionary(grouping: cells, by: \.row)
         let maximumColumn = cells.map(\.column).max() ?? 0
         let columns = max(maximumColumn + 1, 1)
-        let gridWidth = 9_000 / columns
+        let gridWidth = Self.tableGridWidth / columns
         let grid = (0..<columns).map { _ in "<w:gridCol w:w=\"\(gridWidth)\"/>" }.joined()
         let rowXML = rows.keys.sorted().map { row in
             let cellsByColumn = Dictionary(uniqueKeysWithValues: rows[row, default: []].map { ($0.column, $0) })
@@ -806,6 +999,11 @@ public final class WordExporter {
         guard text.length > 0 else { return "<w:r><w:t></w:t></w:r>" }
         var xml = ""
         text.enumerateAttributes(in: NSRange(location: 0, length: text.length)) { attributes, range, _ in
+            if let drawing = attributes[.wordEmbeddedDrawing] as? String {
+                let run = "<w:r>" + drawing + "</w:r>"
+                xml += linkRun?(attributes, run) ?? run
+                return
+            }
             let value = (text.string as NSString).substring(with: range)
             let font = attributes[.font] as? NSFont
             var properties = ""
@@ -821,10 +1019,42 @@ public final class WordExporter {
             if let baselineOffset = attributes[.baselineOffset] as? NSNumber {
                 properties += "<w:position w:val=\"\(Int(baselineOffset.doubleValue * 2))\"/>"
             }
-            let run = "<w:r><w:rPr>\(properties)</w:rPr><w:t xml:space=\"preserve\">\(Self.escapeXML(value))</w:t></w:r>"
+            if attributes[.revisionHighlight] as? Bool == true { properties += "<w:highlight w:val=\"yellow\"/>" }
+            if attributes[.revisionImageChanged] as? Bool == true { properties += "<w:bdr w:val=\"single\" w:sz=\"16\" w:space=\"0\" w:color=\"EBBA00\"/>" }
+            if let color = (attributes[.foregroundColor] as? NSColor)?.usingColorSpace(.deviceRGB) {
+                properties += String(format: "<w:color w:val=\"%02X%02X%02X\"/>", Int(color.redComponent * 255), Int(color.greenComponent * 255), Int(color.blueComponent * 255))
+            }
+            let run = "<w:r><w:rPr>\(properties)</w:rPr><w:t xml:space=\"preserve\">\(Self.escapeXML(value == "\u{200b}" ? "" : value))</w:t></w:r>"
+            let notes = attributes[.wordRevisionNotes] as? [RevisionDeletion] ?? []
+            if !notes.isEmpty { xml += "<w:r>" + calloutXML(notes, geometry: attributes[.wordRevisionNoteGeometry] as? NSValue) + "</w:r>" }
             xml += linkRun?(attributes, run) ?? run
         }
         return xml
+    }
+
+    private func calloutXML(_ notes: [RevisionDeletion], geometry: NSValue? = nil) -> String {
+        let font = FontBook(configuration: RendererConfiguration()).regular(size: 7)
+        let bounds = geometry?.rectValue ?? CGRect(x: 0, y: 12, width: 240, height: 10)
+        func box(_ label: String, x: CGFloat, y: CGFloat, width: CGFloat) -> String {
+            """
+            <w:pict><v:rect xmlns:v="urn:schemas-microsoft-com:vml" id="Revision\(UUID().uuidString)" style="position:absolute;margin-left:\(x)pt;margin-top:\(y)pt;width:\(width)pt;height:10pt;z-index:1;mso-position-horizontal-relative:char;mso-position-vertical-relative:line" filled="f" stroked="f"><v:textbox inset="0,0,0,0"><w:txbxContent><w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="\(Self.escapeXML(font.familyName ?? font.fontName))" w:hAnsi="\(Self.escapeXML(font.familyName ?? font.fontName))"/><w:sz w:val="14"/><w:color w:val="C70F14"/></w:rPr><w:t xml:space="preserve">\(Self.escapeXML(label))</w:t></w:r></w:p></w:txbxContent></v:textbox><w10:wrap xmlns:w10="urn:schemas-microsoft-com:office:word" type="none"/></v:rect></w:pict>
+            """
+        }
+        return notes.enumerated().map { index, note in
+            let y = bounds.minY + CGFloat(index * 10)
+            let label = RevisionAnnotationLayout.truncate(note.label, width: bounds.width, font: font)
+            guard bounds.minX < 0 else { return box(label, x: 0, y: y, width: bounds.width) }
+            let caretWidth = min(8, bounds.width)
+            let caretX = min(0, bounds.maxX - caretWidth)
+            let caret = box("^", x: caretX, y: y, width: caretWidth)
+            let shiftedWidth = max(0, bounds.width - caretWidth)
+            let shifted = box(RevisionAnnotationLayout.truncate(String(note.label.dropFirst(2)), width: shiftedWidth, font: font),
+                              x: bounds.minX, y: y, width: shiftedWidth)
+            let leader = """
+            <w:pict><v:line xmlns:v="urn:schemas-microsoft-com:vml" from="0,0" to="\(-bounds.minX),0" strokecolor="#C70F14" strokeweight="0.4pt" style="position:absolute;margin-left:\(bounds.minX)pt;margin-top:\(y)pt;mso-position-horizontal-relative:char;mso-position-vertical-relative:line"><w10:wrap xmlns:w10="urn:schemas-microsoft-com:office:word" type="none"/></v:line></w:pict>
+            """
+            return caret + shifted + leader
+        }.joined()
     }
 
     private static func escapeXML(_ value: String) -> String {
@@ -842,8 +1072,9 @@ public final class WordExporter {
         fileName: String,
         index: Int
     ) -> String {
-        """
-        <w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><wp:extent cx="\(image.widthEMU)" cy="\(image.heightEMU)"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="\(1000 + index)" name="Image \(index)"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="\(fileName)"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="\(relationshipID)"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="\(image.widthEMU)" cy="\(image.heightEMU)"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>
+        let border = image.changed ? "<a:ln w=\"25400\"><a:solidFill><a:srgbClr val=\"EBBA00\"/></a:solidFill></a:ln>" : ""
+        return image.notes + """
+        <w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><wp:extent cx="\(image.widthEMU)" cy="\(image.heightEMU)"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="\(1000 + index)" name="Image \(index)"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="\(fileName)"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="\(relationshipID)"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="\(image.widthEMU)" cy="\(image.heightEMU)"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom>\(border)</pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>
         """
     }
 
@@ -892,6 +1123,7 @@ private struct PreparedWordDocument {
     let footnoteLinks: [RenderedWordFootnoteLink]
     let tables: [RenderedWordTable]
     let quotes: [RenderedWordQuote]
+    var revisionRuns: [WordRevisionRun] = []
     let pageSetup: DocumentPageSetup
     let footers: ResolvedFooterConfiguration
 
@@ -900,11 +1132,19 @@ private struct PreparedWordDocument {
     }
 }
 
+private struct WordRevisionRun {
+    let token: String
+    let range: NSRange
+    let xml: String
+    var attributesSourceLocation: Int? = nil
+}
+
 private struct WordReplacement {
     let range: NSRange
     let token: String
     let removedAttribute: NSAttributedString.Key?
     let preservesParagraphStyle: Bool
+    var attributesSourceLocation: Int? = nil
 }
 
 private struct WordXMLReplacement {
@@ -921,6 +1161,9 @@ private struct WordImage {
     let token: String
     let range: NSRange
     let attachment: NSTextAttachment
+    let destination: String?
+    let changed: Bool
+    let notes: String
 }
 
 private struct RenderedWordImage {
@@ -929,6 +1172,9 @@ private struct RenderedWordImage {
     let pngData: Data
     let widthEMU: Int64
     let heightEMU: Int64
+    let destination: String?
+    let changed: Bool
+    let notes: String
 }
 
 private struct WordLink {
@@ -970,10 +1216,16 @@ private struct WordTableCell {
     }
 }
 
+private struct WordEmbeddedMedia {
+    let fileName: String
+    let data: Data
+}
+
 private struct RenderedWordTable {
     let token: String
     let range: NSRange
     let tableXML: String
     let relationships: [String]
+    var media: [WordEmbeddedMedia] = []
 }
 #endif
