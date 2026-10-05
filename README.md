@@ -37,6 +37,8 @@ Markdown Printer implements selected CommonMark 0.31.2 syntax rather than claimi
 
 On Mac, background source changes never require dismissing a read-error dialog. If a source temporarily disappears or cannot be read, the last successful preview remains visible while the app retries. After about two seconds, a compact banner says “Source file unavailable. Showing the last rendered version.” A successful read refreshes the document as needed and clears the banner, including when its content is unchanged. Confirmed renames and moves update the source filename, relative image/link folder, and window restoration location automatically. If the source stays unavailable, you can close the window and open another file.
 
+After a normal quit, **File → Reopen Windows from Last Session** restores your Mac documents, tabs, window positions and sizes, preview zoom, and scroll positions. Installing an app update restores the same workspace automatically. Windows stay on an available screen if a display has been disconnected; changed document pagination uses the saved page-relative reading position.
+
 ## Install
 
 ### Mac

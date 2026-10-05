@@ -18,6 +18,10 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
     private var isActive = false
     private var restoreSequence: UInt64 = 0
 
+    private var documentWindow: NSWindow? {
+        preview?.window ?? window
+    }
+
     package init(
         sourceURL: URL?,
         restorationController: OpenDocumentRestorationController,
@@ -44,7 +48,6 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
             self?.captureState()
         }
         applyPendingPageSetupIfPossible()
-        applyPendingFrameIfPossible()
         scheduleViewportRestorationIfPossible()
     }
 
@@ -62,7 +65,7 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
         let wasActive = isActive
         if wasActive { deactivate() }
         sourceURL = url
-        if let window {
+        if let window = documentWindow {
             window.representedURL = url
             NSDocumentController.shared.document(for: window)?.fileURL = url
         }
@@ -71,18 +74,23 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
 
     package func attach(window: NSWindow?) {
         self.window = window
-        applyPendingFrameIfPossible()
         scheduleViewportRestorationIfPossible()
     }
 
     package func attach(preview: BufferedPDFPreviewView) {
+        if self.preview !== preview {
+            self.preview?.restorationLayoutDidChange = nil
+        }
         self.preview = preview
+        preview.restorationLayoutDidChange = { [weak self] in
+            self?.scheduleViewportRestorationIfPossible()
+        }
         scheduleViewportRestorationIfPossible()
     }
 
     package func attach(previewContainer: PDFPreviewContainerView) {
         self.previewContainer = previewContainer
-        self.preview = previewContainer.previewView
+        attach(preview: previewContainer.previewView)
         if let pendingThumbnails {
             self.pendingThumbnails = nil
             previewContainer.restoreThumbnailRestorationState(pendingThumbnails)
@@ -95,7 +103,7 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
     }
 
     private func captureState() -> DocumentWindowRestorationState? {
-        let frame = window?.frame
+        let frame = documentWindow?.frame
         let viewport = preview?.capturePersistedViewport()
         let thumbnails = previewContainer?.captureThumbnailRestorationState()
         let pageSetup = session?.hasExplicitPageSetup == true
@@ -123,7 +131,7 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
     }
 
     private func applyPendingFrameIfPossible() {
-        guard let pendingFrame, let window else { return }
+        guard let pendingFrame, let window = documentWindow else { return }
         self.pendingFrame = nil
         let visibleFrames = NSScreen.screens.map(\.visibleFrame)
         guard let adjustedFrame = DocumentWindowFrameRestorationPolicy.adjustedFrame(
@@ -135,25 +143,32 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
 
     private func scheduleViewportRestorationIfPossible() {
         guard isActive,
-              window != nil,
-              pendingFrame == nil,
-              pendingViewport != nil,
-              preview?.activeView.document != nil
+              documentWindow != nil,
+              pendingFrame != nil || pendingViewport != nil
         else { return }
 
         restoreSequence &+= 1
         let requestedSequence = restoreSequence
-        Task { @MainActor [weak self] in
-            await Task.yield()
-            await Task.yield()
-            guard let self,
-                  self.isActive,
-                  self.restoreSequence == requestedSequence,
-                  let viewport = self.pendingViewport,
-                  let preview = self.preview
-            else { return }
-            self.pendingViewport = nil
-            preview.restorePersistedViewport(viewport)
+        // Attachment precedes SwiftUI's initial placement and native tab layout.
+        // Use main-queue turns instead of task yields, which need not advance layout.
+        DispatchQueue.main.async { [weak self] in
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.isActive,
+                      self.restoreSequence == requestedSequence,
+                      let window = self.documentWindow
+                else { return }
+                self.applyPendingFrameIfPossible()
+                window.contentView?.layoutSubtreeIfNeeded()
+                self.preview?.layoutSubtreeIfNeeded()
+                guard let viewport = self.pendingViewport,
+                      let preview = self.preview,
+                      preview.window === window,
+                      preview.canRestorePersistedViewport
+                else { return }
+                self.pendingViewport = nil
+                preview.restorePersistedViewport(viewport)
+            }
         }
     }
 }

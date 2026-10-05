@@ -93,7 +93,7 @@ package enum MarkdownPrinterHelpContent {
             .windowsAndTabs,
             "Windows, Tabs, and Reopening",
             "Open a new window or tab from the File menu. Native window tabs preserve their order and selected tab during workspace restoration.",
-            "After a normal quit, choose File → Reopen Windows from Last Session to restore saved local documents and their window layout. Relaunches after an app update restore the same workspace automatically."
+            "After a normal quit, choose File → Reopen Windows from Last Session to restore saved local documents, window positions and sizes, preview zoom, and scroll positions. Relaunches after an app update restore the same workspace automatically. If a display is disconnected, windows move onto an available screen."
         ),
         section(
             .pageSetupAndPrinting,

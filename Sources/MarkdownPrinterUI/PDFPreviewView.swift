@@ -475,13 +475,14 @@ struct PreviewViewport {
 }
 
 extension PersistedPreviewViewport {
-    init(viewport: PreviewViewport) {
+    init(viewport: PreviewViewport, scrollPosition: PersistedPreviewScrollPosition?) {
         self.init(
             scaleFactor: Double(viewport.scaleFactor),
             pageIndex: viewport.pageIndex,
             normalizedPageX: Double(viewport.normalizedPagePoint.x),
             normalizedPageY: Double(viewport.normalizedPagePoint.y),
-            documentProgress: Double(viewport.documentProgress)
+            documentProgress: Double(viewport.documentProgress),
+            scrollPosition: scrollPosition
         )
     }
 
@@ -496,6 +497,33 @@ extension PersistedPreviewViewport {
             documentProgress: CGFloat(documentProgress),
             textAnchors: []
         )
+    }
+}
+
+private extension PersistedPreviewScrollPosition {
+    static func capture(from view: PDFView) -> Self? {
+        guard let documentView = view.documentView,
+              let clip = documentView.enclosingScrollView?.contentView,
+              clip.bounds.width > 0, clip.bounds.height > 0
+        else { return nil }
+        return Self(offset: clip.bounds.origin, documentSize: documentView.bounds.size,
+                    viewportSize: clip.bounds.size)
+    }
+
+    func restore(in view: PDFView) {
+        guard let documentView = view.documentView,
+              let scrollView = documentView.enclosingScrollView
+        else { return }
+        let clip = scrollView.contentView
+        // Exact offsets include horizontal panning and the space between pages.
+        // Changed pagination or a smaller screen uses the page-relative fallback.
+        guard abs(documentView.bounds.width - documentSize.width) < 0.5,
+              abs(documentView.bounds.height - documentSize.height) < 0.5,
+              abs(clip.bounds.width - viewportSize.width) < 0.5,
+              abs(clip.bounds.height - viewportSize.height) < 0.5
+        else { return }
+        clip.scroll(to: offset)
+        scrollView.reflectScrolledClipView(clip)
     }
 }
 
@@ -590,6 +618,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
     private(set) var activeRevision: UInt64?
     private(set) var activeData: Data?
     var activeViewDidChange: ((PageAdvancingPDFView) -> Void)?
+    package var restorationLayoutDidChange: (() -> Void)?
 
     weak var searchController: PDFSearchController? {
         didSet {
@@ -639,11 +668,18 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
     }
 
     package func capturePersistedViewport() -> PersistedPreviewViewport? {
-        PreviewViewport.capture(from: activeView).map(PersistedPreviewViewport.init(viewport:))
+        PreviewViewport.capture(from: activeView).map {
+            PersistedPreviewViewport(viewport: $0, scrollPosition: .capture(from: activeView))
+        }
+    }
+
+    package var canRestorePersistedViewport: Bool {
+        bounds.width > 0 && bounds.height > 0 && stagedView == nil
+            && (activeView.document?.pageCount ?? 0) > 0
     }
 
     package func restorePersistedViewport(_ viewport: PersistedPreviewViewport) {
-        activeView.restoreRelaunchViewport(viewport.previewViewport)
+        activeView.restoreRelaunchViewport(viewport.previewViewport, scrollPosition: viewport.scrollPosition)
         notifyViewingController()
     }
 
@@ -713,6 +749,12 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
     public override func layout() {
         super.layout()
         previewViews.forEach { $0.frame = bounds }
+        restorationLayoutDidChange?()
+    }
+
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        restorationLayoutDidChange?()
     }
 
     func display(_ document: PDFDocument, data: Data, revision: UInt64) {
@@ -1074,6 +1116,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
         self.searchState = searchState
         self.stagedView = nil
         pendingCommit = nil
+        restorationLayoutDidChange?()
         notifySearchController()
         notifyViewingController()
         if shouldTransferFocus {
@@ -1219,13 +1262,14 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         layoutSubtreeIfNeeded()
     }
 
-    func restoreRelaunchViewport(_ viewport: PreviewViewport) {
+    func restoreRelaunchViewport(_ viewport: PreviewViewport, scrollPosition: PersistedPreviewScrollPosition? = nil) {
         displayRevision += 1
         let restorationRevision = displayRevision
         needsInitialPageFit = false
         fittedViewWidth = bounds.width
         layoutSubtreeIfNeeded()
         viewport.restore(in: self)
+        scrollPosition?.restore(in: self)
         DispatchQueue.main.async { [weak self] in
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.displayRevision == restorationRevision else { return }
@@ -1233,6 +1277,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
                 self.fittedViewWidth = self.bounds.width
                 self.layoutSubtreeIfNeeded()
                 viewport.restore(in: self)
+                scrollPosition?.restore(in: self)
             }
         }
     }

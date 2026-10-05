@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-05 — Restore window geometry, zoom, and exact scrolling after layout
+
+- Use the PDF preview's actual native window for frame capture and restoration when SwiftUI's separate background attachment loses its window reference. Apply saved frames after initial native placement, then wait for an attached, sized preview before consuming its saved zoom and reading position. Resume from preview layout and buffered-document completion; preserve later user moves and zoom changes.
+- Persist exact native scroll offsets with document and viewport dimensions, retaining horizontal panning and page-gap positions when geometry matches. Keep older records compatible and fall back to page-relative reading position when pagination or available window size changes.
+- Reproduce lost frame, zoom, vertical position, and horizontal panning against the prior implementation. Add native regressions for delayed layout, update relaunch, ordinary session persistence across controller instances, exact scroll offsets, cancellation, changed geometry, and invalid records. Clarify the behavior in README and bundled Help.
+- Pass all 380 Mac tests, 96.21% testable-production line coverage, performance budgets, and universal app/extension validation. In an isolated native app copy, quit and reopen two windows through the File menu; confirm matching saved frames, zoom, pages, and both scroll offsets, and visually confirm the same reading location.
+
 ## 2026-10-04 — Version 1.4.8
 
 - Release the preview hold-and-drag repairs as Mac version 1.4.8, build 17: explicit native hold recognition and a complete paper outline in both PDF and Word miniatures from the initial hold.

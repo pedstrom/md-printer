@@ -5,6 +5,60 @@ import XCTest
 
 @MainActor
 final class OpenDocumentRestorationControllerTests: XCTestCase {
+    func testBothLastSessionAndUpdateRecordsPreserveExactScrollPositionAcrossLaunches() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let writer = OpenDocumentRestorationController(defaults: defaults)
+        let url = URL(fileURLWithPath: "/tmp/Exact-Position.md")
+        let state = DocumentWindowRestorationState(
+            frame: CGRect(x: 50, y: 80, width: 620, height: 700),
+            viewport: PersistedPreviewViewport(
+                scaleFactor: 1.35, pageIndex: 3, normalizedPageX: 0,
+                normalizedPageY: 0.42, documentProgress: 0.6,
+                scrollPosition: PersistedPreviewScrollPosition(
+                    offset: CGPoint(x: 73, y: 2870),
+                    documentSize: CGSize(width: 830, height: 6000),
+                    viewportSize: CGSize(width: 605, height: 660)
+                )
+            )
+        )
+        writer.documentDidOpen(at: url)
+        writer.registerStateProvider(at: url, id: UUID()) { state }
+        writer.captureLastSession()
+        writer.prepareForRelaunch(targetBuild: "18")
+
+        let reader = OpenDocumentRestorationController(defaults: defaults)
+        let lastSession = try XCTUnwrap(reader.lastSessionWorkspace())
+        reader.prepareWindowStates(for: lastSession)
+        XCTAssertEqual(reader.takeWindowState(for: url), state)
+        let update = try XCTUnwrap(reader.consumeWorkspaceForRelaunch(currentBuild: "18"))
+        XCTAssertEqual(update, lastSession)
+        XCTAssertEqual(reader.takeWindowState(for: url), state)
+    }
+
+    func testInvalidExactScrollRecordKeepsTheOlderPageRelativeViewport() throws {
+        let (defaults, suiteName) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let url = URL(fileURLWithPath: "/tmp/Compatible.md")
+        for invalid in [[1.0, 2.0], [0, 0, -1, 500, 600, 700], [Double.nan, 0, 500, 500, 600, 700]] {
+            defaults.set([
+                "build": "18", "documents": [[
+                    "path": url.path, "viewport": [
+                        "scaleFactor": 0.82, "pageIndex": 2,
+                        "normalizedPageX": 0.0, "normalizedPageY": 0.65,
+                        "documentProgress": 0.3, "scrollPosition": invalid
+                    ]
+                ]]
+            ], forKey: OpenDocumentRestorationController.pendingRelaunchKey)
+            let reader = OpenDocumentRestorationController(defaults: defaults)
+            XCTAssertEqual(reader.consumeDocumentsForRelaunch(currentBuild: "18"), [url])
+            let viewport = try XCTUnwrap(reader.takeWindowState(for: url)?.viewport)
+            XCTAssertNil(viewport.scrollPosition)
+            XCTAssertEqual(viewport.scaleFactor, 0.82)
+            XCTAssertEqual(viewport.normalizedPageY, 0.65)
+        }
+    }
+
     func testRecordsUniqueOpenFilesForTheTargetBuildAndConsumesOnce() {
         let (defaults, suiteName) = makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }

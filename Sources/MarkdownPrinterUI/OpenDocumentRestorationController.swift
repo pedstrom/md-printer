@@ -2,21 +2,53 @@ import Combine
 import Foundation
 import MarkdownPrinterCore
 
+package struct PersistedPreviewScrollPosition: Equatable {
+    let offset: CGPoint
+    let documentSize: CGSize
+    let viewportSize: CGSize
+
+    fileprivate var propertyList: [Double] {
+        [Double(offset.x), Double(offset.y), Double(documentSize.width),
+         Double(documentSize.height), Double(viewportSize.width), Double(viewportSize.height)]
+    }
+
+    fileprivate init?(propertyList: [Double]) {
+        guard propertyList.count == 6,
+              propertyList.allSatisfy(\.isFinite),
+              propertyList[2...5].allSatisfy({ $0 > 0 })
+        else { return nil }
+        self.init(offset: CGPoint(x: propertyList[0], y: propertyList[1]),
+                  documentSize: CGSize(width: propertyList[2], height: propertyList[3]),
+                  viewportSize: CGSize(width: propertyList[4], height: propertyList[5]))
+    }
+
+    package init(offset: CGPoint, documentSize: CGSize, viewportSize: CGSize) {
+        self.offset = offset
+        self.documentSize = documentSize
+        self.viewportSize = viewportSize
+    }
+}
+
 package struct PersistedPreviewViewport: Equatable {
     let scaleFactor: Double
     let pageIndex: Int
     let normalizedPageX: Double
     let normalizedPageY: Double
     let documentProgress: Double
+    let scrollPosition: PersistedPreviewScrollPosition?
 
     fileprivate var propertyList: [String: Any] {
-        [
+        var result: [String: Any] = [
             "scaleFactor": scaleFactor,
             "pageIndex": pageIndex,
             "normalizedPageX": normalizedPageX,
             "normalizedPageY": normalizedPageY,
             "documentProgress": documentProgress
         ]
+        if let scrollPosition {
+            result["scrollPosition"] = scrollPosition.propertyList
+        }
+        return result
     }
 
     fileprivate init?(propertyList: [String: Any]) {
@@ -42,6 +74,9 @@ package struct PersistedPreviewViewport: Equatable {
         self.normalizedPageX = normalizedPageX
         self.normalizedPageY = normalizedPageY
         self.documentProgress = documentProgress
+        scrollPosition = (propertyList["scrollPosition"] as? [Double]).flatMap(
+            PersistedPreviewScrollPosition.init(propertyList:)
+        )
     }
 
     package init(
@@ -49,13 +84,15 @@ package struct PersistedPreviewViewport: Equatable {
         pageIndex: Int,
         normalizedPageX: Double,
         normalizedPageY: Double,
-        documentProgress: Double
+        documentProgress: Double,
+        scrollPosition: PersistedPreviewScrollPosition? = nil
     ) {
         self.scaleFactor = scaleFactor
         self.pageIndex = pageIndex
         self.normalizedPageX = normalizedPageX
         self.normalizedPageY = normalizedPageY
         self.documentProgress = documentProgress
+        self.scrollPosition = scrollPosition
     }
 }
 
