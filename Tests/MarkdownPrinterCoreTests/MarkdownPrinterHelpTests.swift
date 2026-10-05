@@ -26,6 +26,7 @@ final class MarkdownPrinterHelpTests: XCTestCase {
             "Open Markdown Files",
             "Source file unavailable. Showing the last rendered version.",
             "Detected renames and moves are followed automatically",
+            "Compare with a Previous Version",
             "Save, Share, and Drag Exports",
             "Hold Option when dragging from the preview or clicking Share",
             "Navigate and Zoom the Preview",
@@ -89,6 +90,31 @@ final class MarkdownPrinterHelpTests: XCTestCase {
         for syntax in ["[Packing](#packing-list)", "[Packing](other.md#packing-list)", "- [X]", "read-only", "Word", "file URLs", "Custom HTML anchors"] {
             XCTAssertTrue(content.contains(syntax), syntax)
         }
+    }
+
+    func testPreviousVersionHelpIncludesACompletePortableCodexPrompt() throws {
+        let section = try XCTUnwrap(
+            MarkdownPrinterHelpContent.sections.first { $0.id == .previousVersions }
+        )
+        let prompt = MarkdownPrinterHelpContent.codexComparisonSkillPrompt
+
+        XCTAssertTrue(section.paragraphs.contains(prompt), "The prompt must be selectable as one complete entry.")
+        for instruction in [
+            "available in every project",
+            "user-level skills directory supported by my Codex installation",
+            "name and description frontmatter",
+            "If “previous version” is ambiguous, ask one concise question",
+            "without checking out, restoring, or modifying working files",
+            "private temporary .md file",
+            #""/Applications/Markdown Printer.app/Contents/MacOS/MarkdownPrinterCLI" open "/absolute/path/current.md" --original "/absolute/path/older.md""#,
+            "exactly one current file",
+            "If the app is installed elsewhere",
+            "After a successful launch, delete only temporary originals",
+            "Validate the skill"
+        ] {
+            XCTAssertTrue(prompt.contains(instruction), "Missing skill instruction: \(instruction)")
+        }
+        XCTAssertTrue(section.paragraphs.joined().contains("Clear Change Highlighting"))
     }
 
     func testHelpSectionIdentifiersAreUniqueAndIncludeBothMenuDestinations() {

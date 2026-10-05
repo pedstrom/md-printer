@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-05 — Copy-and-paste Codex comparison skill prompt in Help
+
+- Add a previous-version Help entry with the native compare/clear actions and a complete selectable prompt for creating a user-level Codex skill available across projects.
+- Document the installed app's quoted CLI command, explicit local-file or Git baselines, ambiguity handling, read-only Git retrieval, alternate app locations, and temporary-original cleanup after the app snapshots it.
+- Cover the prompt's discoverability, portable installation, launch syntax, and source-preservation instructions with focused Help tests.
+
 ## 2026-10-05 — Restore window geometry, zoom, and exact scrolling after layout
 
 - Use the PDF preview's actual native window for frame capture and restoration when SwiftUI's separate background attachment loses its window reference. Apply saved frames after initial native placement, then wait for an attached, sized preview before consuming its saved zoom and reading position. Resume from preview layout and buffered-document completion; preserve later user moves and zoom changes.
