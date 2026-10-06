@@ -1,4 +1,5 @@
 import PDFKit
+import CoreText
 import XCTest
 @testable import MarkdownPrinterCore
 
@@ -19,20 +20,28 @@ final class RevisionTableCalloutTests: XCTestCase {
                 font: font, context: context, isImage: isImage, hasCaret: hasCaret)
             return bitmap
         }
-        for (label, hasCaret) in [("^ mmmmmm", true), ("removed image", false)] {
+        for (label, hasCaret, rtl) in [("^ mmmmmm", true, false), ("removed image", false, false),
+                                     ("^ old مرحبا", true, false), ("^ مرحبا old", true, true)] {
             let plain = try bitmap(label, isImage: true, hasCaret: hasCaret)
             let struck = try bitmap(label, isImage: false, hasCaret: hasCaret)
-            let prefixWidth = hasCaret ? ("^ " as NSString).size(withAttributes: [.font: font]).width : 0
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: label, attributes: [.font: font]))
+            let prefixWidth = hasCaret ? CTLineGetOffsetForStringIndex(line, 2, nil) : 0
+            let left = rtl ? 0 : prefixWidth
+            let right = rtl ? prefixWidth : CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
             var changes = 0
+            var furthest = -CGFloat.infinity
             for y in 0..<plain.pixelsHigh {
                 for x in 0..<plain.pixelsWide where plain.colorAt(x: x, y: y) != struck.colorAt(x: x, y: y) {
                     changes += 1
-                    XCTAssertGreaterThanOrEqual(CGFloat(x) / 4, 10 + prefixWidth - 1)
+                    XCTAssertGreaterThanOrEqual(CGFloat(x) / 4, 10 + left - 1)
+                    XCTAssertLessThanOrEqual(CGFloat(x) / 4, 10 + right + 1)
+                    furthest = max(furthest, CGFloat(x) / 4)
                     let color = try XCTUnwrap(struck.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
                     XCTAssertGreaterThan(color.redComponent, color.greenComponent)
                 }
             }
             XCTAssertGreaterThan(changes, 20)
+            XCTAssertGreaterThan(furthest, 10 + right - 2)
         }
         let image = RevisionDeletion(location: 0, text: "", isImage: true)
         XCTAssertEqual(image.label, "^ removed image")

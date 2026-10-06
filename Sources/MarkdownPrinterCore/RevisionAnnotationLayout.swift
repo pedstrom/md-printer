@@ -154,13 +154,25 @@ enum RevisionAnnotationLayout {
                 // CoreText does not paint AppKit's strikethrough attribute.
                 // Strike only the removed wording, retaining the caret marker.
                 let start = index == 0 && hasCaret && text.hasPrefix("^ ") ? 2 : 0
-                let leading = CTLineGetOffsetForStringIndex(line, start, nil)
-                let trailing = CTLineGetOffsetForStringIndex(line, (text as NSString).length, nil)
                 context.setStrokeColor(RevisionFormatter.deletionColor.cgColor)
                 context.setLineWidth(max(0.3, font.underlineThickness))
-                context.move(to: CGPoint(x: leading, y: font.xHeight / 2))
-                context.addLine(to: CGPoint(x: trailing, y: font.xHeight / 2))
-                context.strokePath()
+                // Logical string endpoints can sit inside a bidi run. Use
+                // its visual glyph advances so every removed glyph is struck.
+                for run in CTLineGetGlyphRuns(line) as! [CTRun] {
+                    let count = CTRunGetGlyphCount(run)
+                    var positions = [CGPoint](repeating: .zero, count: count)
+                    var advances = [CGSize](repeating: .zero, count: count)
+                    var indices = [CFIndex](repeating: 0, count: count)
+                    CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
+                    CTRunGetAdvances(run, CFRange(location: 0, length: 0), &advances)
+                    CTRunGetStringIndices(run, CFRange(location: 0, length: 0), &indices)
+                    let glyphs = (0..<count).filter { indices[$0] >= start }
+                    guard let leading = glyphs.map({ min(positions[$0].x, positions[$0].x + advances[$0].width) }).min(),
+                          let trailing = glyphs.map({ max(positions[$0].x, positions[$0].x + advances[$0].width) }).max() else { continue }
+                    context.move(to: CGPoint(x: leading, y: font.xHeight / 2))
+                    context.addLine(to: CGPoint(x: trailing, y: font.xHeight / 2))
+                    context.strokePath()
+                }
             }
             context.restoreGState()
         }
