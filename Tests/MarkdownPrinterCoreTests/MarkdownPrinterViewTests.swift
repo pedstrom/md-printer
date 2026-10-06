@@ -14,6 +14,25 @@ final class MarkdownPrinterViewTests: XCTestCase {
         XCTAssertEqual(hostingController.sizeThatFits(in: availableSize), availableSize)
     }
 
+    func testFormattedDocumentFitsTheReducedMinimumWindowWidth() throws {
+        let session = DocumentSession()
+        session.load(data: Data("# Narrow Window\n\nFormatted **Markdown** content.".utf8))
+        XCTAssertTrue(session.hasDocument)
+        let hostingController = NSHostingController(rootView: MarkdownPrinterView(
+            session: session,
+            exportPreferences: ExportPreferences(),
+            activityCoordinator: ApplicationActivityCoordinator(),
+            openFiles: { _ in }
+        ))
+        let minimumSize = NSSize(width: 408, height: 560)
+
+        XCTAssertEqual(hostingController.sizeThatFits(in: minimumSize), minimumSize)
+        XCTAssertEqual(
+            hostingController.sizeThatFits(in: NSSize(width: 300, height: 400)),
+            minimumSize
+        )
+    }
+
     func testWelcomeLeavesTheNativeWindowSurfaceUnpainted() throws {
         let hostingView = NSHostingView(rootView: makeWelcomeView())
         hostingView.frame = NSRect(x: 0, y: 0, width: 920, height: 720)

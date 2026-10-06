@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-10-06 — Narrower document windows
+
+- Reduce the document view's minimum width from 680 to 408 points, allowing windows to become 40% narrower. Retain the 560-point minimum height and 760-point default opening width.
+- Keep the PDF preview's existing width-responsive scaling and document layout. Cover the hosted formatted-document minimum and PDF page fitting at the narrower width; visually check the native toolbar and optional thumbnails.
+
 ## 2026-10-06 — Native Git comparison and revision footer dates
 
 - Add a native document-attached Git version picker with file-specific local history, rename tracking, commit messages/dates/IDs, and a useful initial selection. Read installed Git asynchronously without modifying repositories or fetching remote objects; keep cancellation and updater relaunch coordinated.

@@ -323,6 +323,14 @@ final class PDFPreviewViewTests: XCTestCase {
         XCTAssertGreaterThan(expandedPageWidth, initialPageWidth)
         XCTAssertEqual(view.bounds.width - expandedPageWidth, 64, accuracy: 1)
         XCTAssertLessThan(expandedPageWidth, view.bounds.width)
+
+        view.setFrameSize(NSSize(width: 408, height: 890))
+        view.layoutSubtreeIfNeeded()
+
+        let narrowPageWidth = view.convert(firstPage.bounds(for: .cropBox), from: firstPage).width
+        XCTAssertLessThan(narrowPageWidth, initialPageWidth)
+        XCTAssertEqual(view.bounds.width - narrowPageWidth, 64, accuracy: 1)
+        XCTAssertLessThan(narrowPageWidth, view.bounds.width)
     }
 
     func testHeightOnlyResizeKeepsTheCurrentScale() throws {

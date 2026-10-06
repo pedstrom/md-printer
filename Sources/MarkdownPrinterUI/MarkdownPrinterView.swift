@@ -56,7 +56,7 @@ public struct MarkdownPrinterView: View {
             }
         }
         .frame(
-            minWidth: 680,
+            minWidth: 408,
             maxWidth: .infinity,
             minHeight: 560,
             maxHeight: .infinity
