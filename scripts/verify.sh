@@ -80,6 +80,7 @@ required_files=(
   release-notes/1.4.7.md
   release-notes/1.4.8.md
   release-notes/1.5.0.md
+  release-notes/1.5.1.md
   scripts/build-and-run/prepare_update_release.sh
   scripts/build-and-run/validate_quicklook_bundle.sh
   scripts/build-and-run/sign_sparkle.sh
@@ -129,8 +130,8 @@ plutil -lint QuickLookExtension/MarkdownPrinterQuickLook/Info.plist >/dev/null
 plutil -lint \
   QuickLookExtension/MarkdownPrinterQuickLook/MarkdownPrinterQuickLook.entitlements \
   >/dev/null
-[[ "$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)" == "1.5.0" ]]
-[[ "$(plutil -extract CFBundleVersion raw Resources/Info.plist)" == "18" ]]
+[[ "$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)" == "1.5.1" ]]
+[[ "$(plutil -extract CFBundleVersion raw Resources/Info.plist)" == "19" ]]
 [[ "$(plutil -extract NSHumanReadableCopyright raw Resources/Info.plist)" == *"Peter Edstrom"* ]]
 [[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeRole raw Resources/Info.plist)" \
   == "Viewer" ]]
@@ -258,8 +259,8 @@ plutil -lint "build/Markdown Printer.app/Contents/Info.plist" >/dev/null
 [[ "$(plutil -extract CFBundleIconName raw "build/Markdown Printer.app/Contents/Info.plist")" == "AppIcon" ]]
 [[ "$(plutil -extract CFBundleDocumentTypes.0.CFBundleTypeIconFile raw \
   "build/Markdown Printer.app/Contents/Info.plist")" == "MarkdownDocumentIcon" ]]
-[[ "$(plutil -extract CFBundleShortVersionString raw "build/Markdown Printer.app/Contents/Info.plist")" == "1.5.0" ]]
-[[ "$(plutil -extract CFBundleVersion raw "build/Markdown Printer.app/Contents/Info.plist")" == "18" ]]
+[[ "$(plutil -extract CFBundleShortVersionString raw "build/Markdown Printer.app/Contents/Info.plist")" == "1.5.1" ]]
+[[ "$(plutil -extract CFBundleVersion raw "build/Markdown Printer.app/Contents/Info.plist")" == "19" ]]
 [[ "$(plutil -extract NSHumanReadableCopyright raw "build/Markdown Printer.app/Contents/Info.plist")" == *"Peter Edstrom"* ]]
 scripts/build-and-run/validate_quicklook_bundle.sh "build/Markdown Printer.app"
 

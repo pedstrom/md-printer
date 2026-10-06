@@ -198,38 +198,28 @@ public final class PDFExporter {
         drawRevisionRanges(decorations.highlights, on: page, origin: origin, border: false)
         page.layoutManager.drawGlyphs(forGlyphRange: page.glyphRange, at: origin)
         drawRevisionRanges(decorations.images, on: page, origin: origin, border: true)
+        var drawnCarets: [CGPoint] = []
         for note in revisionNotes {
             let font = FontBook(configuration: configuration).regular(size: 7)
             if note.isImage {
                 RevisionAnnotationLayout.draw(label: note.label, frame: note.frame, font: font, context: context,
                     isImage: true, hasCaret: !note.isMargin)
             } else {
-                var wordingFrame = note.frame
                 let hasPrefix = !note.isMargin && note.label.hasPrefix("^ ")
-                if hasPrefix {
-                    let width = ("^ " as NSString).size(withAttributes: [.font: font]).width
-                    wordingFrame.origin.x += width
-                    wordingFrame.size.width = max(0, wordingFrame.width - width)
-                }
                 RevisionAnnotationLayout.draw(label: hasPrefix ? String(note.label.dropFirst(2)) : note.label,
-                    frame: wordingFrame, font: font, context: context, hasCaret: false)
-                RevisionAnnotationLayout.draw(label: "^", frame: RevisionAnnotationLayout.caretFrame(at: note.anchor, font: font),
-                    font: font, context: context, isImage: true)
-            }
-            if abs(note.frame.minX - note.anchor.x) > 3 || abs(note.frame.minY - note.anchor.y) > 16 {
-                let leader = NSBezierPath()
-                leader.move(to: note.anchor)
-                if note.isMargin, let cell = note.cellBounds {
-                    // Leave through this cell's padding, then cross below the
-                    // row so the leader does not run across neighboring text.
-                    let exitX = cell.maxX + 2
-                    let exitY = cell.maxY - 0.5
-                    leader.line(to: CGPoint(x: exitX, y: note.anchor.y))
-                    leader.line(to: CGPoint(x: exitX, y: exitY))
-                    leader.line(to: CGPoint(x: note.frame.minX, y: exitY))
+                    frame: note.wordingFrame(font: font), font: font, context: context, hasCaret: false)
+                if !drawnCarets.contains(note.anchor) {
+                    RevisionAnnotationLayout.draw(label: "^", frame: RevisionAnnotationLayout.caretFrame(at: note.anchor, font: font),
+                        font: font, context: context, isImage: true)
+                    drawnCarets.append(note.anchor)
                 }
-                leader.line(to: CGPoint(x: note.frame.minX, y: note.frame.minY))
+            }
+            if let start = note.leader.first {
+                let leader = NSBezierPath()
+                leader.move(to: start)
+                for point in note.leader.dropFirst() { leader.line(to: point) }
                 leader.lineWidth = 0.4
+                leader.setLineDash([1.5, 1.5], count: 2, phase: 0)
                 RevisionFormatter.deletionColor.setStroke()
                 leader.stroke()
             }
@@ -322,11 +312,15 @@ public final class PDFExporter {
         var result: [RevisionPDFNote] = []
         for (index, page) in pages.enumerated() {
             var occupied: [CGRect] = []
+            var placementInk: [CGRect] = []
             page.layoutManager.enumerateLineFragments(forGlyphRange: page.glyphRange) { _, used, _, glyphs, _ in
-                occupied.append(self.revisionInkBounds(glyphs: glyphs, page: page, text: text, fallback: used)
-                    .offsetBy(dx: origin.x, dy: origin.y))
+                let ink = self.revisionInkRects(glyphs: glyphs, page: page, text: text, fallback: used)
+                    .map { $0.offsetBy(dx: origin.x, dy: origin.y) }
+                occupied.append(contentsOf: ink)
+                placementInk.append(ink.reduce(CGRect.null) { $0.union($1) })
             }
             let characters = page.layoutManager.characterRange(forGlyphRange: page.glyphRange, actualGlyphRange: nil)
+            var pending: [(note: RevisionDeletion, anchor: CGPoint, line: CGRect, cell: CGRect?)] = []
             for note in decorations.deletions {
                 let location = min(max(0, note.location), text.length)
                 let lastPage = index == pages.count - 1
@@ -354,13 +348,48 @@ public final class PDFExporter {
                     anchor.x = min(max(anchor.x, cellBounds.minX), cellBounds.maxX)
                     anchor.y = min(max(anchor.y, cellBounds.minY), cellBounds.maxY)
                 }
-                let placed = try RevisionAnnotationLayout.place(label: note.label, anchor: anchor, line: line, content: content,
-                    page: pageRect, occupied: occupied, notes: result.filter { $0.page == index }.map(\.frame), font: font,
-                    cellBounds: cellBounds, isImage: note.isImage)
-                result.append(RevisionPDFNote(page: index, anchor: anchor, frame: placed.0, label: placed.1,
-                    cellBounds: cellBounds, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX,
-                    isImage: note.isImage))
+                pending.append((note, anchor, line, cellBounds))
             }
+            let markers = pending.filter { !$0.note.isImage }.map { RevisionAnnotationLayout.caretFrame(at: $0.anchor, font: font) }
+            var placedNotes: [RevisionPDFNote] = []
+            for item in pending {
+                let placed = try RevisionAnnotationLayout.place(label: item.note.label, anchor: item.anchor, line: item.line, content: content,
+                    page: pageRect, occupied: occupied, notes: placedNotes.map(\.frame), font: font,
+                    cellBounds: item.cell, isImage: item.note.isImage, markers: markers, lineBounds: placementInk)
+                placedNotes.append(RevisionPDFNote(page: index, anchor: item.anchor, frame: placed.0, label: placed.1,
+                    cellBounds: item.cell, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX,
+                    isImage: item.note.isImage))
+            }
+            for position in placedNotes.indices {
+                var blockedBands: [CGRect] = []
+                let item = pending[position]
+                let area = item.cell.map { $0.intersection(content) } ?? content
+                let earlierPaths = placedNotes.prefix(position).map(\.leader)
+                for attempt in 0..<12 {
+                    do {
+                        placedNotes[position].leader = try RevisionAnnotationLayout.leader(for: placedNotes[position], font: font,
+                            page: pageRect, content: content, occupied: occupied, notes: placedNotes, previous: earlierPaths)
+                        break
+                    } catch RevisionAnnotationError.noSpace {
+                        guard attempt < 11 else { throw RevisionAnnotationError.noSpace }
+                        // A free text rectangle can still be unreachable when
+                        // shorter neighboring notes occupy its connecting gap.
+                        // Try another band without disturbing any existing path.
+                        let failed = placedNotes[position]
+                        blockedBands.append(CGRect(x: area.minX, y: failed.frame.minY, width: area.width, height: failed.frame.height))
+                        if failed.isMargin { blockedBands.append(failed.frame) }
+                        let otherFrames = placedNotes.enumerated().filter { $0.offset != position }.map { $0.element.frame }
+                        let placed = try RevisionAnnotationLayout.place(label: item.note.label, anchor: item.anchor, line: item.line,
+                            content: content, page: pageRect, occupied: occupied,
+                            notes: otherFrames + blockedBands + RevisionAnnotationLayout.leaderObstacles(earlierPaths),
+                            font: font, cellBounds: item.cell, isImage: item.note.isImage, markers: markers, lineBounds: placementInk)
+                        placedNotes[position] = RevisionPDFNote(page: index, anchor: item.anchor, frame: placed.0, label: placed.1,
+                            cellBounds: item.cell, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX,
+                            isImage: item.note.isImage)
+                    }
+                }
+            }
+            result.append(contentsOf: placedNotes)
         }
         return result
     }
@@ -368,17 +397,21 @@ public final class PDFExporter {
     /// TextKit's used line rectangles include leading. Only visible glyph ink
     /// occupies the gap where an overlay can fit; attachments keep full bounds.
     private func revisionInkBounds(glyphs: NSRange, page: TextPage, text: NSAttributedString, fallback: CGRect) -> CGRect {
-        var result = CGRect.null
+        revisionInkRects(glyphs: glyphs, page: page, text: text, fallback: fallback).reduce(CGRect.null) { $0.union($1) }
+    }
+
+    private func revisionInkRects(glyphs: NSRange, page: TextPage, text: NSAttributedString, fallback: CGRect) -> [CGRect] {
+        var result: [CGRect] = []
         for index in glyphs.location..<NSMaxRange(glyphs) {
             let character = page.layoutManager.characterIndexForGlyph(at: index)
             guard character < text.length else { continue }
-            if text.attribute(.attachment, at: character, effectiveRange: nil) != nil { return fallback }
+            if text.attribute(.attachment, at: character, effectiveRange: nil) != nil { return [fallback] }
             guard let font = text.attribute(.font, at: character, effectiveRange: nil) as? NSFont else { continue }
             let string = text.string as NSString
             let visible = string.substring(with: string.rangeOfComposedCharacterSequence(at: character))
             // TextKit can substitute a different font for Unicode glyphs. Its
             // full line bounds are the conservative choice in that case.
-            guard visible.unicodeScalars.allSatisfy({ font.coveredCharacterSet.contains($0) || $0.properties.isWhitespace }) else { return fallback }
+            guard visible.unicodeScalars.allSatisfy({ font.coveredCharacterSet.contains($0) || $0.properties.isWhitespace }) else { return [fallback] }
             let bounds = font.boundingRect(forGlyph: page.layoutManager.glyph(at: index))
             guard !bounds.isEmpty else { continue }
             let position = page.layoutManager.location(forGlyphAt: index)
@@ -386,9 +419,9 @@ public final class PDFExporter {
             let ink = CGRect(x: fragment.minX + position.x + bounds.minX,
                              y: fragment.minY + position.y - bounds.maxY,
                              width: bounds.width, height: bounds.height)
-            result = result.union(ink)
+            result.append(ink)
         }
-        return result.isNull ? fallback : result
+        return result.isEmpty ? [fallback] : result
     }
 
     private func finishPDFOutput(_ output: PDFOutput) throws -> Data {

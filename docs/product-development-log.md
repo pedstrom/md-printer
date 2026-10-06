@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-10-06 — Version 1.5.1
+
+- Prepare Mac version 1.5.1, build 19, with native Git comparison, captured original timestamps and styled footer dates, narrower document windows, and a clearly copyable Codex setup prompt for a reusable file-comparison skill.
+- Include the PDF deletion-connector repair under other bug fixes in the public notes. Keep connector routing clear of body glyphs while placing labels against whole-line bounds to preserve table text.
+- Update Mac bundle metadata, the README download label, release notes, and release verification assertions. Keep the mobile version independent.
+- Pass 42 focused rendering regressions and the full 508-test macOS gate with 96.29% testable-production line coverage, performance budgets, and universal app/extension/CLI bundle validation. Inspect representative prose, table, and crowded-list PDF fixtures outside Git.
+- Verify native Open, Git selection/comparison, text selection, Find, PDF/Word Save, Print cancellation, and live refresh with a fixed original. Physical held-drag and mid-drag Option switching remain manual because the UI driver cannot hold the mouse button.
+
 ## 2026-10-06 — Narrower document windows
 
 - Reduce the document view's minimum width from 680 to 408 points, allowing windows to become 40% narrower. Retain the 560-point minimum height and 760-point default opening width.
@@ -18,6 +26,12 @@
 - Keep Codex setup in its own Help section alongside native comparison guidance. Separate setup instructions, the complete prompt, and the after-setup example; explain that setup is once per Mac and available across projects for that Mac's user.
 - Display the selectable prompt in a labeled, padded panel with adaptive neutral colors and a subtle border. Add a gray Copy prompt control below it that copies only the complete plain-text prompt and briefly confirms Copied.
 - Cover prompt boundaries and searchability, exact native clipboard content, replacement of old clipboard formats, and copied-feedback expiration, repeated clicks, and failed writes. Verify the native Help presentation and copy action without changing document rendering.
+
+## 2026-10-05 — Clear connections between deletion carets and wording
+
+- Repair displaced PDF deletion connectors that crossed the top of left-shifted wording and looked like red underlines beneath current text. Connect from below the boundary caret to the nearest available wording edge with a dashed path through clear gaps or gutters; avoid current glyph ink, removal wording, carets, and other connectors.
+- Reserve every page's deletion markers before placing labels, including later anchors. Keep distinct removals separate, draw one text-removal caret for a shared boundary, and preserve comparison evidence, seven-point type, image-removal labels, table constraints, and body layout. Report an explicit annotation placement error if no clear connector route exists.
+- Add synthetic same-line, shifted-label, blocked-route, table/margin, crowded-list, and pixel regressions. Use actual body ink for a preexisting PDFKit selection test, whose merged selection rectangle can include a nearby annotation. Render representative comparisons outside Git and preserve current word geometry and pagination.
 
 ## 2026-10-05 — Version 1.5.0
 

@@ -155,7 +155,8 @@ final class RevisionTableCalloutTests: XCTestCase {
                     // selection box; preserve every actual body-ink pixel.
                     if let color = plainBitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
                        min(color.redComponent, color.greenComponent, color.blueComponent) < 0.999 {
-                        XCTAssertEqual(plainBitmap.colorAt(x: x, y: y), bitmap.colorAt(x: x, y: y))
+                        XCTAssertEqual(plainBitmap.colorAt(x: x, y: y), bitmap.colorAt(x: x, y: y),
+                            "Body pixel changed at \(x),\(y); note \(callout.frame), anchor \(callout.anchor), leader \(callout.leader)")
                     }
                 }
             }

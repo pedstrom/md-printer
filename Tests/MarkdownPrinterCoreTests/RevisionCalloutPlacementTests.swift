@@ -44,9 +44,23 @@ final class RevisionCalloutPlacementTests: XCTestCase {
         XCTAssertLessThan(note.frame.minX, note.anchor.x - 1)
         let marked = try XCTUnwrap(PDFDocument(data: exporter.pdfData(from: text, decorations: decorations)))
         XCTAssertEqual(marked.pageCount, plain.pageCount)
-        let markedBody = try XCTUnwrap(marked.findString("new wording", withOptions: []).first)
         let plainBody = try XCTUnwrap(plain.findString("new wording", withOptions: []).first)
-        XCTAssertEqual(markedBody.bounds(for: try XCTUnwrap(markedBody.pages.first)), plainBody.bounds(for: page))
+        // PDFKit can enlarge a selection rectangle to include a snug overlay.
+        // Compare the actual current glyph ink, rather than that merged box.
+        let size = NSSize(width: 1224, height: 1584)
+        let a = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(page.thumbnail(of: size, for: .mediaBox).tiffRepresentation)))
+        let markedPage = try XCTUnwrap(marked.page(at: 0))
+        let b = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(markedPage.thumbnail(of: size, for: .mediaBox).tiffRepresentation)))
+        let body = plainBody.bounds(for: page)
+        let scale = CGFloat(a.pixelsWide) / 612
+        for y in Int((792 - body.maxY) * scale)..<Int((792 - body.minY) * scale) {
+            for x in Int(body.minX * scale)..<Int(body.maxX * scale) {
+                if let color = a.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
+                   max(color.redComponent, color.greenComponent, color.blueComponent) < 0.95 {
+                    XCTAssertEqual(a.colorAt(x: x, y: y), b.colorAt(x: x, y: y))
+                }
+            }
+        }
     }
 
     func testTrailingInlineCaretPinsBeforeGeneratedParagraphSeparator() throws {
