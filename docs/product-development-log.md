@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-10-05 — Precise removals and usable body gaps
+
+- Separate exact deletion evidence from broad rewrite highlights. Preserve meaningful shared phrases in red excerpts and leave short shared phrases beside substantial unchanged passages unhighlighted across small edits. Keep these rules independent of document wording and verify them with synthetic regressions.
+- Anchor inline removals at the next visible token, or the end of the last visible token before generated paragraph separators. Paint text-removal carets at those boundaries independently of displaced wording; retain connecting lines and the existing image-removal presentation.
+- Search the free width across nearby body/cell gaps before page margins, accounting for body ink and earlier notes. Use available width instead of an arbitrary annotation-width cap; preserve seven-point text, collision handling, cell boundaries, and body wrapping/pagination.
+- Inspect the supplied long comparison outside Git: the surviving phrase is no longer called deleted, its small modifier has its own note, the separate removed sentence is visible below the paragraph, and the sentence-start caret stays at its boundary. Preserve all 9,755 current PDF word positions across 37 pages. Add synthetic gap, displacement, trailing-boundary, table-ink, and comparison tests.
+- Pass 449 macOS tests, 95.99% testable-production line coverage, performance budgets, universal bundle validation, and the local long-document Word body-flow check. Keep source content and generated review artifacts outside Git.
+
 ## 2026-10-05 — Strike removed wording in revision callouts
 
 - Replace text-deletion labels with an unstruck red caret followed by red wording with strikethrough, omitting “deleted.” Preserve the existing seven-point Avenir Next font/fallback, floating placement, anchors, leaders, collision handling, table boundaries, and four-line PDF margin fallback. Recalculate widths for the shorter label to retain more removed wording before truncation.

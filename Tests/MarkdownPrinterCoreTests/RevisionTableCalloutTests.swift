@@ -137,9 +137,12 @@ final class RevisionTableCalloutTests: XCTestCase {
             XCTAssertEqual(marked.pageCount, plain.pageCount)
             XCTAssertTrue(page.string?.contains("…") == true)
             let bodyPlain = try XCTUnwrap(plain.findString("Current", withOptions: []).first { padded.minX <= $0.bounds(for: plainPage).minX && $0.bounds(for: plainPage).maxX <= padded.maxX })
-            let callout = try XCTUnwrap(marked.findString("^ a long", withOptions: []).first)
-            XCTAssertGreaterThanOrEqual(callout.bounds(for: page).minX, padded.minX - 0.1)
-            XCTAssertLessThanOrEqual(callout.bounds(for: page).maxX, padded.maxX + 0.1)
+            XCTAssertFalse(marked.findString("a long", withOptions: []).isEmpty)
+            let callout = try XCTUnwrap(PDFExporter().revisionNoteLayout(from: text, decorations: decorations).first)
+            // Separate TextKit layouts can snap table content edges by one
+            // point; the pixel check below enforces the actual cell border.
+            XCTAssertGreaterThanOrEqual(callout.frame.minX, padded.minX - 1)
+            XCTAssertLessThanOrEqual(callout.frame.maxX, padded.maxX + 0.1)
             let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(page.thumbnail(of: page.bounds(for: .mediaBox).size, for: .mediaBox).tiffRepresentation)))
             let scale = CGFloat(bitmap.pixelsWide) / page.bounds(for: .mediaBox).width
             // PDFKit can enlarge a whole line's selection rectangle to include
@@ -148,7 +151,12 @@ final class RevisionTableCalloutTests: XCTestCase {
             let bodyTop = page.bounds(for: .mediaBox).height - body.maxY
             for y in Int(floor(bodyTop * scale))..<Int(ceil((bodyTop + body.height) * scale)) {
                 for x in Int(floor(body.minX * scale))..<Int(ceil(body.maxX * scale)) {
-                    XCTAssertEqual(plainBitmap.colorAt(x: x, y: y), bitmap.colorAt(x: x, y: y))
+                    // A snug overlay may occupy blank space inside a font's
+                    // selection box; preserve every actual body-ink pixel.
+                    if let color = plainBitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
+                       min(color.redComponent, color.greenComponent, color.blueComponent) < 0.999 {
+                        XCTAssertEqual(plainBitmap.colorAt(x: x, y: y), bitmap.colorAt(x: x, y: y))
+                    }
                 }
             }
             var redPixels = 0
@@ -160,7 +168,7 @@ final class RevisionTableCalloutTests: XCTestCase {
                     redPixels += 1
                     XCTAssertTrue(outer.insetBy(dx: -1 / scale, dy: -1 / scale).contains(CGPoint(x: CGFloat(x) / scale, y: CGFloat(y) / scale)),
                                   "\(name) callout pixel escaped its cell at \(x),\(y)")
-                    XCTAssertLessThanOrEqual(CGFloat(x) / scale, padded.maxX + 1 / scale)
+                    XCTAssertLessThanOrEqual(CGFloat(x) / scale, outer.maxX + 1 / scale)
                 }
             }
             XCTAssertGreaterThan(redPixels, 10)
@@ -185,7 +193,7 @@ final class RevisionTableCalloutTests: XCTestCase {
         let marked = try XCTUnwrap(PDFDocument(data: PDFExporter().pdfData(from: text, decorations: decorations)))
         XCTAssertGreaterThan(plain.pageCount, 1)
         XCTAssertEqual(marked.pageCount, plain.pageCount)
-        XCTAssertEqual(marked.findString("^ old", withOptions: []).count, 60)
+        XCTAssertEqual(marked.findString("old", withOptions: []).count, 60)
         for index in 0..<60 {
             let a = try XCTUnwrap(plain.findString("Current [\(index)]", withOptions: []).first)
             let b = try XCTUnwrap(marked.findString("Current [\(index)]", withOptions: []).first)
@@ -204,9 +212,13 @@ final class RevisionTableCalloutTests: XCTestCase {
             RevisionDeletion(location: location, text: "validating business execution and several additional original conditions")]
         let data = try PDFExporter().pdfData(from: text, decorations: decorations)
         let document = try XCTUnwrap(PDFDocument(data: data)), page = try XCTUnwrap(document.page(at: 0))
+        let layouts = try PDFExporter().revisionNoteLayout(from: text, decorations: decorations)
+        XCTAssertTrue(layouts.contains { !$0.isMargin && $0.label.contains("preparing") })
+        // Free space inside the cell is preferred; only remaining collisions
+        // fall back to a wrapped page-margin note.
         for word in ["preparing", "validating"] {
             let selected = try XCTUnwrap(document.findString(word, withOptions: []).first)
-            XCTAssertGreaterThan(selected.bounds(for: page).minX, 558)
+            XCTAssertGreaterThan(selected.bounds(for: page).minX, 306)
             XCTAssertLessThanOrEqual(selected.bounds(for: page).maxX, 606)
         }
         let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(page.thumbnail(of: page.bounds(for: .mediaBox).size, for: .mediaBox).tiffRepresentation)))

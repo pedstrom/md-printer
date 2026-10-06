@@ -29,10 +29,7 @@ enum RevisionAnnotationLayout {
         let prefix = isImage ? label : "^ …"
         let fullWidth = ceil((label as NSString).size(withAttributes: [.font: font]).width)
         let minimumWidth = min(fullWidth, ceil((prefix as NSString).size(withAttributes: [.font: font]).width))
-        let preferredWidth = max(42, min(80, fullWidth))
-        let width = min(300, content.width, max(preferredWidth, minimumWidth, content.maxX - anchor.x))
-        let x = min(max(content.minX, anchor.x), content.maxX - width)
-        var candidates = [CGRect(x: x, y: max(content.minY, line.maxY - 1), width: width, height: height)]
+        var positions = [max(content.minY, line.maxY - 1)]
         // Prefer a nearby gap over a margin. No changes to body geometry.
         let nearby = occupied.sorted { left, right in
             let a = abs(left.maxY - line.maxY), b = abs(right.maxY - line.maxY)
@@ -40,7 +37,33 @@ enum RevisionAnnotationLayout {
             return left.maxY > right.maxY
         }
         for rect in nearby where abs(rect.maxY - line.maxY) < 80 {
-            candidates.append(CGRect(x: x, y: rect.maxY - 1, width: width, height: height))
+            positions.append(max(content.minY, rect.maxY - 1))
+        }
+        var candidates: [CGRect] = []
+        for y in positions where y + height <= content.maxY {
+            // A gap can be usable away from the anchor's column. Subtract all
+            // text/note obstacles across this band, within the current cell.
+            let band = CGRect(x: content.minX, y: y, width: content.width, height: height)
+            let blockers = (occupied.map { $0.insetBy(dx: 0, dy: 1) }
+                + notes.map { $0.insetBy(dx: -2, dy: -1) })
+                .filter { $0.intersects(band) }.sorted { $0.minX < $1.minX }
+            var gaps: [CGRect] = [], start = content.minX
+            for blocker in blockers {
+                if blocker.minX > start {
+                    gaps.append(CGRect(x: start, y: y, width: min(blocker.minX, content.maxX) - start, height: height))
+                }
+                start = max(start, min(content.maxX, blocker.maxX))
+            }
+            if start < content.maxX { gaps.append(CGRect(x: start, y: y, width: content.maxX - start, height: height)) }
+            gaps.sort { abs($0.midX - anchor.x) < abs($1.midX - anchor.x) }
+            for gap in gaps {
+                let alignedX = max(gap.minX, anchor.x)
+                if alignedX < gap.maxX {
+                    candidates.append(CGRect(x: alignedX, y: y, width: min(fullWidth, gap.maxX - alignedX), height: height))
+                }
+                let width = min(gap.width, fullWidth)
+                candidates.append(CGRect(x: min(max(gap.minX, anchor.x), gap.maxX - width), y: y, width: width, height: height))
+            }
         }
         for candidate in candidates where content.width >= minimumWidth && content.height >= height {
             let text = truncate(label, width: candidate.width, font: font)
@@ -136,6 +159,11 @@ enum RevisionAnnotationLayout {
     private static func labelLine(_ label: String, font: NSFont) -> CTLine {
         CTLineCreateWithAttributedString(NSAttributedString(string: label,
             attributes: [.font: font, .foregroundColor: RevisionFormatter.deletionColor]))
+    }
+
+    static func caretFrame(at anchor: CGPoint, font: NSFont) -> CGRect {
+        let ink = inkBounds(label: "^", font: font)
+        return CGRect(x: anchor.x - ink.width / 2, y: anchor.y - 1, width: ink.width, height: ink.height)
     }
 
     static func draw(label: String, frame: CGRect, font: NSFont, context: CGContext,

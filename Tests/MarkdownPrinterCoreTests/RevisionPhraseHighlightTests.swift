@@ -52,4 +52,37 @@ final class RevisionPhraseHighlightTests: XCTestCase {
         XCTAssertFalse(revision("`a b`", "`a  b`").decorations.highlights.isEmpty)
         XCTAssertFalse(revision("one two", "one  \ntwo").decorations.highlights.isEmpty)
     }
+
+    func testSurvivingShortPhraseBesideSubstantialSharedPassageStaysUnmarked() {
+        let old = "If the director approves a public event, the budget must be reported separately from daily activities. The event budget should include venue rental, guest travel, refreshments after setup and staffing costs, and any sponsor or partner contributions. Tentative bookings and informal offers must remain outside the confirmed budget."
+        let current = "For a public event, the budget will include venue rental, guest travel, refreshments after setup and staffing costs, and sponsor or partner contributions alongside the shared office budget."
+        let value = revision(old, current)
+        XCTAssertTrue(value.decorations.deletions.contains { $0.text == "any" })
+        XCTAssertTrue(value.decorations.deletions.contains { $0.text.contains("Tentative bookings") })
+        XCTAssertFalse(value.decorations.deletions.contains { $0.text.contains("sponsor or partner contributions") })
+        XCTAssertFalse(highlights(value).joined().contains("sponsor or partner contributions"))
+        let boundary = (value.text.string as NSString).range(of: "sponsor or partner contributions").location
+        XCTAssertEqual(value.decorations.deletions.first { $0.text == "any" }?.location, boundary)
+    }
+
+    func testSurvivingPhraseSeparatesCoherentDeletionExcerpts() {
+        let value = revision("The red cat and blue dog wait beside a lasting shared clause before the green bird and white fish sleep.",
+                             "The orange cat and black dog run beside a lasting shared clause before the purple bird and gold fish swim.")
+        XCTAssertEqual(value.decorations.deletions.map(\.text), ["red cat and blue dog wait", "green bird and white fish sleep"])
+        XCTAssertFalse(value.decorations.deletions.contains { $0.text.contains("lasting shared clause") })
+    }
+
+    func testInlineDeletionBoundariesUseVisibleTokensInsteadOfProseSpacing() throws {
+        for pair in [("Keep any distinct remaining words.", "Keep distinct remaining words.", "distinct"),
+                     ("Élan any café 東京.", "Élan café 東京.", "café"),
+                     ("The work resulted in clear value. These supporting measures explain the outcome.",
+                      "The work resulted in clear value. Together, these measures show the outcome.", "Together")] {
+            let value = revision(pair.0, pair.1)
+            let deletion = try XCTUnwrap(value.decorations.deletions.first)
+            XCTAssertEqual(deletion.location, (value.text.string as NSString).range(of: pair.2).location)
+        }
+        let trailing = revision("Keep deleted trailing words", "Keep")
+        XCTAssertEqual(trailing.decorations.deletions.first?.location, 4)
+        XCTAssertEqual(trailing.text.string, "Keep\n")
+    }
 }

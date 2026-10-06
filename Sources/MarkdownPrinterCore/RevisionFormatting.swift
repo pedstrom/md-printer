@@ -211,9 +211,9 @@ public enum RevisionFormatter {
     }
 
     private static func compare(_ old: Unit, _ new: Unit, changes: inout RevisionDecorations) {
-        let matches = phraseMatches(old, new)
-        var oldStart = 0, newStart = 0
-        var removals: [(range: Range<Int>, location: Int)] = []
+        let exactMatches = matching(old.tokens.map(\.key), new.tokens.map(\.key))
+        let matches = phraseMatches(old, new, exactMatches: exactMatches)
+        var newStart = 0
         for (oldEnd, newEnd) in matches + [(old.tokens.count, new.tokens.count)] {
             for index in newStart..<newEnd {
                 mark(new.tokens[index], changes: &changes)
@@ -221,10 +221,23 @@ public enum RevisionFormatter {
                     markBreakNeighbor(in: new.tokens, at: index, changes: &changes)
                 }
             }
+            if oldEnd < old.tokens.count {
+                let before = old.tokens[oldEnd], after = new.tokens[newEnd]
+                if before.style != after.style || (!after.image && old.kind != new.kind) { mark(after, changes: &changes) }
+            }
+            newStart = newEnd + 1
+        }
+        // Broad rewrite highlights are a reading aid, not evidence that every
+        // word in the highlighted passage was removed from the old version.
+        // Use exact matches for deletions and their positions independently.
+        var oldStart = 0
+        newStart = 0
+        var removals: [(range: Range<Int>, location: Int)] = []
+        for (oldEnd, newEnd) in exactMatches + [(old.tokens.count, new.tokens.count)] {
             let removed = Array(old.tokens[oldStart..<oldEnd]).filter { token in
                 !token.image || !new.tokens[newStart..<newEnd].contains(where: \.image)
             }
-            let location = newStart < new.tokens.count ? new.tokens[newStart].range.location : NSMaxRange(new.range)
+            let location = deletionBoundary(in: new, startingAt: newStart)
             if removed.contains(where: { $0.key == "\nhard" }) {
                 markBreakNeighbor(in: new.tokens, at: min(newStart, max(0, new.tokens.count - 1)), changes: &changes)
             }
@@ -233,15 +246,12 @@ public enum RevisionFormatter {
                !initialCapitalizationOnly(removed, Array(new.tokens[newStart..<newEnd])) {
                 removals.append((oldStart..<oldEnd, location))
             }
-            if oldEnd < old.tokens.count {
-                let before = old.tokens[oldEnd], after = new.tokens[newEnd]
-                if before.style != after.style || (!after.image && old.kind != new.kind) { mark(after, changes: &changes) }
-            }
             oldStart = oldEnd + 1; newStart = newEnd + 1
         }
         // Spaces and punctuation are useful for highlighting, but poor anchors
         // for deletion labels. Join adjacent fragments, and use one old phrase
-        // for a heavily rewritten sentence rather than a pile of single words.
+        // for a heavily rewritten passage rather than a pile of single words.
+        // A surviving phrase is a boundary: never include it in a red excerpt.
         var phrases: [(range: Range<Int>, location: Int)] = []
         for removal in removals {
             if let last = phrases.last,
@@ -263,7 +273,10 @@ public enum RevisionFormatter {
             group.removeAll()
         }
         for phrase in phrases {
-            if let last = group.last, sentenceBreak(old.tokens, between: last.range.upperBound, and: phrase.range.lowerBound) { emitGroup() }
+            if let last = group.last {
+                let shared = old.tokens[last.range.upperBound..<phrase.range.lowerBound]
+                if shared.filter(\.word).count >= 3 || shared.contains(where: { $0.literal || $0.image }) { emitGroup() }
+            }
             group.append(phrase)
         }
         emitGroup()
@@ -271,8 +284,7 @@ public enum RevisionFormatter {
 
     /// Keep small edits precise. In a substantial rewrite, isolated common
     /// words are weak anchors: retain the unchanged ends and substantial runs.
-    private static func phraseMatches(_ old: Unit, _ new: Unit) -> [(Int, Int)] {
-        let matches = matching(old.tokens.map(\.key), new.tokens.map(\.key))
+    private static func phraseMatches(_ old: Unit, _ new: Unit, exactMatches matches: [(Int, Int)]) -> [(Int, Int)] {
         let words = new.tokens.indices.filter { new.tokens[$0].word }
         let matchedWords = Set(matches.map { $0.1 }).intersection(words)
         guard words.count >= 8, Double(words.count - matchedWords.count) / Double(words.count) >= 0.25,
@@ -284,14 +296,37 @@ public enum RevisionFormatter {
             } else { runs.append([match]) }
         }
         guard runs.count >= 3 else { return matches }
-        return runs.filter { run in
+        let retained = runs.indices.filter { index in
+            let run = runs[index]
             guard let first = run.first, let last = run.last else { return false }
             if first.0 == 0 && first.1 == 0 { return true }
             if last.0 == old.tokens.count - 1 && last.1 == new.tokens.count - 1 { return true }
             let count = run.filter { new.tokens[$0.1].word }.count
             let separatesSentences = run.contains { [".", "!", "?"].contains(new.tokens[$0.1].key) }
             return count >= 8 || (count >= 2 && separatesSentences)
-        }.flatMap { $0 }
+        }
+        let preserved = Set(retained)
+        return runs.indices.filter { index in
+            if preserved.contains(index) { return true }
+            guard runs[index].filter({ new.tokens[$0.1].word }).count >= 3 else { return false }
+            // A short unchanged phrase beside a substantial shared passage
+            // remains meaningful when only a nearby modifier was removed.
+            return [index - 1, index + 1].contains { neighbor in
+                guard preserved.contains(neighbor) else { return false }
+                let before = runs[min(index, neighbor)].last!, after = runs[max(index, neighbor)].first!
+                return old.tokens[(before.0 + 1)..<after.0].filter(\.word).count <= 2
+                    && new.tokens[(before.1 + 1)..<after.1].filter(\.word).count <= 2
+            }
+        }.flatMap { runs[$0] }
+    }
+
+    private static func deletionBoundary(in unit: Unit, startingAt index: Int) -> Int {
+        let next = unit.tokens.indices.dropFirst(index).first { offset in
+            let token = unit.tokens[offset]
+            return !token.whitespace || token.literal || token.key == "\nhard"
+        }
+        return next.map { unit.tokens[$0].range.location }
+            ?? unit.tokens.last.map { NSMaxRange($0.range) } ?? unit.range.location
     }
 
     private static func markBreakNeighbor(in tokens: [Token], at index: Int, changes: inout RevisionDecorations) {

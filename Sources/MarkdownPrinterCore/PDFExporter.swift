@@ -200,8 +200,22 @@ public final class PDFExporter {
         drawRevisionRanges(decorations.images, on: page, origin: origin, border: true)
         for note in revisionNotes {
             let font = FontBook(configuration: configuration).regular(size: 7)
-            RevisionAnnotationLayout.draw(label: note.label, frame: note.frame, font: font, context: context,
-                isImage: note.isImage, hasCaret: !note.isMargin)
+            if note.isImage {
+                RevisionAnnotationLayout.draw(label: note.label, frame: note.frame, font: font, context: context,
+                    isImage: true, hasCaret: !note.isMargin)
+            } else {
+                var wordingFrame = note.frame
+                let hasPrefix = !note.isMargin && note.label.hasPrefix("^ ")
+                if hasPrefix {
+                    let width = ("^ " as NSString).size(withAttributes: [.font: font]).width
+                    wordingFrame.origin.x += width
+                    wordingFrame.size.width = max(0, wordingFrame.width - width)
+                }
+                RevisionAnnotationLayout.draw(label: hasPrefix ? String(note.label.dropFirst(2)) : note.label,
+                    frame: wordingFrame, font: font, context: context, hasCaret: false)
+                RevisionAnnotationLayout.draw(label: "^", frame: RevisionAnnotationLayout.caretFrame(at: note.anchor, font: font),
+                    font: font, context: context, isImage: true)
+            }
             if abs(note.frame.minX - note.anchor.x) > 3 || abs(note.frame.minY - note.anchor.y) > 16 {
                 let leader = NSBezierPath()
                 leader.move(to: note.anchor)
@@ -290,6 +304,12 @@ public final class PDFExporter {
                 .offsetBy(dx: origin.x, dy: origin.y)
             NSBezierPath(rect: rect).fill()
         }
+    }
+
+    /// Internal layout seam for checking annotation positions against body
+    /// geometry without relying on PDFKit's enlarged overlay selection bounds.
+    func revisionNoteLayout(from text: NSAttributedString, decorations: RevisionDecorations) throws -> [RevisionPDFNote] {
+        try revisionNotes(for: decorations, text: text, pages: makePages(for: text))
     }
 
     private func revisionNotes(for decorations: RevisionDecorations, text: NSAttributedString, pages: [TextPage]) throws -> [RevisionPDFNote] {
