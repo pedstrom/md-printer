@@ -827,28 +827,40 @@ public final class WordExporter {
 
     private func footerXML(for document: PreparedWordDocument) -> String {
         let pageWidth = Int((document.pageSetup.pageSize.width * 20).rounded())
-        let contentWidth = max(720, pageWidth - 2_160)
-        let centerWidth = min(720, contentWidth)
+        let contentWidth = max(1, pageWidth - 2_160)
+        let centerWidth = min(1_440, Int(Double(contentWidth) * 0.2))
         let sideWidth = max(1, (contentWidth - centerWidth) / 2)
         return """
         <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
         <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
           <w:tbl>
-            <w:tblPr><w:tblW w:w="\(contentWidth)" w:type="dxa"/><w:tblLayout w:type="fixed"/></w:tblPr>
+            <w:tblPr><w:tblW w:w="\(contentWidth)" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="0" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar></w:tblPr>
             <w:tblGrid><w:gridCol w:w="\(sideWidth)"/><w:gridCol w:w="\(centerWidth)"/><w:gridCol w:w="\(sideWidth)"/></w:tblGrid>
             <w:tr>
-              <w:tc><w:tcPr><w:tcW w:w="\(sideWidth)" w:type="dxa"/></w:tcPr>\(footerParagraph(text: document.footers.left, alignment: "left"))</w:tc>
+              <w:tc><w:tcPr><w:tcW w:w="\(sideWidth)" w:type="dxa"/><w:noWrap/></w:tcPr>\(footerParagraphs(lines: document.footers.leftLines, alignment: "left", width: CGFloat(sideWidth) / 20))</w:tc>
               <w:tc><w:tcPr><w:tcW w:w="\(centerWidth)" w:type="dxa"/></w:tcPr>\(pageFieldParagraph())</w:tc>
-              <w:tc><w:tcPr><w:tcW w:w="\(sideWidth)" w:type="dxa"/></w:tcPr>\(footerParagraph(text: document.footers.right, alignment: "right"))</w:tc>
+              <w:tc><w:tcPr><w:tcW w:w="\(sideWidth)" w:type="dxa"/><w:noWrap/></w:tcPr>\(footerParagraphs(lines: document.footers.rightLines, alignment: "right", width: CGFloat(sideWidth) / 20))</w:tc>
             </w:tr>
           </w:tbl>
         </w:ftr>
         """
     }
 
-    private func footerParagraph(text: String, alignment: String) -> String {
-        let value = Self.escapeXML(text)
-        return "<w:p><w:pPr><w:jc w:val=\"\(alignment)\"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii=\"Avenir Next\" w:hAnsi=\"Avenir Next\"/><w:sz w:val=\"16\"/><w:color w:val=\"808080\"/></w:rPr><w:t xml:space=\"preserve\">\(value)</w:t></w:r></w:p>"
+    private func footerParagraphs(lines: [ResolvedFooterLine], alignment: String, width: CGFloat) -> String {
+        let font = FontBook(configuration: RendererConfiguration()).regular(size: 8)
+        let visibleLines = lines.isEmpty ? [ResolvedFooterLine(text: "")] : Array(lines.prefix(2))
+        return visibleLines.map { line in
+            let value = Self.escapeXML(RevisionAnnotationLayout.truncate(line.text, width: width, font: font))
+            let color = line.style == .original ? "C70F14" : "808080"
+            let style: String
+            switch line.style {
+            case .ordinary: style = ""
+            case .current: style = "<w:highlight w:val=\"yellow\"/>"
+            case .original: style = "<w:strike/>"
+            }
+            let family = Self.escapeXML(font.familyName ?? font.fontName)
+            return "<w:p><w:pPr><w:jc w:val=\"\(alignment)\"/><w:spacing w:before=\"0\" w:after=\"0\" w:line=\"240\" w:lineRule=\"exact\"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii=\"\(family)\" w:hAnsi=\"\(family)\"/><w:sz w:val=\"16\"/><w:color w:val=\"\(color)\"/>\(style)</w:rPr><w:t xml:space=\"preserve\">\(value)</w:t></w:r></w:p>"
+        }.joined()
     }
 
     private func pageFieldParagraph() -> String {

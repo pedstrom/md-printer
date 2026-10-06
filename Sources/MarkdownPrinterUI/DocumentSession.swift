@@ -187,7 +187,15 @@ public final class DocumentSession: ObservableObject {
 
     public var hasOriginal: Bool { originalSnapshot != nil }
 
-    public func setOriginalSnapshot(_ snapshot: OriginalDocumentSnapshot?) async throws {
+    public func setOriginalSnapshot(
+        _ snapshot: OriginalDocumentSnapshot?,
+        expectedSourceURL: URL? = nil
+    ) async throws {
+        if let expectedSourceURL,
+           (requestedDocument ?? document)?.sourceURL?.standardizedFileURL != expectedSourceURL.standardizedFileURL {
+            throw CancellationError()
+        }
+        let priorOriginal = committedOriginalSnapshot
         nextOriginalRevision &+= 1
         let originalRevision = nextOriginalRevision
         originalSnapshot = snapshot
@@ -195,10 +203,26 @@ public final class DocumentSession: ObservableObject {
             committedOriginalSnapshot = snapshot
             return
         }
-        do { try await rebuildAsync(document: document, pageSetup: requestedPageSetup ?? activePageSetup) }
+        do {
+            try await rebuildAsync(document: document, pageSetup: requestedPageSetup ?? activePageSetup)
+            try Task.checkCancellation()
+        }
         catch {
             guard originalRevision == nextOriginalRevision else { return }
-            originalSnapshot = committedOriginalSnapshot
+            originalSnapshot = priorOriginal
+            // A refresh can adopt a pending original before its owning task is
+            // cancelled. Repair in a fresh task so cancellation cannot prevent
+            // restoring the last successful comparison on the newest document.
+            if error is CancellationError {
+                nextOriginalRevision &+= 1
+                let repairRevision = nextOriginalRevision
+                let repair = Task { [self] in
+                    guard repairRevision == nextOriginalRevision,
+                          let latest = requestedDocument ?? self.document else { return }
+                    try await rebuildAsync(document: latest, pageSetup: requestedPageSetup ?? activePageSetup)
+                }
+                try await repair.value
+            }
             throw error
         }
     }
@@ -282,7 +306,7 @@ public final class DocumentSession: ObservableObject {
         )
         let revision = nextRenderer.render(document: document, original: originalSnapshot?.document)
         let nextRenderedText = revision.text
-        let footers = footers ?? pagePreferences?.resolvedFooters(for: document)
+        let footers = footers ?? pagePreferences?.resolvedFooters(for: document, original: originalSnapshot?.document)
             ?? ResolvedFooterConfiguration()
         let nextPDF = try nextExporter.render(from: nextRenderedText, footers: footers, decorations: revision.decorations)
         nextRenderRevision &+= 1
@@ -326,9 +350,9 @@ public final class DocumentSession: ObservableObject {
             }
         }
         let nextConfiguration = baseRendererConfiguration.applying(pageSetup)
-        let resolvedFooters = footers ?? pagePreferences?.resolvedFooters(for: document)
-            ?? ResolvedFooterConfiguration()
         let original = originalSnapshot
+        let resolvedFooters = footers ?? pagePreferences?.resolvedFooters(for: document, original: original?.document)
+            ?? ResolvedFooterConfiguration()
         let job = DocumentAttributedTextJob(
             document: document,
             configuration: nextConfiguration,
@@ -343,6 +367,7 @@ public final class DocumentSession: ObservableObject {
             }.value
             try Task.checkCancellation()
         } catch {
+            if error is CancellationError { throw error }
             guard preparationRevision == nextPreparationRevision else { return }
             throw error
         }
@@ -357,6 +382,7 @@ public final class DocumentSession: ObservableObject {
             ).renderAsync(from: renderedText, footers: resolvedFooters, decorations: revision)
             try Task.checkCancellation()
         } catch {
+            if error is CancellationError { throw error }
             guard preparationRevision == nextPreparationRevision else { return }
             throw error
         }
@@ -634,12 +660,12 @@ public final class DocumentSession: ObservableObject {
             let hasExplicitPageSetup = self.requestedExplicitPageSetup ?? self.hasExplicitPageSetup
             let pageSetup = hasExplicitPageSetup ? self.requestedPageSetup ?? self.activePageSetup : defaultPageSetup
             let footers = ResolvedFooterConfiguration(
-                left: leftFooter.resolved(for: document),
-                right: rightFooter.resolved(for: document)
+                leftLines: leftFooter.resolvedLines(for: document, original: self.originalSnapshot?.document),
+                rightLines: rightFooter.resolvedLines(for: document, original: self.originalSnapshot?.document)
             )
             if self.hasOriginal {
                 Task {
-                    do { try await self.rebuildAsync(document: document, pageSetup: pageSetup, footers: footers) }
+                    do { try await self.rebuildAsync(document: document, pageSetup: pageSetup) }
                     catch { self.errorMessage = error.localizedDescription }
                 }
             } else {

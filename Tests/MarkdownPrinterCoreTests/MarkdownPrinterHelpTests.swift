@@ -92,6 +92,21 @@ final class MarkdownPrinterHelpTests: XCTestCase {
         }
     }
 
+    func testPreviousVersionHelpExplainsNativeGitAndFooterChanges() throws {
+        let section = try XCTUnwrap(
+            MarkdownPrinterHelpContent.sections.first { $0.id == .previousVersions }
+        )
+        let text = section.paragraphs.joined(separator: "\n")
+        for phrase in ["Compare with Git Version…", "Compare with Older Version…",
+                       "Clear Change Highlighting", "locally available history",
+                       "current modification date above the original date", "yellow background",
+                       "red with strikethrough", "selected commit’s timestamp"] {
+            XCTAssertTrue(text.contains(phrase), phrase)
+        }
+        XCTAssertFalse(text.contains("skill"))
+        XCTAssertFalse(text.contains("temporary .md"))
+    }
+
     func testHelpSectionIdentifiersAreUniqueAndIncludeBothMenuDestinations() {
         let sectionIDs = MarkdownPrinterHelpContent.sections.map(\.id)
 

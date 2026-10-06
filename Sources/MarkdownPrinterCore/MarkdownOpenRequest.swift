@@ -6,12 +6,17 @@ public struct OriginalDocumentSnapshot: Codable, Equatable, Sendable {
     public let markdown: String
     public let title: String
     public let sourceURL: URL?
+    public let sourceModificationDate: Date?
+    public let gitRevision: String?
 
-    public init(document: MarkdownDocument, id: UUID = UUID()) {
+    public init(document: MarkdownDocument, id: UUID = UUID(), gitRevision: String? = nil) {
         self.id = id; markdown = document.markdown; title = document.title; sourceURL = document.sourceURL
+        sourceModificationDate = document.sourceModificationDate
+        self.gitRevision = gitRevision
     }
     public var document: MarkdownDocument {
-        MarkdownDocument(sourceURL: sourceURL, title: title, markdown: markdown)
+        MarkdownDocument(sourceURL: sourceURL, sourceModificationDate: sourceModificationDate,
+                         title: title, markdown: markdown)
     }
 }
 

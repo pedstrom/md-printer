@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-10-06 — Native Git comparison and revision footer dates
+
+- Add a native document-attached Git version picker with file-specific local history, rename tracking, commit messages/dates/IDs, and a useful initial selection. Read installed Git asynchronously without modifying repositories or fetching remote objects; keep cancellation and updater relaunch coordinated.
+- Preserve original-file modification timestamps and optional Git revision identity in local snapshots, including CLI handoffs and workspace restoration. Leave legacy snapshot timestamps unknown.
+- Show differing configured footer dates on two lines: current above original, with yellow current-date highlighting and red struck original dates. Share structured footer values across PDF and editable Word exports; preserve body pagination, footer columns, and centered page numbers.
+- Document the native Git workflow in Help and README, retaining the optional Codex setup Help. Keep the version unchanged and leave publication outside this change.
+- Verify real temporary repositories, snapshot/restoration and cancellation races, date formats and seasonal zones, PDF searchability/pixels, and editable Word runs. Inspect multi-page and narrow-column PDF/Word fixtures and exercise the native picker, cancel, live refresh, reopen, clear, Save, and Print dialog. Isolate this feature for the macOS gate so existing annotation work remains untouched.
+
 ## 2026-10-06 — Clearly copyable Codex setup prompt in Help
 
 - Keep Codex setup in its own Help section alongside native comparison guidance. Separate setup instructions, the complete prompt, and the after-setup example; explain that setup is once per Mac and available across projects for that Mac's user.

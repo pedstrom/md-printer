@@ -68,6 +68,15 @@ public struct MarkdownPrinterView: View {
         .focusedSceneObject(pageActions)
         .background(StableWindowTitleView(title: session.title))
         .background(PDFSearchPanelPresenter(controller: searchController))
+        .sheet(isPresented: Binding(
+            get: { documentActions.gitPicker != nil },
+            set: { if !$0 { documentActions.cancelGitComparison() } }
+        )) {
+            if let picker = documentActions.gitPicker {
+                GitRevisionPickerView(controller: picker, cancel: documentActions.cancelGitComparison)
+            }
+        }
+        .onDisappear(perform: documentActions.cancelGitComparison)
         .overlay {
             if isDropTargeted {
                 RoundedRectangle(cornerRadius: 16)

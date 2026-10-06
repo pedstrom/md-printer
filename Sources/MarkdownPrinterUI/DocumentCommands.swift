@@ -61,6 +61,8 @@ package struct DocumentFileCommands: Commands {
         }
 
         CommandGroup(replacing: .importExport) {
+            Button("Compare with Git Version…") { controller?.compareWithGitVersion() }
+                .disabled(controller?.canCompareWithGit != true)
             Button("Compare with Older Version…") { controller?.compareWithOlderVersion() }
                 .disabled(controller?.canCompare != true)
             Button("Clear Change Highlighting") { controller?.clearOriginal() }

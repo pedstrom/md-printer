@@ -53,10 +53,13 @@ public final class PagePreferences: ObservableObject {
         )?.normalized ?? .none
     }
 
-    public func resolvedFooters(for document: MarkdownDocument) -> ResolvedFooterConfiguration {
+    public func resolvedFooters(
+        for document: MarkdownDocument,
+        original: MarkdownDocument? = nil
+    ) -> ResolvedFooterConfiguration {
         ResolvedFooterConfiguration(
-            left: leftFooter.resolved(for: document),
-            right: rightFooter.resolved(for: document)
+            leftLines: leftFooter.resolvedLines(for: document, original: original),
+            rightLines: rightFooter.resolvedLines(for: document, original: original)
         )
     }
 

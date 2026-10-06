@@ -734,9 +734,10 @@ public final class PDFExporter {
         let columns = footerColumnFrames()
         let footerTop = configuration.pageSize.height - configuration.pageMargins.bottom
         let y = footerTop + 16
-        drawFooterValue(footers.left, alignment: .left, in: columns.left.offsetBy(dx: 0, dy: y))
-        drawFooterValue(String(pageNumber), alignment: .center, in: columns.center.offsetBy(dx: 0, dy: y))
-        drawFooterValue(footers.right, alignment: .right, in: columns.right.offsetBy(dx: 0, dy: y))
+        drawFooterLines(footers.leftLines, alignment: .left, in: columns.left.offsetBy(dx: 0, dy: y))
+        drawFooterValue(ResolvedFooterLine(text: String(pageNumber)), alignment: .center,
+                        in: columns.center.offsetBy(dx: 0, dy: y))
+        drawFooterLines(footers.rightLines, alignment: .right, in: columns.right.offsetBy(dx: 0, dy: y))
     }
 
     private func footerColumnFrames() -> (left: CGRect, center: CGRect, right: CGRect) {
@@ -751,22 +752,44 @@ public final class PDFExporter {
         )
     }
 
-    private func drawFooterValue(
-        _ value: String,
+    private func drawFooterLines(
+        _ lines: [ResolvedFooterLine],
         alignment: NSTextAlignment,
         in frame: CGRect
     ) {
-        guard !value.isEmpty else { return }
+        for (index, line) in lines.prefix(2).enumerated() {
+            drawFooterValue(line, alignment: alignment, in: frame.offsetBy(dx: 0, dy: CGFloat(index) * 12))
+        }
+    }
+
+    private func drawFooterValue(
+        _ line: ResolvedFooterLine,
+        alignment: NSTextAlignment,
+        in frame: CGRect
+    ) {
+        guard !line.text.isEmpty else { return }
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = .byTruncatingTail
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: FontBook(configuration: configuration).regular(size: 8),
+            .foregroundColor: configuration.secondaryTextColor,
+            .paragraphStyle: paragraph
+        ]
+        switch line.style {
+        case .ordinary: break
+        case .current: attributes[.backgroundColor] = RevisionFormatter.highlightColor
+        case .original:
+            attributes[.foregroundColor] = RevisionFormatter.deletionColor
+            attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue
+            attributes[.strikethroughColor] = RevisionFormatter.deletionColor
+        }
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSBezierPath(rect: frame).addClip()
         NSAttributedString(
-            string: value,
-            attributes: [
-                .font: FontBook(configuration: configuration).regular(size: 8),
-                .foregroundColor: configuration.secondaryTextColor,
-                .paragraphStyle: paragraph
-            ]
+            string: line.text,
+            attributes: attributes
         ).draw(
             with: frame,
             options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine]

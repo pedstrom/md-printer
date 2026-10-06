@@ -8,6 +8,8 @@ package final class DocumentActionController: NSObject, ObservableObject {
     typealias SharePickerPresenter = (NSSharingServicePicker, NSView, NSRect) -> Void
 
     @Published package private(set) var shareCommandTitle = "Share PDF…"
+    @Published package private(set) var gitPicker: GitRevisionPickerController?
+    @Published package private(set) var isGitComparisonActive = false
 
     private weak var session: DocumentSession?
     private weak var exportPreferences: ExportPreferences?
@@ -17,6 +19,9 @@ package final class DocumentActionController: NSObject, ObservableObject {
     private let fileStore: ExportDragFileStore
     private let revealFiles: ([URL]) -> Void
     private let presentSharePicker: SharePickerPresenter
+    private let gitHistoryService: any GitDocumentHistoryProviding
+    private let originalCoordinator: DocumentOriginalCoordinator
+    private var gitComparisonSourceURL: URL?
     private var activeArtifact: ExportDragArtifact?
     private var sharingPicker: NSSharingServicePicker?
     private var selectedSharingService: NSSharingService?
@@ -42,7 +47,9 @@ package final class DocumentActionController: NSObject, ObservableObject {
         },
         presentSharePicker: @escaping SharePickerPresenter = { picker, view, rect in
             picker.show(relativeTo: rect, of: view, preferredEdge: .minY)
-        }
+        },
+        gitHistoryService: any GitDocumentHistoryProviding = GitDocumentHistoryService(),
+        originalCoordinator: DocumentOriginalCoordinator? = nil
     ) {
         self.session = session
         self.exportPreferences = exportPreferences
@@ -52,10 +59,19 @@ package final class DocumentActionController: NSObject, ObservableObject {
         self.fileStore = fileStore
         self.revealFiles = revealFiles
         self.presentSharePicker = presentSharePicker
+        self.gitHistoryService = gitHistoryService
+        self.originalCoordinator = originalCoordinator ?? .shared
         super.init()
         refreshShareTitle()
         session.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        session.$renderedSnapshot
+            .sink { [weak self] snapshot in
+                guard let self, let source = self.gitComparisonSourceURL,
+                      snapshot?.document.sourceURL?.standardizedFileURL != source else { return }
+                self.cancelGitComparison()
+            }
             .store(in: &cancellables)
         exportPreferences.$defaultFormat
             .sink { [weak self] format in
@@ -112,6 +128,52 @@ package final class DocumentActionController: NSObject, ObservableObject {
 
     package var canCompare: Bool { session?.hasDocument == true }
     package var canClearOriginal: Bool { session?.hasOriginal == true }
+    package var canCompareWithGit: Bool { canShowInFinder && !isGitComparisonActive }
+
+    package func compareWithGitVersion() {
+        guard canCompareWithGit, let document = session?.document, let url = document.sourceURL else { return }
+        let comparisonID = UUID()
+        gitComparisonSourceURL = url.standardizedFileURL
+        isGitComparisonActive = true
+        activityCoordinator.beginBlockingOperation()
+        let picker = GitRevisionPickerController(
+            id: comparisonID,
+            sourceURL: url,
+            currentMarkdown: document.markdown,
+            service: gitHistoryService,
+            applyDocument: { [weak self] original, revision in
+                guard let self, let session = self.session,
+                      session.document?.sourceURL?.standardizedFileURL == url.standardizedFileURL
+                else { throw CancellationError() }
+                try Task.checkCancellation()
+                let snapshot = OriginalDocumentSnapshot(document: original, gitRevision: revision.commitID)
+                try self.originalCoordinator.store.save(snapshot, pending: true)
+                do {
+                    try await session.setOriginalSnapshot(snapshot, expectedSourceURL: url)
+                    self.originalCoordinator.store.consume(snapshot.id)
+                } catch {
+                    self.originalCoordinator.store.remove(snapshot.id)
+                    throw error
+                }
+            },
+            finished: { [weak self, activityCoordinator] in
+                if let self {
+                    if self.gitPicker?.id == comparisonID { self.gitPicker = nil }
+                    self.gitComparisonSourceURL = nil
+                    self.isGitComparisonActive = false
+                }
+                activityCoordinator.endBlockingOperation()
+            }
+        )
+        gitPicker = picker
+        picker.load()
+    }
+
+    package func cancelGitComparison() {
+        let picker = gitPicker
+        gitPicker = nil
+        picker?.cancel()
+    }
 
     package func compareWithOlderVersion() {
         guard let session, session.hasDocument else { return }

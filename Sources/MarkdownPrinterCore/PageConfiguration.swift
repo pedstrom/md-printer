@@ -178,6 +178,32 @@ public enum FooterValue: Codable, Equatable, Sendable {
         }
     }
 
+    /// The comparison's captured timestamp stays fixed while the live document's
+    /// modification timestamp follows source refreshes. Only date preferences
+    /// acquire revision styling; other footer choices retain their ordinary form.
+    public func resolvedLines(
+        for document: MarkdownDocument,
+        original: MarkdownDocument?,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> [ResolvedFooterLine] {
+        let currentText = resolved(for: document, locale: locale, timeZone: timeZone)
+        let ordinary = currentText.isEmpty ? [] : [ResolvedFooterLine(text: currentText)]
+        switch self {
+        case .date, .dateTime, .dateTimeWithTimeZone:
+            guard document.sourceModificationDate != nil,
+                  let original, original.sourceModificationDate != nil else { return ordinary }
+            let originalText = resolved(for: original, locale: locale, timeZone: timeZone)
+            guard currentText != originalText else { return ordinary }
+            return [
+                ResolvedFooterLine(text: currentText, style: .current),
+                ResolvedFooterLine(text: originalText, style: .original)
+            ]
+        default:
+            return ordinary
+        }
+    }
+
     private static func dateFormatter(
         dateStyle: DateFormatter.Style,
         timeStyle: DateFormatter.Style,
@@ -199,13 +225,45 @@ private extension String {
     }
 }
 
+public enum FooterRevisionStyle: Equatable, Sendable {
+    case ordinary
+    case current
+    case original
+}
+
+public struct ResolvedFooterLine: Equatable, Sendable {
+    public var text: String
+    public var style: FooterRevisionStyle
+
+    public init(text: String, style: FooterRevisionStyle = .ordinary) {
+        self.text = text
+        self.style = style
+    }
+}
+
 public struct ResolvedFooterConfiguration: Equatable, Sendable {
-    public var left: String
-    public var right: String
+    public var leftLines: [ResolvedFooterLine]
+    public var rightLines: [ResolvedFooterLine]
+
+    /// Plain-string access remains available for existing exporter clients.
+    public var left: String {
+        get { leftLines.map(\.text).joined(separator: "\n") }
+        set { leftLines = newValue.isEmpty ? [] : [ResolvedFooterLine(text: newValue)] }
+    }
+
+    public var right: String {
+        get { rightLines.map(\.text).joined(separator: "\n") }
+        set { rightLines = newValue.isEmpty ? [] : [ResolvedFooterLine(text: newValue)] }
+    }
 
     public init(left: String = "", right: String = "") {
-        self.left = left
-        self.right = right
+        leftLines = left.isEmpty ? [] : [ResolvedFooterLine(text: left)]
+        rightLines = right.isEmpty ? [] : [ResolvedFooterLine(text: right)]
+    }
+
+    public init(leftLines: [ResolvedFooterLine], rightLines: [ResolvedFooterLine]) {
+        self.leftLines = leftLines
+        self.rightLines = rightLines
     }
 }
 
