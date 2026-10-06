@@ -4,20 +4,61 @@ import XCTest
 
 @MainActor
 final class RevisionTableCalloutTests: XCTestCase {
+    func testPDFStrikeAddsOnlyRemovedWordingPixelsAndLeavesCaretAndImagesUnchanged() throws {
+        let font = NSFont(name: "Avenir Next", size: 7) ?? NSFont.systemFont(ofSize: 7)
+        func bitmap(_ label: String, isImage: Bool, hasCaret: Bool = true) throws -> NSBitmapImageRep {
+            let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 480, pixelsHigh: 80,
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
+            let graphics = try XCTUnwrap(NSGraphicsContext(bitmapImageRep: bitmap))
+            let context = graphics.cgContext
+            context.setFillColor(NSColor.white.cgColor)
+            context.fill(CGRect(x: 0, y: 0, width: 480, height: 80))
+            context.translateBy(x: 0, y: 80); context.scaleBy(x: 4, y: -4)
+            RevisionAnnotationLayout.draw(label: label, frame: CGRect(x: 10, y: 8, width: 100, height: 8),
+                font: font, context: context, isImage: isImage, hasCaret: hasCaret)
+            return bitmap
+        }
+        for (label, hasCaret) in [("^ mmmmmm", true), ("removed image", false)] {
+            let plain = try bitmap(label, isImage: true, hasCaret: hasCaret)
+            let struck = try bitmap(label, isImage: false, hasCaret: hasCaret)
+            let prefixWidth = hasCaret ? ("^ " as NSString).size(withAttributes: [.font: font]).width : 0
+            var changes = 0
+            for y in 0..<plain.pixelsHigh {
+                for x in 0..<plain.pixelsWide where plain.colorAt(x: x, y: y) != struck.colorAt(x: x, y: y) {
+                    changes += 1
+                    XCTAssertGreaterThanOrEqual(CGFloat(x) / 4, 10 + prefixWidth - 1)
+                    let color = try XCTUnwrap(struck.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
+                    XCTAssertGreaterThan(color.redComponent, color.greenComponent)
+                }
+            }
+            XCTAssertGreaterThan(changes, 20)
+        }
+        let image = RevisionDeletion(location: 0, text: "", isImage: true)
+        XCTAssertEqual(image.label, "^ removed image")
+        XCTAssertEqual(RevisionDeletion(location: 0, text: "removed image").label, image.label)
+        let plainImage = try bitmap(image.label, isImage: true)
+        let struckText = try bitmap(image.label, isImage: false)
+        XCTAssertNotEqual(plainImage.tiffRepresentation, struckText.tiffRepresentation)
+    }
+
     func testCellCalloutTruncatesAndShiftsLeftBeforeTheCellEdge() throws {
         let font = NSFont(name: "Avenir Next", size: 7) ?? NSFont.systemFont(ofSize: 7)
         let page = CGRect(x: 0, y: 0, width: 612, height: 792)
         let content = CGRect(x: 54, y: 54, width: 504, height: 684)
         let cell = CGRect(x: 350, y: 100, width: 145, height: 50)
-        let placed = try RevisionAnnotationLayout.place(label: "^ deleted a lengthy clause describing the original business validation outcome",
+        let placed = try RevisionAnnotationLayout.place(label: "^ a lengthy clause describing the original business validation outcome",
             anchor: CGPoint(x: cell.maxX - 2, y: 120), line: CGRect(x: 350, y: 108, width: 145, height: 12),
             content: content, page: page, occupied: [], notes: [], font: font, cellBounds: cell)
         XCTAssertTrue(cell.contains(placed.0))
         XCTAssertLessThan(placed.0.minX, cell.maxX - 20)
         XCTAssertLessThanOrEqual(placed.0.maxX, cell.maxX)
-        XCTAssertTrue(placed.1.hasPrefix("^ deleted "))
+        XCTAssertTrue(placed.1.hasPrefix("^ "))
         XCTAssertTrue(placed.1.hasSuffix("…"))
-        for prefix in ["^ deleted ", "deleted "] {
+        let previous = RevisionAnnotationLayout.truncate("^ deleted a lengthy clause describing the original business validation outcome",
+            width: placed.0.width, font: font)
+        XCTAssertGreaterThan(placed.1.dropFirst(2).count, previous.dropFirst("^ deleted ".count).count)
+        for prefix in ["^ ", ""] {
             let width = (prefix + "…" as NSString).size(withAttributes: [.font: font]).width
             XCTAssertEqual(RevisionAnnotationLayout.truncate(prefix + "a long removed clause", width: width, font: font), prefix + "…")
         }
@@ -28,24 +69,24 @@ final class RevisionTableCalloutTests: XCTestCase {
         let page = CGRect(x: 0, y: 0, width: 612, height: 792)
         let content = CGRect(x: 54, y: 54, width: 504, height: 684)
         let occupiedCell = CGRect(x: 350, y: 100, width: 145, height: 30)
-        let margin = try RevisionAnnotationLayout.place(label: "^ deleted preparing the development-environment review",
+        let margin = try RevisionAnnotationLayout.place(label: "^ preparing the development-environment review",
             anchor: CGPoint(x: 400, y: 110), line: occupiedCell, content: content, page: page,
             occupied: [occupiedCell], notes: [], font: font, cellBounds: occupiedCell)
         XCTAssertGreaterThan(margin.0.minX, content.maxX)
         XCTAssertFalse(margin.1.hasPrefix("^"))
-        XCTAssertTrue(margin.1.hasPrefix("deleted"))
+        XCTAssertTrue(margin.1.hasPrefix("preparing"))
         XCTAssertTrue(margin.1.replacingOccurrences(of: "\n", with: "").contains("preparing"))
         XCTAssertTrue((2...4).contains(margin.1.components(separatedBy: "\n").count))
-        XCTAssertThrowsError(try RevisionAnnotationLayout.place(label: "^ deleted old words", anchor: occupiedCell.origin,
+        XCTAssertThrowsError(try RevisionAnnotationLayout.place(label: "^ old words", anchor: occupiedCell.origin,
             line: occupiedCell, content: content, page: page, occupied: [page], notes: [], font: font, cellBounds: occupiedCell))
         let narrowCell = CGRect(x: 350, y: 100, width: 12, height: 30)
-        XCTAssertThrowsError(try RevisionAnnotationLayout.place(label: "^ deleted old words", anchor: narrowCell.origin,
+        XCTAssertThrowsError(try RevisionAnnotationLayout.place(label: "^ old words", anchor: narrowCell.origin,
             line: .zero, content: content, page: content, occupied: [], notes: [], font: font, cellBounds: narrowCell))
         XCTAssertThrowsError(try RevisionAnnotationLayout.place(label: "^ removed image", anchor: narrowCell.origin,
-            line: .zero, content: content, page: content, occupied: [], notes: [], font: font, cellBounds: narrowCell))
+            line: .zero, content: content, page: content, occupied: [], notes: [], font: font, cellBounds: narrowCell, isImage: true))
         let wideCell = CGRect(x: 350, y: 100, width: 145, height: 30)
         XCTAssertEqual(try? RevisionAnnotationLayout.place(label: "^ removed image", anchor: CGPoint(x: wideCell.maxX, y: 105),
-            line: .zero, content: content, page: page, occupied: [], notes: [], font: font, cellBounds: wideCell).1, "^ removed image")
+            line: .zero, content: content, page: page, occupied: [], notes: [], font: font, cellBounds: wideCell, isImage: true).1, "^ removed image")
     }
 
     func testEmptyCellUsesItsCurrentCellButAnOutsideJoinDoesNot() throws {
@@ -87,7 +128,7 @@ final class RevisionTableCalloutTests: XCTestCase {
             XCTAssertEqual(marked.pageCount, plain.pageCount)
             XCTAssertTrue(page.string?.contains("…") == true)
             let bodyPlain = try XCTUnwrap(plain.findString("Current", withOptions: []).first { padded.minX <= $0.bounds(for: plainPage).minX && $0.bounds(for: plainPage).maxX <= padded.maxX })
-            let callout = try XCTUnwrap(marked.findString("^ deleted", withOptions: []).first)
+            let callout = try XCTUnwrap(marked.findString("^ a long", withOptions: []).first)
             XCTAssertGreaterThanOrEqual(callout.bounds(for: page).minX, padded.minX - 0.1)
             XCTAssertLessThanOrEqual(callout.bounds(for: page).maxX, padded.maxX + 0.1)
             let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(page.thumbnail(of: page.bounds(for: .mediaBox).size, for: .mediaBox).tiffRepresentation)))
@@ -135,7 +176,7 @@ final class RevisionTableCalloutTests: XCTestCase {
         let marked = try XCTUnwrap(PDFDocument(data: PDFExporter().pdfData(from: text, decorations: decorations)))
         XCTAssertGreaterThan(plain.pageCount, 1)
         XCTAssertEqual(marked.pageCount, plain.pageCount)
-        XCTAssertEqual(marked.findString("^ deleted", withOptions: []).count, 60)
+        XCTAssertEqual(marked.findString("^ old", withOptions: []).count, 60)
         for index in 0..<60 {
             let a = try XCTUnwrap(plain.findString("Current [\(index)]", withOptions: []).first)
             let b = try XCTUnwrap(marked.findString("Current [\(index)]", withOptions: []).first)

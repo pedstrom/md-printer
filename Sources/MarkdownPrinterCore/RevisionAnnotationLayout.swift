@@ -9,6 +9,7 @@ struct RevisionPDFNote {
     let label: String
     var cellBounds: CGRect? = nil
     var isMargin = false
+    var isImage = false
 }
 
 public enum RevisionAnnotationError: LocalizedError {
@@ -21,11 +22,11 @@ public enum RevisionAnnotationError: LocalizedError {
 enum RevisionAnnotationLayout {
     static func place(label: String, anchor: CGPoint, line: CGRect, content: CGRect,
                       page: CGRect, occupied: [CGRect], notes: [CGRect], font: NSFont,
-                      cellBounds: CGRect? = nil) throws -> (CGRect, String) {
+                      cellBounds: CGRect? = nil, isImage: Bool = false) throws -> (CGRect, String) {
         let pageContent = content
         let content = cellBounds.map { $0.intersection(pageContent) } ?? pageContent
         let height = ceil(inkBounds(label: label, font: font).height)
-        let prefix = label == "^ removed image" ? label : "^ deleted …"
+        let prefix = isImage ? label : "^ …"
         let fullWidth = ceil((label as NSString).size(withAttributes: [.font: font]).width)
         let minimumWidth = min(fullWidth, ceil((prefix as NSString).size(withAttributes: [.font: font]).width))
         let preferredWidth = max(42, min(80, fullWidth))
@@ -43,7 +44,7 @@ enum RevisionAnnotationLayout {
         }
         for candidate in candidates where content.width >= minimumWidth && content.height >= height {
             let text = truncate(label, width: candidate.width, font: font)
-            guard showsRemovedWording(text, original: label) else { continue }
+            guard showsRemovedWording(text, original: label, isImage: isImage) else { continue }
             let actual = CGRect(origin: candidate.origin, size: CGSize(width: ceil((text as NSString).size(withAttributes: [.font: font]).width), height: height))
             if content.contains(actual), fits(actual, occupied: occupied, notes: notes) { return (actual, text) }
         }
@@ -56,7 +57,7 @@ enum RevisionAnnotationLayout {
                 guard marginWidth >= 36 else { continue }
                 let lines = wrapped(marginLabel, width: marginWidth, maximumLines: maximumLines, font: font)
                 let text = lines.joined(separator: "\n")
-                guard !lines.isEmpty, showsRemovedWording(text, original: label) else { continue }
+                guard !lines.isEmpty, showsRemovedWording(text, original: label, isImage: isImage) else { continue }
                 let noteHeight = lines.map { ceil(inkBounds(label: $0, font: font).height) }.max()!
                     + lineStep(font) * CGFloat(lines.count - 1)
                 let nearbyY = max(pageContent.minY, min(line.maxY, pageContent.maxY - noteHeight))
@@ -71,14 +72,12 @@ enum RevisionAnnotationLayout {
         throw RevisionAnnotationError.noSpace
     }
 
-    private static func showsRemovedWording(_ displayed: String, original: String) -> Bool {
+    private static func showsRemovedWording(_ displayed: String, original: String, isImage: Bool) -> Bool {
         func compact(_ value: String) -> String { value.filter { !$0.isWhitespace } }
         let displayed = displayed.hasPrefix("^ ") ? String(displayed.dropFirst(2)) : displayed
-        if original == "^ removed image" { return compact(displayed) == "removedimage" }
-        guard original.hasPrefix("^ deleted ") else { return !compact(displayed).isEmpty }
-        let removed = compact(String(original.dropFirst("^ deleted ".count)))
-        let expected = "deleted" + String(removed.prefix(4))
-        return !removed.isEmpty && compact(displayed).hasPrefix(expected)
+        if isImage { return compact(displayed) == "removedimage" }
+        let removed = compact(original.hasPrefix("^ ") ? String(original.dropFirst(2)) : original)
+        return !removed.isEmpty && compact(displayed).hasPrefix(String(removed.prefix(4)))
     }
 
     private static func wrapped(_ label: String, width: CGFloat, maximumLines: Int, font: NSFont) -> [String] {
@@ -123,7 +122,7 @@ enum RevisionAnnotationLayout {
         var letters = Array(label)
         while !letters.isEmpty, (String(letters) + "…" as NSString).size(withAttributes: attributes).width > width { letters.removeLast() }
         let stem = String(letters).trimmingCharacters(in: .whitespaces)
-        if ["^ deleted", "deleted"].contains(stem),
+        if stem == "^",
            (stem + " …" as NSString).size(withAttributes: attributes).width <= width {
             return stem + " …"
         }
@@ -139,7 +138,8 @@ enum RevisionAnnotationLayout {
             attributes: [.font: font, .foregroundColor: RevisionFormatter.deletionColor]))
     }
 
-    static func draw(label: String, frame: CGRect, font: NSFont, context: CGContext) {
+    static func draw(label: String, frame: CGRect, font: NSFont, context: CGContext,
+                     isImage: Bool = false, hasCaret: Bool = true) {
         for (index, text) in label.components(separatedBy: "\n").enumerated() {
             let line = labelLine(text, font: font)
             let bounds = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
@@ -150,6 +150,18 @@ enum RevisionAnnotationLayout {
             context.textMatrix = .identity
             context.textPosition = .zero
             CTLineDraw(line, context)
+            if !isImage {
+                // CoreText does not paint AppKit's strikethrough attribute.
+                // Strike only the removed wording, retaining the caret marker.
+                let start = index == 0 && hasCaret && text.hasPrefix("^ ") ? 2 : 0
+                let leading = CTLineGetOffsetForStringIndex(line, start, nil)
+                let trailing = CTLineGetOffsetForStringIndex(line, (text as NSString).length, nil)
+                context.setStrokeColor(RevisionFormatter.deletionColor.cgColor)
+                context.setLineWidth(max(0.3, font.underlineThickness))
+                context.move(to: CGPoint(x: leading, y: font.xHeight / 2))
+                context.addLine(to: CGPoint(x: trailing, y: font.xHeight / 2))
+                context.strokePath()
+            }
             context.restoreGState()
         }
     }

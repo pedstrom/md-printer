@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-05 — Strike removed wording in revision callouts
+
+- Replace text-deletion labels with an unstruck red caret followed by red wording with strikethrough, omitting “deleted.” Preserve the existing seven-point Avenir Next font/fallback, floating placement, anchors, leaders, collision handling, table boundaries, and four-line PDF margin fallback. Recalculate widths for the shorter label to retain more removed wording before truncation.
+- Draw PDF strikes only over wording and export separate Word runs for the plain caret and struck wording. Keep true image-removal callouts unchanged; distinguish their metadata from ordinary removed text that happens to say “removed image.” Preserve comparison logic, other revision styling, and body wrapping/pagination.
+- Cover caret/image pixel preservation, struck wording, shorter-label truncation, table/margin placement, Word run formatting, and unchanged PDF/Word body geometry. Inspect real prose, image-removal, and crowded-table PDFs outside Git.
+- Pass 442 macOS tests, 96.04% testable-production line coverage, performance budgets, and universal app/extension/CLI bundle validation. Render and inspect the ordinary showcase as well as the annotated fixtures; keep generated artifacts outside Git.
+
 ## 2026-10-05 — Copy-and-paste Codex comparison skill prompt in Help
 
 - Add a previous-version Help entry with the native compare/clear actions and a complete selectable prompt for creating a user-level Codex skill available across projects.

@@ -96,7 +96,7 @@ public final class WordExporter {
         return notes.map { note in
             let firstWord = note.text.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? ""
             let informativeStem = String(firstWord.prefix(6))
-            let label = note.isImage ? note.label : "^ deleted \(informativeStem)…"
+            let label = note.isImage ? note.label : "^ \(informativeStem)…"
             let full = (label as NSString).size(withAttributes: [.font: font]).width
             let shifted = (String(label.dropFirst(2)) as NSString).size(withAttributes: [.font: font]).width + 8
             return max(full, shifted)
@@ -1035,21 +1035,30 @@ public final class WordExporter {
     private func calloutXML(_ notes: [RevisionDeletion], geometry: NSValue? = nil) -> String {
         let font = FontBook(configuration: RendererConfiguration()).regular(size: 7)
         let bounds = geometry?.rectValue ?? CGRect(x: 0, y: 12, width: 240, height: 10)
-        func box(_ label: String, x: CGFloat, y: CGFloat, width: CGFloat) -> String {
-            """
-            <w:pict><v:rect xmlns:v="urn:schemas-microsoft-com:vml" id="Revision\(UUID().uuidString)" style="position:absolute;margin-left:\(x)pt;margin-top:\(y)pt;width:\(width)pt;height:10pt;z-index:1;mso-position-horizontal-relative:char;mso-position-vertical-relative:line" filled="f" stroked="f"><v:textbox inset="0,0,0,0"><w:txbxContent><w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="\(Self.escapeXML(font.familyName ?? font.fontName))" w:hAnsi="\(Self.escapeXML(font.familyName ?? font.fontName))"/><w:sz w:val="14"/><w:color w:val="C70F14"/></w:rPr><w:t xml:space="preserve">\(Self.escapeXML(label))</w:t></w:r></w:p></w:txbxContent></v:textbox><w10:wrap xmlns:w10="urn:schemas-microsoft-com:office:word" type="none"/></v:rect></w:pict>
+        func box(_ label: String, x: CGFloat, y: CGFloat, width: CGFloat,
+                 strikeWording: Bool, includesCaret: Bool = false) -> String {
+            func run(_ text: String, struck: Bool) -> String {
+                let strike = struck ? "<w:strike/>" : ""
+                return "<w:r><w:rPr><w:rFonts w:ascii=\"\(Self.escapeXML(font.familyName ?? font.fontName))\" w:hAnsi=\"\(Self.escapeXML(font.familyName ?? font.fontName))\"/><w:sz w:val=\"14\"/><w:color w:val=\"C70F14\"/>\(strike)</w:rPr><w:t xml:space=\"preserve\">\(Self.escapeXML(text))</w:t></w:r>"
+            }
+            let runs = includesCaret && strikeWording
+                ? run(String(label.prefix(2)), struck: false) + run(String(label.dropFirst(2)), struck: true)
+                : run(label, struck: strikeWording)
+            return """
+            <w:pict><v:rect xmlns:v="urn:schemas-microsoft-com:vml" id="Revision\(UUID().uuidString)" style="position:absolute;margin-left:\(x)pt;margin-top:\(y)pt;width:\(width)pt;height:10pt;z-index:1;mso-position-horizontal-relative:char;mso-position-vertical-relative:line" filled="f" stroked="f"><v:textbox inset="0,0,0,0"><w:txbxContent><w:p><w:pPr><w:spacing w:before="0" w:after="0"/></w:pPr>\(runs)</w:p></w:txbxContent></v:textbox><w10:wrap xmlns:w10="urn:schemas-microsoft-com:office:word" type="none"/></v:rect></w:pict>
             """
         }
         return notes.enumerated().map { index, note in
             let y = bounds.minY + CGFloat(index * 10)
             let label = RevisionAnnotationLayout.truncate(note.label, width: bounds.width, font: font)
-            guard bounds.minX < 0 else { return box(label, x: 0, y: y, width: bounds.width) }
+            guard bounds.minX < 0 else { return box(label, x: 0, y: y, width: bounds.width,
+                                                     strikeWording: !note.isImage, includesCaret: true) }
             let caretWidth = min(8, bounds.width)
             let caretX = min(0, bounds.maxX - caretWidth)
-            let caret = box("^", x: caretX, y: y, width: caretWidth)
+            let caret = box("^", x: caretX, y: y, width: caretWidth, strikeWording: false)
             let shiftedWidth = max(0, bounds.width - caretWidth)
             let shifted = box(RevisionAnnotationLayout.truncate(String(note.label.dropFirst(2)), width: shiftedWidth, font: font),
-                              x: bounds.minX, y: y, width: shiftedWidth)
+                              x: bounds.minX, y: y, width: shiftedWidth, strikeWording: !note.isImage)
             let leader = """
             <w:pict><v:line xmlns:v="urn:schemas-microsoft-com:vml" from="0,0" to="\(-bounds.minX),0" strokecolor="#C70F14" strokeweight="0.4pt" style="position:absolute;margin-left:\(bounds.minX)pt;margin-top:\(y)pt;mso-position-horizontal-relative:char;mso-position-vertical-relative:line"><w10:wrap xmlns:w10="urn:schemas-microsoft-com:office:word" type="none"/></v:line></w:pict>
             """

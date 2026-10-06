@@ -24,7 +24,7 @@ public struct RevisionDeletion: Equatable, Sendable {
         self.isImage = isImage
     }
 
-    public var label: String { isImage ? "^ removed image" : "^ deleted \(text)" }
+    public var label: String { isImage ? "^ removed image" : "^ \(text)" }
 }
 
 public struct RevisionDecorations: Equatable, Sendable {

@@ -200,7 +200,8 @@ public final class PDFExporter {
         drawRevisionRanges(decorations.images, on: page, origin: origin, border: true)
         for note in revisionNotes {
             let font = FontBook(configuration: configuration).regular(size: 7)
-            RevisionAnnotationLayout.draw(label: note.label, frame: note.frame, font: font, context: context)
+            RevisionAnnotationLayout.draw(label: note.label, frame: note.frame, font: font, context: context,
+                isImage: note.isImage, hasCaret: !note.isMargin)
             if abs(note.frame.minX - note.anchor.x) > 3 || abs(note.frame.minY - note.anchor.y) > 16 {
                 let leader = NSBezierPath()
                 leader.move(to: note.anchor)
@@ -335,9 +336,10 @@ public final class PDFExporter {
                 }
                 let placed = try RevisionAnnotationLayout.place(label: note.label, anchor: anchor, line: line, content: content,
                     page: pageRect, occupied: occupied, notes: result.filter { $0.page == index }.map(\.frame), font: font,
-                    cellBounds: cellBounds)
+                    cellBounds: cellBounds, isImage: note.isImage)
                 result.append(RevisionPDFNote(page: index, anchor: anchor, frame: placed.0, label: placed.1,
-                    cellBounds: cellBounds, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX))
+                    cellBounds: cellBounds, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX,
+                    isImage: note.isImage))
             }
         }
         return result

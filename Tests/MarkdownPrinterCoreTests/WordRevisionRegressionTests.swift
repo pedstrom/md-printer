@@ -165,7 +165,7 @@ final class WordRevisionRegressionTests: XCTestCase {
             let label = box.stringValue ?? ""
             if label != "^" {
                 XCTAssertTrue(label.hasSuffix("…"))
-                XCTAssertTrue(label.hasPrefix("^ deleted") || label.hasPrefix("deleted"))
+                XCTAssertFalse(label.contains("deleted"))
                 XCTAssertTrue(label.contains("retire"), "The label must retain removed wording")
                 XCTAssertLessThanOrEqual((label as NSString).size(withAttributes: [.font: labelFont]).width, width + 0.01)
             }
@@ -175,11 +175,35 @@ final class WordRevisionRegressionTests: XCTestCase {
                 XCTAssertLessThanOrEqual(anchorX + x + width, contentWidth + 0.01)
             }
         }
-        XCTAssertEqual(try marked.nodes(forXPath: "//w:tbl//w:txbxContent//w:sz[@w:val='14']").count, 3)
+        XCTAssertEqual(try marked.nodes(forXPath: "//w:tbl//w:txbxContent//w:r[not(w:rPr/w:sz[@w:val='14'])]").count, 0)
         if let path = ProcessInfo.processInfo.environment["MDPRINTER_REVISION_FIXTURES"] {
             let output = URL(fileURLWithPath: path)
             try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
             try data.write(to: output.appendingPathComponent("table-contained-callouts.docx"))
+        }
+    }
+
+    func testTextDeletionWordingIsStruckWhileCaretAndImageCalloutsAreUnstruck() throws {
+        let text = NSAttributedString(string: "Alpha\nBeta\nGamma", attributes: [.font: FontBook(configuration: RendererConfiguration()).regular(size: 10)])
+        var decorations = RevisionDecorations()
+        decorations.deletions = [RevisionDeletion(location: 0, text: "prior wording"),
+                                RevisionDeletion(location: 6, text: "removed image"),
+                                RevisionDeletion(location: 11, text: "", isImage: true)]
+        let data = try WordExporter().wordData(from: text, decorations: decorations)
+        let marked = try parseXML(documentXML(from: data))
+        let plain = try parseXML(documentXML(from: WordExporter().wordData(from: text)))
+        XCTAssertEqual(try bodyParagraphs(in: marked), try bodyParagraphs(in: plain))
+        let struck = try marked.nodes(forXPath: "//w:txbxContent//w:r[w:rPr/w:strike]/w:t").compactMap(\.stringValue)
+        XCTAssertEqual(struck, ["prior wording", "removed image"])
+        let unstruck = try marked.nodes(forXPath: "//w:txbxContent//w:r[not(w:rPr/w:strike)]/w:t").compactMap(\.stringValue)
+        XCTAssertEqual(unstruck, ["^ ", "^ ", "^ removed image"])
+        XCTAssertEqual(try marked.nodes(forXPath: "//w:txbxContent//w:r[not(w:rPr/w:color[@w:val='C70F14']) or not(w:rPr/w:sz[@w:val='14'])]").count, 0)
+        XCTAssertEqual(try marked.nodes(forXPath: "//*[local-name()='rect']").count, 3)
+        XCTAssertEqual(try marked.nodes(forXPath: "//*[local-name()='wrap' and @type='none']").count, 3)
+        if let path = ProcessInfo.processInfo.environment["MDPRINTER_REVISION_FIXTURES"] {
+            let output = URL(fileURLWithPath: path)
+            try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            try data.write(to: output.appendingPathComponent("struck-deletion-callouts.docx"))
         }
     }
 

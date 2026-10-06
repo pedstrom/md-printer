@@ -175,13 +175,17 @@ final class RevisionOpeningTests: XCTestCase {
         process.arguments = ["-p", file.path, "word/document.xml"]; process.standardOutput = pipe
         try process.run(); let xml = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self); process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)
-        XCTAssertTrue(xml.contains("^ deleted Monday"))
         XCTAssertTrue(xml.contains("mso-position-vertical-relative:line"))
         XCTAssertTrue(xml.contains("type=\"none\""))
         XCTAssertTrue(xml.contains("w:highlight"))
         XCTAssertTrue(xml.contains("EBBA00"))
         XCTAssertFalse(xml.contains("MDPRINTERREVISION"))
         let parsed = try XMLDocument(xmlString: xml)
+        let callouts = try parsed.nodes(forXPath: "//*[local-name()='txbxContent']").map { node in
+            try node.nodes(forXPath: ".//*[local-name()='t']").compactMap(\.stringValue).joined()
+        }
+        XCTAssertTrue(callouts.contains("^ Monday"))
+        XCTAssertFalse(callouts.contains { $0.contains("deleted Monday") })
         let body = try parsed.nodes(forXPath: "//*[local-name()='t' and not(ancestor::*[local-name()='txbxContent'])]").compactMap(\.stringValue).joined()
         XCTAssertTrue(body.contains("Tuesday"))
         XCTAssertFalse(body.contains("Monday"))

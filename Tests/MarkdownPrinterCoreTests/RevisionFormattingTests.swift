@@ -145,7 +145,8 @@ final class RevisionFormattingTests: XCTestCase {
             XCTAssertFalse(result.decorations.deletions.isEmpty)
             let pdf = try XCTUnwrap(PDFDocument(data: PDFExporter().pdfData(from: result.text, decorations: result.decorations)))
             XCTAssertEqual(pdf.pageCount, 1)
-            XCTAssertTrue(pdf.string?.contains("deleted") == true)
+            XCTAssertTrue(pdf.string?.contains(result.decorations.deletions[0].text) == true)
+            XCTAssertFalse(pdf.string?.contains("deleted") == true)
         }
     }
     func testPDFBodyGeometryAndAsyncMatch() async throws {
@@ -172,19 +173,19 @@ final class RevisionFormattingTests: XCTestCase {
         XCTAssertEqual(RevisionAnnotationLayout.truncate("Short", width: 100, font: font), "Short")
         XCTAssertTrue(RevisionAnnotationLayout.truncate("A very long deletion label", width: 35, font: font).hasSuffix("…"))
         let page = CGRect(x: 0, y: 0, width: 612, height: 792), content = CGRect(x: 54, y: 54, width: 504, height: 684)
-        let empty = try RevisionAnnotationLayout.place(label: "^ deleted words", anchor: CGPoint(x: 54, y: 54),
+        let empty = try RevisionAnnotationLayout.place(label: "^ words", anchor: CGPoint(x: 54, y: 54),
             line: CGRect(x: 54, y: 54, width: 0, height: 0), content: content, page: page, occupied: [], notes: [], font: font)
         XCTAssertTrue(content.contains(empty.0))
-        let margin = try RevisionAnnotationLayout.place(label: "^ deleted words", anchor: CGPoint(x: 54, y: 54),
+        let margin = try RevisionAnnotationLayout.place(label: "^ words", anchor: CGPoint(x: 54, y: 54),
             line: content, content: content, page: page, occupied: [content], notes: [], font: font)
         XCTAssertGreaterThan(margin.0.minX, content.maxX)
         let anchorLine = CGRect(x: 54, y: 100, width: 504, height: 20)
-        let nearest = try RevisionAnnotationLayout.place(label: "^ deleted words", anchor: CGPoint(x: 54, y: 120),
+        let nearest = try RevisionAnnotationLayout.place(label: "^ words", anchor: CGPoint(x: 54, y: 120),
             line: anchorLine, content: content, page: page,
             occupied: [CGRect(x: 54, y: 70, width: 504, height: 10), anchorLine,
                        CGRect(x: 54, y: 121, width: 504, height: 20)], notes: [], font: font)
         XCTAssertEqual(nearest.0.minY, 140)
-        XCTAssertThrowsError(try RevisionAnnotationLayout.place(label: "^ deleted words", anchor: .zero,
+        XCTAssertThrowsError(try RevisionAnnotationLayout.place(label: "^ words", anchor: .zero,
             line: page, content: page, page: page, occupied: [page], notes: [], font: font))
         XCTAssertNotNil(RevisionAnnotationError.noSpace.errorDescription)
     }
