@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-06 — Double-click Git revisions to compare
+
+- Let a double-click anywhere in a Git revision row select that revision and immediately run the existing comparison action, including when the row is already selected. Recognize it simultaneously with ordinary selection so a quick single-click followed by Compare uses the newly clicked row. Retain the Compare button and keyboard confirmation.
+- Ignore row activation while loading, comparing, or dismissed, and reject unknown revisions without disturbing the current selection. Cover selected and unselected rows, duplicate completion, invalid/loading/cancelled activation, and in-flight comparison protection; verify the real native row gesture.
+- Update bundled Help to describe double-click confirmation. Keep this Mac interaction change separate from versioned release publication.
+- Verify selected-row and unselected-row double-clicks in the real app, and reproduce then repair a rapid single-click/Compare selection race. Pass 22 focused picker/Help tests and the full 511-test Mac gate with 96.30% testable-production line coverage, performance budgets, and universal bundle validation.
+
 ## 2026-10-06 — Version 1.5.1
 
 - Prepare Mac version 1.5.1, build 19, with native Git comparison, captured original timestamps and styled footer dates, narrower document windows, and a clearly copyable Codex setup prompt for a reusable file-comparison skill.

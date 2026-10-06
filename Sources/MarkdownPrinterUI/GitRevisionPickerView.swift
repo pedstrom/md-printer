@@ -35,6 +35,13 @@ package struct GitRevisionPickerView: View {
                                 .lineLimit(2)
                         }
                         .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        // Let List select on the first click without waiting
+                        // for the double-click recognizer to fail.
+                        .simultaneousGesture(TapGesture(count: 2).onEnded { _ in
+                            controller.compare(revisionID: revision.id)
+                        })
                         .tag(revision.id)
                     }
                 }

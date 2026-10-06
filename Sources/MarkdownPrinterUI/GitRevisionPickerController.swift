@@ -67,6 +67,13 @@ package final class GitRevisionPickerController: ObservableObject, Identifiable 
         }
     }
 
+    package func compare(revisionID: String) {
+        guard !isLoading, !isComparing, !isDismissed,
+              revisions.contains(where: { $0.id == revisionID }) else { return }
+        selectedRevisionID = revisionID
+        compare()
+    }
+
     package func compare() {
         guard canCompare, let history, let revision = selectedRevision else { return }
         isComparing = true

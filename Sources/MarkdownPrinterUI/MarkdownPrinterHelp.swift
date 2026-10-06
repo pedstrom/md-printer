@@ -77,7 +77,7 @@ package enum MarkdownPrinterHelpContent {
             .previousVersions,
             "Compare with a Previous Version",
             "Choose File → Compare with Older Version… to select an older Markdown file. Changes are highlighted in the preview and PDF or Word exports. The older version stays fixed while the current file refreshes. Choose File → Clear Change Highlighting to return to the ordinary preview.",
-            "Choose File → Compare with Git Version… to browse commits that changed this document, including history across detected renames. Select a commit and click Compare. The list shows its date and time, message, and commit ID. Git must already be installed; only locally available history is read, and the repository is never changed.",
+            "Choose File → Compare with Git Version… to browse commits that changed this document, including history across detected renames. Double-click a commit to compare immediately, or select it and click Compare. The list shows its date and time, message, and commit ID. Git must already be installed; only locally available history is read, and the repository is never changed.",
             "If Settings → Page includes a date footer, differing dates appear with the current modification date above the original date. The current date has a yellow background; the original date is red with strikethrough. Git comparisons use the selected commit’s timestamp, while ordinary file comparisons capture the older file’s modification date. Dates follow the selected date, time, and time-zone format and appear in PDF and Word exports."
         ),
         codexComparisonSkillSection,

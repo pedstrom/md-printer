@@ -41,6 +41,73 @@ final class GitRevisionPickerTests: XCTestCase {
         XCTAssertEqual(finishes, 1)
     }
 
+    func testDoubleClickConfirmsBothSelectedAndOtherRevisions() async throws {
+        for revisionID in ["old-commit", "latest-commit"] {
+            var applied: GitDocumentRevision?
+            var applications = 0
+            var finishes = 0
+            let picker = picker(service: service(), current: "Latest", apply: { _, revision in
+                applied = revision
+                applications += 1
+            }, finished: { finishes += 1 })
+            picker.load()
+            try await wait { !picker.isLoading }
+            XCTAssertEqual(picker.selectedRevisionID, "old-commit")
+            picker.compare(revisionID: revisionID)
+            XCTAssertEqual(picker.selectedRevisionID, revisionID)
+            try await wait { finishes == 1 }
+            XCTAssertEqual(applied?.id, revisionID)
+            XCTAssertEqual(applications, 1)
+            XCTAssertFalse(picker.canCompare)
+            picker.compare(revisionID: "latest-commit")
+            XCTAssertEqual(applications, 1)
+            XCTAssertEqual(finishes, 1)
+            XCTAssertEqual(picker.selectedRevisionID, revisionID)
+        }
+    }
+
+    func testDoubleClickIgnoresLoadingUnknownAndCancelledRevisions() async throws {
+        var applications = 0
+        var finishes = 0
+        let picker = picker(service: service(), current: "Latest", apply: { _, _ in
+            applications += 1
+        }, finished: { finishes += 1 })
+        picker.compare(revisionID: "latest-commit")
+        XCTAssertNil(picker.selectedRevisionID)
+        XCTAssertEqual(applications, 0)
+        picker.load()
+        try await wait { !picker.isLoading }
+        picker.compare(revisionID: "unknown")
+        XCTAssertEqual(picker.selectedRevisionID, "old-commit")
+        XCTAssertTrue(picker.canCompare)
+        XCTAssertEqual(applications, 0)
+        picker.cancel()
+        picker.compare(revisionID: "latest-commit")
+        XCTAssertEqual(picker.selectedRevisionID, "old-commit")
+        XCTAssertEqual(applications, 0)
+        XCTAssertEqual(finishes, 1)
+    }
+
+    func testDoubleClickCannotReplaceAnInFlightComparison() async throws {
+        let service = service()
+        var applications = 0
+        var finishes = 0
+        let picker = picker(service: service, current: "Latest", apply: { _, _ in
+            applications += 1
+        }, finished: { finishes += 1 })
+        picker.load()
+        try await wait { !picker.isLoading }
+        await service.configure(delay: .document)
+        picker.compare(revisionID: "old-commit")
+        try await waitAsync { await service.startedPhase == .document }
+        picker.compare(revisionID: "latest-commit")
+        XCTAssertEqual(picker.selectedRevisionID, "old-commit")
+        XCTAssertTrue(picker.isComparing)
+        picker.cancel()
+        try await wait { finishes == 1 }
+        XCTAssertEqual(applications, 0)
+    }
+
     func testEmptyHistoryAndLoadingFailureCanBeCancelled() async throws {
         for fails in [false, true] {
             let service = service(revisions: [])
