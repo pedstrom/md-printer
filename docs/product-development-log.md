@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-06 — Clearly copyable Codex setup prompt in Help
+
+- Keep Codex setup in its own Help section alongside native comparison guidance. Separate setup instructions, the complete prompt, and the after-setup example; explain that setup is once per Mac and available across projects for that Mac's user.
+- Display the selectable prompt in a labeled, padded panel with adaptive neutral colors and a subtle border. Add a gray Copy prompt control below it that copies only the complete plain-text prompt and briefly confirms Copied.
+- Cover prompt boundaries and searchability, exact native clipboard content, replacement of old clipboard formats, and copied-feedback expiration, repeated clicks, and failed writes. Verify the native Help presentation and copy action without changing document rendering.
+
 ## 2026-10-05 — Version 1.5.0
 
 - Release optional original-document revision formatting, the bundled opening CLI, the reusable Codex Help prompt, and session-position restoration as Mac version 1.5.0, build 18. Keep the mobile version independent.

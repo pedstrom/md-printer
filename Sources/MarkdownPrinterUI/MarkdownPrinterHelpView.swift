@@ -53,6 +53,10 @@ private struct HelpSectionView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if let prompt = section.copyablePrompt {
+                HelpPromptView(prompt: prompt)
+            }
+
             if section.id == .keyboardShortcuts {
                 VStack(spacing: 0) {
                     ForEach(MarkdownPrinterHelpContent.shortcuts) { shortcut in
@@ -70,6 +74,54 @@ private struct HelpSectionView: View {
                         Divider()
                     }
                 }
+            }
+        }
+    }
+}
+
+private struct HelpPromptView: View {
+    let prompt: MarkdownPrinterHelpCopyablePrompt
+    @StateObject private var copyController = MarkdownPrinterHelpPromptCopyController()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(verbatim: prompt.title)
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Text(verbatim: prompt.text)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(.secondary.opacity(0.2), lineWidth: 1)
+            }
+
+            Button {
+                copyController.copy(prompt.text)
+            } label: {
+                Label(
+                    copyController.isCopied ? "Copied" : "Copy prompt",
+                    systemImage: copyController.isCopied ? "checkmark" : "doc.on.doc"
+                )
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .help("Copy the complete prompt")
+            .accessibilityHint("Copies the entire setup prompt as plain text to paste into Codex.")
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(verbatim: prompt.exampleTitle)
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Text(verbatim: prompt.example)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
