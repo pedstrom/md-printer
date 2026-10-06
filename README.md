@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://apps.apple.com/app/id6811229585"><strong>Get the iPhone and iPad app on the App Store · Paid download</strong></a><br>
-  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.4.8 for Mac · Free</strong></a>
+  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.5.0 for Mac · Free</strong></a>
 </p>
 
 Markdown is suddenly everywhere. AI tools, coding assistants, note apps, and research workflows are producing copious `.md` files, but those files are not always pleasant to print, share, or read away from an editor. Markdown Printer gives them a polished page without sending the document anywhere.
@@ -24,6 +24,7 @@ On Mac, drop one file—or a whole batch—onto the app. Each document opens in 
 - Uses Avenir Next for the document and a proper monospaced font for code
 - Produces searchable, US Letter PDFs with page numbers
 - Exports editable Microsoft Word documents with formatting, links, tables, and local images
+- Compares with an older Markdown version, adding yellow highlights and red struck removal notes to PDF and Word exports without reflowing the current document
 - Opens multiple Markdown files at once, each in its own window
 - Refreshes open documents automatically when their Markdown files change while preserving the window, zoom, and reading position
 - Finds text in the rendered PDF with the standard Command-F, Command-G, and Shift-Command-G shortcuts

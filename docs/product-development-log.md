@@ -1,5 +1,14 @@
 # Product Development Log
 
+## 2026-10-05 — Version 1.5.0
+
+- Release optional original-document revision formatting, the bundled opening CLI, the reusable Codex Help prompt, and session-position restoration as Mac version 1.5.0, build 18. Keep the mobile version independent.
+- Include continuous yellow phrase highlights, precise red struck removal wording with boundary carets, changed-image borders, body/cell gap placement, and editable Word markings without changing current body flow.
+- Update Mac bundle metadata, the public download label, release notes, and release verification assertions for the signed, notarized GitHub and Sparkle update. Install the verified release locally after publication.
+- Review the complete unpublished source range before release; use unrelated library-catalog figures for the rewrite regression and remove private-document figures from unpublished history.
+- Pass 48 focused macOS regressions and the full 449-test gate with 95.99% testable-production line coverage, performance budgets, and universal app/extension/CLI bundle validation. Reinspect representative prose and crowded-table PDF fixtures outside Git.
+- Retain the native acceptance limitation for physical held-drag/Option switching: the UI driver cannot hold the mouse or switch modifiers during an active drag. Native opening, restoration, comparison, Save, Share cancellation, and Print cancellation passed; export snapshot regressions remain covered.
+
 ## 2026-10-05 — Precise removals and usable body gaps
 
 - Separate exact deletion evidence from broad rewrite highlights. Preserve meaningful shared phrases in red excerpts and leave short shared phrases beside substantial unchanged passages unhighlighted across small edits. Keep these rules independent of document wording and verify them with synthetic regressions.
