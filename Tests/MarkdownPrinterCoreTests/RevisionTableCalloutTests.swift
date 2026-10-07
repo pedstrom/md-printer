@@ -7,7 +7,7 @@ import XCTest
 final class RevisionTableCalloutTests: XCTestCase {
     func testPDFStrikeAddsOnlyRemovedWordingPixelsAndLeavesCaretAndImagesUnchanged() throws {
         let font = NSFont(name: "Avenir Next", size: 7) ?? NSFont.systemFont(ofSize: 7)
-        func bitmap(_ label: String, isImage: Bool, hasCaret: Bool = true) throws -> NSBitmapImageRep {
+        func bitmap(_ label: String, isImage: Bool, hasCaret: Bool = true, strikeWording: Bool = true) throws -> NSBitmapImageRep {
             let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 480, pixelsHigh: 80,
                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
@@ -17,7 +17,7 @@ final class RevisionTableCalloutTests: XCTestCase {
             context.fill(CGRect(x: 0, y: 0, width: 480, height: 80))
             context.translateBy(x: 0, y: 80); context.scaleBy(x: 4, y: -4)
             RevisionAnnotationLayout.draw(label: label, frame: CGRect(x: 10, y: 8, width: 100, height: 8),
-                font: font, context: context, isImage: isImage, hasCaret: hasCaret)
+                font: font, context: context, isImage: isImage, hasCaret: hasCaret, strikeWording: strikeWording)
             return bitmap
         }
         for (label, hasCaret, rtl) in [("^ mmmmmm", true, false), ("removed image", false, false),
@@ -49,6 +49,13 @@ final class RevisionTableCalloutTests: XCTestCase {
         let plainImage = try bitmap(image.label, isImage: true)
         let struckText = try bitmap(image.label, isImage: false)
         XCTAssertNotEqual(plainImage.tiffRepresentation, struckText.tiffRepresentation)
+        for summary in [RevisionDeletion.Summary.sentences(3), .paragraphs(2), .words(18)] {
+            let note = RevisionDeletion(location: 0, text: "old wording", summary: summary)
+            let plain = try bitmap(note.label, isImage: true)
+            let unstruck = try bitmap(note.label, isImage: false, strikeWording: note.strikesWording)
+            XCTAssertEqual(plain.tiffRepresentation, unstruck.tiffRepresentation)
+            XCTAssertNotEqual(unstruck.tiffRepresentation, try bitmap(note.label, isImage: false).tiffRepresentation)
+        }
     }
 
     func testCellCalloutTruncatesAndShiftsLeftBeforeTheCellEdge() throws {

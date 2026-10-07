@@ -10,6 +10,7 @@ struct RevisionPDFNote {
     var cellBounds: CGRect? = nil
     var isMargin = false
     var isImage = false
+    var strikeWording = true
     var leader: [CGPoint] = []
 
     var isBoundaryOnly: Bool { frame.isEmpty }
@@ -29,7 +30,7 @@ enum RevisionAnnotationError: Error {
 enum RevisionAnnotationLayout {
     static func place(label: String, anchor: CGPoint, line: CGRect, content: CGRect,
                       page: CGRect, occupied: [CGRect], notes: [CGRect], font: NSFont,
-                      cellBounds: CGRect? = nil, isImage: Bool = false,
+                      cellBounds: CGRect? = nil, isImage: Bool = false, isSummary: Bool = false,
                       markers: [CGRect] = [], lineBounds: [CGRect]? = nil) -> (CGRect, String) {
         let pageContent = content
         let content = cellBounds.map { $0.intersection(pageContent) } ?? pageContent
@@ -82,7 +83,7 @@ enum RevisionAnnotationLayout {
         for informative in [true, false] {
             for candidate in candidates where candidate.width >= minimumWidth && content.height >= height {
                 let text = truncate(label, width: candidate.width, font: font)
-                guard !informative || showsRemovedWording(text, original: label, isImage: isImage) else { continue }
+                guard !informative || showsRemovedWording(text, original: label, requiresCompleteLabel: isImage || isSummary) else { continue }
                 let actual = CGRect(origin: candidate.origin, size: CGSize(width: ceil((text as NSString).size(withAttributes: [.font: font]).width), height: height))
                 let prefix = !isImage && text.hasPrefix("^ ") ? ("^ " as NSString).size(withAttributes: [.font: font]).width : 0
                 let wording = CGRect(x: actual.minX + prefix, y: actual.minY,
@@ -100,7 +101,7 @@ enum RevisionAnnotationLayout {
                     guard marginWidth >= minimumMarginWidth else { continue }
                     let lines = wrapped(marginLabel, width: marginWidth, maximumLines: maximumLines, font: font)
                     let text = lines.joined(separator: "\n")
-                    guard !lines.isEmpty, !informative || showsRemovedWording(text, original: label, isImage: isImage) else { continue }
+                    guard !lines.isEmpty, !informative || showsRemovedWording(text, original: label, requiresCompleteLabel: isImage || isSummary) else { continue }
                     let noteHeight = lines.map { ceil(inkBounds(label: $0, font: font).height) }.max()!
                         + lineStep(font) * CGFloat(lines.count - 1)
                     let nearbyY = max(pageContent.minY, min(line.maxY, pageContent.maxY - noteHeight))
@@ -119,11 +120,11 @@ enum RevisionAnnotationLayout {
         return (CGRect(origin: anchor, size: .zero), "…")
     }
 
-    private static func showsRemovedWording(_ displayed: String, original: String, isImage: Bool) -> Bool {
+    private static func showsRemovedWording(_ displayed: String, original: String, requiresCompleteLabel: Bool) -> Bool {
         func compact(_ value: String) -> String { value.filter { !$0.isWhitespace } }
         let displayed = displayed.hasPrefix("^ ") ? String(displayed.dropFirst(2)) : displayed
-        if isImage { return compact(displayed) == "removedimage" }
         let removed = compact(original.hasPrefix("^ ") ? String(original.dropFirst(2)) : original)
+        if requiresCompleteLabel { return compact(displayed) == removed }
         return !removed.isEmpty && compact(displayed).hasPrefix(String(removed.prefix(4)))
     }
 
@@ -285,7 +286,7 @@ enum RevisionAnnotationLayout {
     }
 
     static func draw(label: String, frame: CGRect, font: NSFont, context: CGContext,
-                     isImage: Bool = false, hasCaret: Bool = true) {
+                     isImage: Bool = false, hasCaret: Bool = true, strikeWording: Bool = true) {
         for (index, text) in label.components(separatedBy: "\n").enumerated() {
             let line = labelLine(text, font: font)
             let bounds = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
@@ -296,7 +297,7 @@ enum RevisionAnnotationLayout {
             context.textMatrix = .identity
             context.textPosition = .zero
             CTLineDraw(line, context)
-            if !isImage {
+            if !isImage && strikeWording {
                 // CoreText does not paint AppKit's strikethrough attribute.
                 // Strike only the removed wording, retaining the caret marker.
                 let start = index == 0 && hasCaret && text.hasPrefix("^ ") ? 2 : 0

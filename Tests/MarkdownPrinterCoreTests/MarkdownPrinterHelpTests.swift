@@ -105,7 +105,8 @@ final class MarkdownPrinterHelpTests: XCTestCase {
                        "Clear Change Highlighting", "Control-Command-G", "Control-Command-H",
                        "locally available history", "Up and Down arrow keys", "Return to compare",
                        "current modification date above the original date", "yellow background",
-                       "red with strikethrough", "selected commit’s timestamp"] {
+                       "red with strikethrough", "selected commit’s timestamp", "^ removed 3 sentences",
+                       "^ removed 2 paragraphs", "^ removed 18 words", "plain red", "longer than 12 words"] {
             XCTAssertTrue(text.contains(phrase), phrase)
         }
         XCTAssertFalse(text.contains("skill"))

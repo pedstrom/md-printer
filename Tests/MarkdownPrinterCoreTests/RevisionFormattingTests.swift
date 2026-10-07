@@ -145,7 +145,7 @@ final class RevisionFormattingTests: XCTestCase {
             XCTAssertFalse(result.decorations.deletions.isEmpty)
             let pdf = try XCTUnwrap(PDFDocument(data: PDFExporter().pdfData(from: result.text, decorations: result.decorations)))
             XCTAssertEqual(pdf.pageCount, 1)
-            XCTAssertTrue(pdf.string?.contains(result.decorations.deletions[0].text) == true)
+            XCTAssertTrue(pdf.string?.contains(String(result.decorations.deletions[0].label.dropFirst(2))) == true)
             XCTAssertFalse(pdf.string?.contains("deleted") == true)
         }
     }

@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-10-07 — Summarize substantial text removals
+
+- Replace complete prose deletions with plain red count labels such as `^ removed 3 sentences` or `^ removed 2 paragraphs`, following the removed-image presentation. Prefer whole-paragraph counts, combine compatible summaries at the same boundary, and retain the original removed wording as comparison evidence.
+- Preserve struck red wording for short edits. Summarize partial prose fragments longer than 12 words using only exact deleted-word tokens, excluding surviving words in broad rewrite excerpts. Use native sentence tokenization for abbreviations, decimal amounts, Unicode, and soft line breaks; keep heading/list structure distinct from whole paragraphs and preserve literal-code wording.
+- Carry explicit summary/strike metadata through PDF and editable Word export. Prefer complete count labels in nearby gaps or margins, retain boundary carets and clear connectors, and preserve the existing safe ellipsis fallback and current body geometry. Document the presentation in README and bundled Help.
+- Cover singular/plural counts, paragraph priority, mixed image/text removals, rewrites, lists, table cells, inline code, blocked placement, red unstruck PDF pixels, editable Word runs, and multi-page body positions. Generate mixed PDF/Word comparison fixtures outside Git for visual inspection.
+- Pass all 530 macOS tests with 96.30% testable-production line coverage, performance budgets, and universal app, extension, and embedded-CLI validation. Inspect the mixed five-page comparison and the two-page standard showcase PDFs; preserve all 45 continued-paragraph positions in the marked fixture. Keep the app version unchanged.
+
 ## 2026-10-07 — Version 1.5.2
 
 - Prepare Mac version 1.5.2, build 20, with double-click and keyboard Git revision selection, comparison and clear-highlighting shortcuts, and adaptive deletion annotations that keep crowded comparisons and narrow Word exports available.

@@ -213,7 +213,7 @@ public final class PDFExporter {
             } else {
                 let hasPrefix = !note.isMargin && note.label.hasPrefix("^ ")
                 RevisionAnnotationLayout.draw(label: hasPrefix ? String(note.label.dropFirst(2)) : note.label,
-                    frame: note.wordingFrame(font: font), font: font, context: context, hasCaret: false)
+                    frame: note.wordingFrame(font: font), font: font, context: context, hasCaret: false, strikeWording: note.strikeWording)
                 if !drawnCarets.contains(note.anchor) {
                     let marker = revisionNotes.contains { $0.anchor == note.anchor && $0.isBoundaryOnly } ? "…" : "^"
                     RevisionAnnotationLayout.draw(label: marker, frame: RevisionAnnotationLayout.caretFrame(at: note.anchor, font: font),
@@ -362,10 +362,10 @@ public final class PDFExporter {
             for item in pending {
                 let placed = RevisionAnnotationLayout.place(label: item.note.label, anchor: item.anchor, line: item.line, content: content,
                     page: pageRect, occupied: occupied, notes: placedNotes.map(\.frame), font: font,
-                    cellBounds: item.cell, isImage: item.note.isImage, markers: markers, lineBounds: placementInk)
+                    cellBounds: item.cell, isImage: item.note.isImage, isSummary: item.note.summary != nil, markers: markers, lineBounds: placementInk)
                 placedNotes.append(RevisionPDFNote(page: index, anchor: item.anchor, frame: placed.0, label: placed.1,
                     cellBounds: item.cell, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX,
-                    isImage: item.note.isImage))
+                    isImage: item.note.isImage, strikeWording: item.note.strikesWording))
             }
             for position in placedNotes.indices {
                 var blockedBands: [CGRect] = []
@@ -391,7 +391,7 @@ public final class PDFExporter {
                         let minimumWidth = ceil(("^ …" as NSString).size(withAttributes: [.font: font]).width)
                         let shorter = RevisionAnnotationLayout.truncate(failed.label,
                             width: max(minimumWidth, failed.frame.width / 2), font: font)
-                        let canShorten = !failed.isMargin && shorter != failed.label
+                        let canShorten = !failed.isMargin && item.note.summary == nil && shorter != failed.label
                         if !canShorten {
                             blockedBands.append(CGRect(x: area.minX, y: failed.frame.minY, width: area.width, height: failed.frame.height))
                             if failed.isMargin { blockedBands.append(failed.frame) }
@@ -400,10 +400,10 @@ public final class PDFExporter {
                         let placed = RevisionAnnotationLayout.place(label: canShorten ? shorter : item.note.label, anchor: item.anchor, line: item.line,
                             content: content, page: pageRect, occupied: occupied,
                             notes: otherFrames + blockedBands + RevisionAnnotationLayout.leaderObstacles(earlierPaths),
-                            font: font, cellBounds: item.cell, isImage: item.note.isImage, markers: markers, lineBounds: placementInk)
+                            font: font, cellBounds: item.cell, isImage: item.note.isImage, isSummary: item.note.summary != nil, markers: markers, lineBounds: placementInk)
                         placedNotes[position] = RevisionPDFNote(page: index, anchor: item.anchor, frame: placed.0, label: placed.1,
                             cellBounds: item.cell, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX,
-                            isImage: item.note.isImage)
+                            isImage: item.note.isImage, strikeWording: item.note.strikesWording)
                     }
                 }
             }

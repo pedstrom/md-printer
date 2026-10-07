@@ -207,6 +207,27 @@ final class WordRevisionRegressionTests: XCTestCase {
         }
     }
 
+    func testRemovalSummaryWordRunsAreRedAndUnstruckInBodyAndNarrowCells() throws {
+        for markdown in ["Current wording.\n\nKept paragraph.", "| First | Second |\n| --- | --- |\n| Current wording. | Kept cell. |"] {
+            let text = MarkdownRenderer().render(markdown: markdown)
+            let location = (text.string as NSString).range(of: "Current wording.").location
+            var decorations = RevisionDecorations()
+            decorations.deletions = [RevisionDeletion(location: location, text: "obsolete sentences", summary: .sentences(3)),
+                                    RevisionDeletion(location: location, text: "obsolete paragraphs", summary: .paragraphs(2)),
+                                    RevisionDeletion(location: location, text: "obsolete fragment", summary: .words(18)),
+                                    RevisionDeletion(location: location, text: "old")]
+            let data = try WordExporter().wordData(from: text, decorations: decorations)
+            let marked = try parseXML(documentXML(from: data))
+            let plain = try parseXML(documentXML(from: WordExporter().wordData(from: text)))
+            XCTAssertEqual(try bodyParagraphs(in: marked), try bodyParagraphs(in: plain))
+            let struck = try marked.nodes(forXPath: "//w:txbxContent//w:r[w:rPr/w:strike]/w:t").compactMap(\.stringValue)
+            XCTAssertEqual(struck, ["old"])
+            let unstruck = try marked.nodes(forXPath: "//w:txbxContent//w:r[not(w:rPr/w:strike)]/w:t").compactMap(\.stringValue).joined()
+            for label in ["removed 3 sentences", "removed 2 paragraphs", "removed 18 words"] { XCTAssertTrue(unstruck.contains(label)) }
+            XCTAssertEqual(try marked.nodes(forXPath: "//w:txbxContent//w:r[not(w:rPr/w:color[@w:val='C70F14'])]").count, 0)
+        }
+    }
+
     func testWordTableTooNarrowForRemovedWordingTruncatesInsteadOfRejectingExport() throws {
         for columnCount in [12, 14, 20] {
             let columns = (1...columnCount).map { "Column \($0)" }

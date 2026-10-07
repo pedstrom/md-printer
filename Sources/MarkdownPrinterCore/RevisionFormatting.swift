@@ -1,5 +1,6 @@
 #if canImport(AppKit)
 import AppKit
+import NaturalLanguage
 
 extension NSAttributedString.Key {
     static let revisionBlock = Self("MarkdownPrinter.revisionBlock")
@@ -14,17 +15,43 @@ extension NSAttributedString.Key {
 }
 
 public struct RevisionDeletion: Equatable, Sendable {
+    public enum Summary: Equatable, Sendable {
+        case paragraphs(Int), sentences(Int), words(Int)
+
+        var wording: String {
+            let count: Int, noun: String
+            switch self {
+            case let .paragraphs(value): count = value; noun = "paragraph"
+            case let .sentences(value): count = value; noun = "sentence"
+            case let .words(value): count = value; noun = "word"
+            }
+            return "removed \(count) \(noun)\(count == 1 ? "" : "s")"
+        }
+
+        func combined(with other: Summary) -> Summary? {
+            switch (self, other) {
+            case let (.paragraphs(a), .paragraphs(b)): return .paragraphs(a + b)
+            case let (.sentences(a), .sentences(b)): return .sentences(a + b)
+            case let (.words(a), .words(b)): return .words(a + b)
+            default: return nil
+            }
+        }
+    }
+
     public let location: Int
     public let text: String
     public let isImage: Bool
+    public let summary: Summary?
 
-    public init(location: Int, text: String, isImage: Bool = false) {
+    public init(location: Int, text: String, isImage: Bool = false, summary: Summary? = nil) {
         self.location = location
         self.text = text
         self.isImage = isImage
+        self.summary = summary
     }
 
-    public var label: String { isImage ? "^ removed image" : "^ \(text)" }
+    public var label: String { isImage ? "^ removed image" : "^ \(summary?.wording ?? text)" }
+    public var strikesWording: Bool { !isImage && summary == nil }
 }
 
 public struct RevisionDecorations: Equatable, Sendable {
@@ -189,7 +216,9 @@ public enum RevisionFormatter {
                 compare(unit, new[index], changes: &changes)
                 nextNew = index + 1
             } else {
-                remove(unit.tokens, at: nextNew < new.count ? new[nextNew].range.location : anchor, changes: &changes)
+                let paragraph = unit.kind.components(separatedBy: ":").first == "paragraph" && !unit.kind.contains(":list:")
+                remove(unit.tokens, at: nextNew < new.count ? new[nextNew].range.location : anchor,
+                       summary: paragraph ? .paragraphs(1) : removalSummary(in: unit, ranges: [unit.tokens.indices]), changes: &changes)
             }
         }
         for added in new.dropFirst(nextNew) { add(added, changes: &changes) }
@@ -266,9 +295,13 @@ public enum RevisionFormatter {
         func emitGroup() {
             guard let first = group.first, let last = group.last else { return }
             if group.count >= 3 && !old.tokens[first.range.lowerBound..<last.range.upperBound].contains(where: { $0.literal || $0.image }) {
-                remove(Array(old.tokens[first.range.lowerBound..<last.range.upperBound]), at: first.location, changes: &changes)
+                remove(Array(old.tokens[first.range.lowerBound..<last.range.upperBound]), at: first.location,
+                       summary: removalSummary(in: old, ranges: group.map(\.range)), changes: &changes)
             } else {
-                for phrase in group { remove(Array(old.tokens[phrase.range]), at: phrase.location, changes: &changes) }
+                for phrase in group {
+                    remove(Array(old.tokens[phrase.range]), at: phrase.location,
+                           summary: removalSummary(in: old, ranges: [phrase.range]), changes: &changes)
+                }
             }
             group.removeAll()
         }
@@ -399,9 +432,49 @@ public enum RevisionFormatter {
             changes.highlights.append(token.range)
         }
     }
-    private static func remove(_ tokens: [Token], at location: Int, changes: inout RevisionDecorations) {
+    /// Classify against the original unit, before whitespace and block boundaries
+    /// are flattened. Broad rewrite excerpts may contain surviving words, so
+    /// counts use only exact deletion ranges, independently of their excerpt.
+    private static func removalSummary(in unit: Unit, ranges: [Range<Int>]) -> RevisionDeletion.Summary? {
+        let deleted = Set(ranges.flatMap { $0 }.filter { meaningful([unit.tokens[$0]]) && !unit.tokens[$0].image })
+        guard !deleted.isEmpty, !deleted.contains(where: { unit.tokens[$0].literal }) else { return nil }
+        let wordCount = deleted.filter { unit.tokens[$0].word }.count
+        let words: RevisionDeletion.Summary? = wordCount > 12 ? .words(wordCount) : nil
+        guard ["paragraph", "cell"].contains(unit.kind.components(separatedBy: ":").first ?? "") else { return words }
+
+        var offset = 0
+        let tokenRanges = unit.tokens.map { token -> NSRange in
+            defer { offset += token.visible.utf16.count }
+            return NSRange(location: offset, length: token.visible.utf16.count)
+        }
+        let text = unit.tokens.map(\.visible).joined()
+        let tokenizer = NLTokenizer(unit: .sentence)
+        tokenizer.string = text
+        var covered = Set<Int>(), sentenceCount = 0
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+            let sentenceRange = NSRange(range, in: text)
+            let indices = Set(unit.tokens.indices.filter {
+                NSIntersectionRange(tokenRanges[$0], sentenceRange).length > 0 && meaningful([unit.tokens[$0]]) && !unit.tokens[$0].image
+            })
+            // Terminal punctuation distinguishes a complete sentence from a
+            // trailing fragment. Native sentence boundaries handle abbreviations.
+            let ending = text[range].trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'’”»)]}」』")))
+            if !indices.isEmpty, indices.isSubset(of: deleted),
+               ending.last.map({ ".!?。！？".contains($0) }) == true {
+                covered.formUnion(indices)
+                sentenceCount += 1
+            }
+            return true
+        }
+        return sentenceCount > 0 && covered == deleted ? .sentences(sentenceCount) : words
+    }
+
+    private static func remove(_ tokens: [Token], at location: Int, summary: RevisionDeletion.Summary? = nil,
+                               changes: inout RevisionDecorations) {
         let words = tokens.filter { !$0.image }.map(\.visible).joined().split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        if !words.isEmpty && meaningful(tokens.filter { !$0.image }) { changes.deletions.append(RevisionDeletion(location: location, text: words)) }
+        if !words.isEmpty && meaningful(tokens.filter { !$0.image }) {
+            changes.deletions.append(RevisionDeletion(location: location, text: words, summary: summary))
+        }
         if tokens.contains(where: \.image) { changes.deletions.append(RevisionDeletion(location: location, text: "", isImage: true)) }
     }
     private static func merge(_ ranges: [NSRange]) -> [NSRange] {
@@ -415,7 +488,16 @@ public enum RevisionFormatter {
     private static func coalesce(_ notes: [RevisionDeletion]) -> [RevisionDeletion] {
         var result: [RevisionDeletion] = []
         for note in notes.sorted(by: { $0.location < $1.location }) {
-            if let last = result.last, last.location == note.location, last.isImage == note.isImage {
+            if let summary = note.summary, let index = result.lastIndex(where: {
+                $0.location == note.location && $0.isImage == note.isImage && $0.summary?.combined(with: summary) != nil
+            }), let combined = result[index].summary?.combined(with: summary) {
+                let previous = result[index]
+                result[index] = RevisionDeletion(location: note.location, text: previous.text + " " + note.text,
+                                                 isImage: note.isImage, summary: combined)
+                continue
+            }
+            if let last = result.last, last.location == note.location, last.isImage == note.isImage,
+               last.summary == nil && note.summary == nil {
                 result[result.count - 1] = RevisionDeletion(location: note.location,
                     text: last.isImage ? "" : last.text + " " + note.text, isImage: note.isImage)
             } else { result.append(note) }

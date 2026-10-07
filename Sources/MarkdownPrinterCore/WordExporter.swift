@@ -96,7 +96,7 @@ public final class WordExporter {
         return notes.map { note in
             let firstWord = note.text.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? ""
             let informativeStem = String(firstWord.prefix(6))
-            let label = note.isImage ? note.label : "^ \(informativeStem)…"
+            let label = note.isImage || note.summary != nil ? note.label : "^ \(informativeStem)…"
             let full = (label as NSString).size(withAttributes: [.font: font]).width
             let shifted = (String(label.dropFirst(2)) as NSString).size(withAttributes: [.font: font]).width + 8
             return max(full, shifted)
@@ -1069,17 +1069,17 @@ public final class WordExporter {
                 return box("…", x: bounds.minX, y: y, width: bounds.width, strikeWording: false)
             }
             guard bounds.minX < 0 else { return box(label, x: 0, y: y, width: bounds.width,
-                                                     strikeWording: !note.isImage, includesCaret: true) }
+                                                     strikeWording: note.strikesWording, includesCaret: true) }
             let caretWidth = min(8, bounds.width)
             if bounds.width - caretWidth < ceil(("…" as NSString).size(withAttributes: [.font: font]).width) {
                 return box("^ …", x: bounds.minX, y: y, width: bounds.width,
-                           strikeWording: !note.isImage, includesCaret: true)
+                           strikeWording: note.strikesWording, includesCaret: true)
             }
             let caretX = min(0, bounds.maxX - caretWidth)
             let caret = box("^", x: caretX, y: y, width: caretWidth, strikeWording: false)
             let shiftedWidth = max(0, bounds.width - caretWidth)
             let shifted = box(RevisionAnnotationLayout.truncate(String(note.label.dropFirst(2)), width: shiftedWidth, font: font),
-                              x: bounds.minX, y: y, width: shiftedWidth, strikeWording: !note.isImage)
+                              x: bounds.minX, y: y, width: shiftedWidth, strikeWording: note.strikesWording)
             let leader = """
             <w:pict><v:line xmlns:v="urn:schemas-microsoft-com:vml" from="0,0" to="\(-bounds.minX),0" strokecolor="#C70F14" strokeweight="0.4pt" style="position:absolute;margin-left:\(bounds.minX)pt;margin-top:\(y)pt;mso-position-horizontal-relative:char;mso-position-vertical-relative:line"><w10:wrap xmlns:w10="urn:schemas-microsoft-com:office:word" type="none"/></v:line></w:pict>
             """
