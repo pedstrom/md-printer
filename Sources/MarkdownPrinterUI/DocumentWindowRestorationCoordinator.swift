@@ -13,6 +13,7 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
     private weak var session: DocumentSession?
     private var pendingFrame: CGRect?
     private var pendingViewport: PersistedPreviewViewport?
+    private var pendingSidebar: PersistedDocumentSidebar?
     private var pendingThumbnails: PersistedThumbnailSidebar?
     private var pendingPageSetup: DocumentPageSetup?
     private var isActive = false
@@ -33,6 +34,7 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
         let pendingState = restorationController.takeWindowState(for: sourceURL)
         pendingFrame = pendingState?.frame
         pendingViewport = pendingState?.viewport
+        pendingSidebar = pendingState?.sidebar
         pendingThumbnails = pendingState?.thumbnails
         pendingPageSetup = pendingState?.explicitPageSetup
     }
@@ -91,6 +93,10 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
     package func attach(previewContainer: PDFPreviewContainerView) {
         self.previewContainer = previewContainer
         attach(preview: previewContainer.previewView)
+        if let pendingSidebar {
+            self.pendingSidebar = nil; self.pendingThumbnails = nil
+            previewContainer.restoreSidebarRestorationState(pendingSidebar)
+        }
         if let pendingThumbnails {
             self.pendingThumbnails = nil
             previewContainer.restoreThumbnailRestorationState(pendingThumbnails)
@@ -106,16 +112,17 @@ package final class DocumentWindowRestorationCoordinator: ObservableObject {
         let frame = documentWindow?.frame
         let viewport = preview?.capturePersistedViewport()
         let thumbnails = previewContainer?.captureThumbnailRestorationState()
+        let sidebar = previewContainer?.captureSidebarRestorationState()
         let pageSetup = session?.hasExplicitPageSetup == true
             ? session?.activePageSetup
             : nil
-        guard frame != nil || viewport != nil || thumbnails != nil || pageSetup != nil || session?.hasOriginal == true else {
+        guard frame != nil || viewport != nil || thumbnails != nil || sidebar != nil || pageSetup != nil || session?.hasOriginal == true else {
             return nil
         }
         return DocumentWindowRestorationState(
             frame: frame,
             viewport: viewport,
-            thumbnails: thumbnails,
+            thumbnails: thumbnails, sidebar: sidebar,
             explicitPageSetup: pageSetup,
             originalSnapshotID: session?.originalSnapshot?.id
         )

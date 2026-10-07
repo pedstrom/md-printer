@@ -98,13 +98,13 @@ package struct DocumentFileCommands: Commands {
 }
 
 package struct PDFThumbnailCommands: Commands {
-    @FocusedObject private var controller: PDFThumbnailSidebarController?
+    @FocusedObject private var controller: PDFSidebarController?
 
     package init() {}
 
     package var body: some Commands {
         CommandGroup(after: .toolbar) {
-            Button(controller?.commandTitle ?? "Show Thumbnails") {
+            Button(controller?.commandTitle ?? "Show Sidebar") {
                 controller?.toggle()
             }
             .disabled(controller?.canToggle != true)

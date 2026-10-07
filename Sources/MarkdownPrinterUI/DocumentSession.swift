@@ -308,7 +308,7 @@ public final class DocumentSession: ObservableObject {
         let nextRenderedText = revision.text
         let footers = footers ?? pagePreferences?.resolvedFooters(for: document, original: originalSnapshot?.document)
             ?? ResolvedFooterConfiguration()
-        let nextPDF = try nextExporter.render(from: nextRenderedText, footers: footers, decorations: revision.decorations)
+        let nextPDF = try nextExporter.render(from: nextRenderedText, footers: footers, decorations: revision.decorations, reviewItems: revision.reviewItems)
         nextRenderRevision &+= 1
         renderer = nextRenderer
         exporter = nextExporter
@@ -322,7 +322,8 @@ public final class DocumentSession: ObservableObject {
             pageSetup: pageSetup,
             footers: footers,
             revision: nextRenderRevision,
-            decorations: revision.decorations
+            decorations: revision.decorations,
+            reviewItems: revision.reviewItems, reviewDestinations: nextPDF.reviewDestinations, baseline: originalSnapshot
         )
         committedOriginalSnapshot = originalSnapshot
         if clearsError { errorMessage = nil }
@@ -379,7 +380,7 @@ public final class DocumentSession: ObservableObject {
             pdf = try await PDFExporter(
                 configuration: nextConfiguration,
                 pageSetup: pageSetup
-            ).renderAsync(from: renderedText, footers: resolvedFooters, decorations: revision)
+            ).renderAsync(from: renderedText, footers: resolvedFooters, decorations: revision, reviewItems: preparedText.reviewItems)
             try Task.checkCancellation()
         } catch {
             if error is CancellationError { throw error }
@@ -404,7 +405,8 @@ public final class DocumentSession: ObservableObject {
             pageSetup: pageSetup,
             footers: resolvedFooters,
             revision: nextRenderRevision,
-            decorations: revision
+            decorations: revision,
+            reviewItems: preparedText.reviewItems, reviewDestinations: pdf.reviewDestinations, baseline: original
         )
         committedOriginalSnapshot = original
         errorMessage = nil
@@ -685,6 +687,9 @@ public struct RenderedDocumentSnapshot {
     public let footers: ResolvedFooterConfiguration
     public let revision: UInt64
     public var decorations = RevisionDecorations()
+    public var reviewItems: [RevisionReviewItem] = []
+    public var reviewDestinations: [String: PDFReviewDestination] = [:]
+    public var baseline: OriginalDocumentSnapshot? = nil
 }
 
 private struct DocumentAttributedTextJob: @unchecked Sendable {
@@ -699,13 +704,14 @@ private struct DocumentAttributedTextJob: @unchecked Sendable {
             remoteImageCache: remoteImageCache
         )
         let revision = renderer.render(document: document, original: original)
-        return PreparedAttributedText(value: revision.text, decorations: revision.decorations)
+        return PreparedAttributedText(value: revision.text, decorations: revision.decorations, reviewItems: revision.reviewItems)
     }
 }
 
 private struct PreparedAttributedText: @unchecked Sendable {
     let value: NSAttributedString
     let decorations: RevisionDecorations
+    let reviewItems: [RevisionReviewItem]
 }
 
 private final class SourceMonitorLifetime {

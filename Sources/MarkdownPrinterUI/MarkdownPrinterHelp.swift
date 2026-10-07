@@ -110,8 +110,11 @@ package enum MarkdownPrinterHelpContent {
         ),
         section(
             .thumbnails,
-            "Thumbnails",
-            "Choose View → Show Thumbnails or use the sidebar button beside the window title. Click a thumbnail to visit that page, resize the sidebar to change thumbnail size, or drag the divider fully left to hide it."
+            "Sidebar",
+            "Choose View → Show Sidebar or use the sidebar button beside the window title. Pages shows the existing thumbnails: click one to visit that page, resize the sidebar to change thumbnail size, or drag the divider fully left to hide it.",
+            "After a successful comparison, Changes opens automatically. The upper list groups changes under document headings; the lower area shows complete Earlier and Current passages. Both areas scroll independently. Drag their divider to give either area more room, or widen the sidebar for longer passages.",
+            "Click a change or use Previous and Next to visit its PDF location. These buttons include changes in collapsed groups and stop at the first and last entries. Scrolling preserves the selected change. Word edits within a paragraph stay together; removed passages remain complete even when their printed annotations are shortened or summarized.",
+            "The sidebar remembers its mode, widths, divider, groups, selection, and reading positions when reopening a workspace. Ordinary source refreshes preserve your sidebar choices. Clearing comparison markings returns to Pages. A comparison without meaningful document changes says No meaningful document changes."
         ),
         section(
             .windowsAndTabs,

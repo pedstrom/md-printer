@@ -31,7 +31,7 @@ final class MarkdownPrinterHelpTests: XCTestCase {
             "Hold Option when dragging from the preview or clicking Share",
             "Navigate and Zoom the Preview",
             "Search",
-            "Thumbnails",
+            "Sidebar",
             "Windows, Tabs, and Reopening",
             "Reopen Windows from Last Session",
             "Page Setup, Footers, and Printing",

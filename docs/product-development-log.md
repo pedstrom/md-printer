@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-10-07 — Changes navigation in the Mac sidebar
+
+- Add Pages and Changes to the existing native left sidebar. Open Changes after a committed comparison, retaining a separately scrollable heading-grouped list and complete stacked Earlier/Current passages, with resizable sidebar and list/detail divider. Keep source rendering, PDF/Word markings, and document geometry unchanged.
+- Capture structured review items and exact old/new wording ranges alongside the existing semantic comparison. Retain full original passages independently of summarized or shortened page callouts; describe formatting, links, and image references without loading historical images. Cache immutable block signatures and lexical sets to avoid repeated matching work on large comparisons.
+- Calculate review destinations and page spans in the existing PDF pagination pass. Commit baseline metadata, review data, destinations, and PDF together; apply navigation only to the matching active preview revision. Preserve selection, collapsed groups, sidebar widths, independent scroll positions, and preferred mode through refresh and local workspace restoration, including legacy thumbnail records.
+- Keep this feature Mac-only, without Outline, search/filter controls, expansion, version changes, or release publication. Update bundled Help and README; verify semantic comparison, native interaction/restoration, a 1,000-entry fixture, and representative PDF fidelity through focused tests and the full macOS gate.
+- Cover actual sidebar width and divider proportions after delayed window attachment, atomic comparison commits, buffered PDF navigation, and local workspace round trips. Verify 48 unchanged body positions across a five-page synthetic comparison and inspect first, table, later, and showcase PDF pages. Native inspection confirms the visible Changes sidebar; final physical keyboard/divider and VoiceOver acceptance remains pending.
+
 ## 2026-10-07 — Prevent a crash when reopening Git comparison
 
 - Replace the Git worker's `Process.waitUntilExit()` with a termination-handler semaphore. The previous wait serviced the worker's run loop and could deliver delayed PDFKit annotation notifications into AppKit thumbnail layout on a background thread after a comparison was displayed.

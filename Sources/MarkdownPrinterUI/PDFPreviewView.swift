@@ -10,6 +10,7 @@ public struct PDFPreviewView: NSViewRepresentable {
     public let revision: UInt64
     public let exportFormat: ExportFormat
     public let fileName: String
+    private var reviewSnapshot: RenderedDocumentSnapshot?
     private var sectionDestinations: [String: PDFSectionDestination] = [:]
     private var navigationRequest: MarkdownNavigationRequest?
     private var navigationCompleted: (MarkdownNavigationRequest, Error?) -> Void = { _, _ in }
@@ -22,7 +23,7 @@ public struct PDFPreviewView: NSViewRepresentable {
     private let onDragError: (Error) -> Void
     private let searchController: PDFSearchController?
     private let viewingController: PDFViewingController?
-    private let sidebarController: PDFThumbnailSidebarController?
+    private let sidebarController: PDFSidebarController?
 
     public init(
         data: Data,
@@ -62,7 +63,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         fileName: String,
         searchController: PDFSearchController,
         viewingController: PDFViewingController,
-        sidebarController: PDFThumbnailSidebarController,
+        sidebarController: PDFSidebarController,
         exportData: @escaping () throws -> Data,
         alternateExportData: (() throws -> Data)? = nil,
         openURL: @escaping (URL) -> Void,
@@ -96,7 +97,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         fileName: String,
         searchController: PDFSearchController?,
         viewingController: PDFViewingController?,
-        sidebarController: PDFThumbnailSidebarController?,
+        sidebarController: PDFSidebarController?,
         exportData: @escaping () throws -> Data,
         alternateExportData: (() throws -> Data)? = nil,
         openURL: @escaping (URL) -> Void,
@@ -150,6 +151,10 @@ public struct PDFPreviewView: NSViewRepresentable {
         )
     }
 
+    func reviewing(_ snapshot: RenderedDocumentSnapshot) -> Self {
+        var copy = self; copy.reviewSnapshot = snapshot; return copy
+    }
+
     func navigatingSections(_ destinations: [String: PDFSectionDestination], request: MarkdownNavigationRequest?, completed: @escaping (MarkdownNavigationRequest, Error?) -> Void) -> Self {
         var copy = self
         copy.sectionDestinations = destinations
@@ -194,6 +199,7 @@ public struct PDFPreviewView: NSViewRepresentable {
         guard let document = PDFDocument(data: data) else { return }
         view.requestSectionNavigation(navigationRequest, revision: revision, destinations: sectionDestinations, completed: navigationCompleted)
         view.display(document, data: data, revision: revision)
+        if let reviewSnapshot { container.updateReview(reviewSnapshot) }
         view.applySectionNavigation()
         windowRestorationCoordinator?.previewDidDisplayDocument()
         view.deferControllerUpdate(
@@ -599,6 +605,20 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
             error = MarkdownNavigationError.sectionNotFound(fragment)
         }
         DispatchQueue.main.async { completed(request, error) }
+    }
+    private var pendingReviewNavigation: (String, UInt64, PDFSectionDestination)?
+    func navigateReview(id: String, revision: UInt64, destination: PDFSectionDestination) {
+        pendingReviewNavigation = (id, revision, destination)
+        applyReviewNavigation()
+    }
+    private func applyReviewNavigation() {
+        guard let (_, revision, destination) = pendingReviewNavigation, activeRevision == revision else { return }
+        pendingReviewNavigation = nil
+        guard let page = activeView.document?.page(at: destination.pageIndex) else { return }
+        activeView.prepareForSectionNavigation()
+        let target = PDFDestination(page: page, at: destination.point)
+        target.zoom = activeView.scaleFactor
+        activeView.go(to: target)
     }
     private var pendingCommit: DispatchWorkItem?
     private var stagedView: PageAdvancingPDFView?
@@ -1113,6 +1133,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
         activeData = data
         activeRevision = revision
         applySectionNavigation()
+        applyReviewNavigation()
         self.searchState = searchState
         self.stagedView = nil
         pendingCommit = nil

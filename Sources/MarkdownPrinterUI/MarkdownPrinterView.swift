@@ -12,7 +12,7 @@ public struct MarkdownPrinterView: View {
     @State private var isDropTargeted = false
     @StateObject private var searchController = PDFSearchController()
     @StateObject private var viewingController = PDFViewingController()
-    @StateObject private var sidebarController: PDFThumbnailSidebarController
+    @StateObject private var sidebarController: PDFSidebarController
     @StateObject private var documentActions: DocumentActionController
     @StateObject private var pageActions: DocumentPageActionController
 
@@ -26,7 +26,7 @@ public struct MarkdownPrinterView: View {
         self.exportPreferences = exportPreferences
         self.activityCoordinator = activityCoordinator
         self.openFiles = openFiles
-        _sidebarController = StateObject(wrappedValue: PDFThumbnailSidebarController())
+        _sidebarController = StateObject(wrappedValue: PDFSidebarController())
         _documentActions = StateObject(wrappedValue: DocumentActionController(
             session: session,
             exportPreferences: exportPreferences,
@@ -165,6 +165,7 @@ public struct MarkdownPrinterView: View {
                     },
                     onDragError: { session.report(error: $0) }
                 )
+                .reviewing(snapshot)
                 .navigatingSections(snapshot.sectionDestinations, request: sectionNavigation.request(for: snapshot.document.sourceURL)) { request, error in
                     guard sectionNavigation.request(for: request.fileURL)?.id == request.id else { return }
                     sectionNavigation.complete(request)

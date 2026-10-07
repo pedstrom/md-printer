@@ -30,8 +30,8 @@ protocol PDFThumbnailSidebarTarget: AnyObject {
 }
 
 @MainActor
-package final class PDFThumbnailSidebarController: ObservableObject {
-    @Published public private(set) var commandTitle = "Show Thumbnails"
+package final class PDFSidebarController: ObservableObject {
+    @Published public private(set) var commandTitle = "Show Sidebar"
     @Published public private(set) var canToggle = false
     @Published public private(set) var isVisible = false
 
@@ -73,9 +73,11 @@ package final class PDFThumbnailSidebarController: ObservableObject {
     private func refresh() {
         canToggle = target != nil
         isVisible = target?.isThumbnailSidebarVisible == true
-        commandTitle = isVisible ? "Hide Thumbnails" : "Show Thumbnails"
+        commandTitle = isVisible ? "Hide Sidebar" : "Show Sidebar"
     }
 }
+
+package typealias PDFThumbnailSidebarController = PDFSidebarController
 
 @MainActor
 public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThumbnailSidebarTarget {
@@ -88,12 +90,19 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
     let thumbnailView: PDFThumbnailView
     private let splitView = ThumbnailSplitView()
     private let sidebarView = NSView()
-    private weak var sidebarController: PDFThumbnailSidebarController?
+    private weak var sidebarController: PDFSidebarController?
+    private var sidebarIsShown = false
     private var storedSidebarWidth = defaultSidebarWidth
+    let reviewController = RevisionReviewController()
+    private lazy var changesView = RevisionChangesView(controller: reviewController)
+    private let modeSelector = NSSegmentedControl(labels: ["Pages", "Changes"], trackingMode: .selectOne, target: nil, action: nil)
+    private var lastReviewRevision: UInt64?
+    var sidebarMode: DocumentSidebarMode { reviewController.state.mode }
     private var isApplyingSidebarLayout = false
+    private var lastSplitWidth: CGFloat = 0
 
     var isThumbnailSidebarVisible: Bool {
-        !sidebarView.isHidden
+        sidebarIsShown
     }
 
     var thumbnailSidebarWidth: CGFloat {
@@ -156,9 +165,18 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         sidebarView.wantsLayer = true
         sidebarView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         thumbnailView.autoresizingMask = [.width, .height]
-        thumbnailView.frame = sidebarView.bounds
+        layoutSidebar()
         thumbnailView.backgroundColor = .windowBackgroundColor
         sidebarView.addSubview(thumbnailView)
+        sidebarView.addSubview(changesView)
+        sidebarView.addSubview(modeSelector)
+        modeSelector.target = self; modeSelector.action = #selector(modeChanged)
+        modeSelector.setAccessibilityLabel("Sidebar mode")
+        modeSelector.selectedSegment = 0; modeSelector.setEnabled(false, forSegment: 1)
+        changesView.isHidden = true
+        reviewController.navigate = { [weak self] id, revision, destination in
+            self?.previewView.navigateReview(id: id, revision: revision, destination: destination)
+        }
 
         splitView.addArrangedSubview(sidebarView)
         splitView.addArrangedSubview(previewView)
@@ -178,17 +196,25 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         nil
     }
 
+    public override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        needsLayout = true
+    }
+
     public override func layout() {
+        isApplyingSidebarLayout = true
         super.layout()
         splitView.frame = bounds
-        thumbnailView.frame = sidebarView.bounds
+        lastSplitWidth = splitView.bounds.width
+        layoutSidebar()
+        isApplyingSidebarLayout = false
         updateThumbnailSize()
         if isThumbnailSidebarVisible, !isApplyingSidebarLayout {
             applyStoredSidebarWidth()
         }
     }
 
-    func attach(sidebarController: PDFThumbnailSidebarController?) {
+    func attach(sidebarController: PDFSidebarController?) {
         guard self.sidebarController !== sidebarController else { return }
         if let existing = self.sidebarController {
             existing.detach(from: self)
@@ -208,9 +234,12 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
 
     func setThumbnailSidebarVisible(_ isVisible: Bool) {
         guard isThumbnailSidebarVisible != isVisible else { return }
+        isApplyingSidebarLayout = true
+        sidebarIsShown = isVisible
         splitView.hidesDivider = !isVisible
         sidebarView.isHidden = !isVisible
         splitView.adjustSubviews()
+        isApplyingSidebarLayout = false
         if isVisible {
             applyStoredSidebarWidth()
         }
@@ -234,6 +263,9 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         if proposedPosition < Self.sidebarCollapseThreshold {
             return 0
         }
+        if sidebarMode == .changes {
+            return min(max(proposedPosition, 240), min(520, max(0, splitView.bounds.width - 161)))
+        }
         return min(max(proposedPosition, Self.minimumSidebarWidth), Self.maximumSidebarWidth)
     }
 
@@ -253,18 +285,27 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
 
     public func splitViewDidResizeSubviews(_ notification: Notification) {
         guard !isApplyingSidebarLayout else { return }
+        let windowResized = lastSplitWidth != splitView.bounds.width
+        lastSplitWidth = splitView.bounds.width
+        if windowResized {
+            if isThumbnailSidebarVisible { applyStoredSidebarWidth() }
+            else { layoutSidebar() }
+            return
+        }
         if sidebarView.frame.width < 1 {
-            sidebarView.isHidden = true
-            splitView.hidesDivider = true
-            sidebarController?.targetDidChange()
+            if NSApp.currentEvent?.type == .leftMouseDragged {
+                setThumbnailSidebarVisible(false)
+            }
             return
         }
         guard isThumbnailSidebarVisible else { return }
-        storedSidebarWidth = min(
-            max(sidebarView.frame.width, Self.minimumSidebarWidth),
-            Self.maximumSidebarWidth
-        )
-        thumbnailView.frame = sidebarView.bounds
+        if !windowResized, sidebarMode == .pages, (Self.minimumSidebarWidth...Self.maximumSidebarWidth).contains(sidebarView.frame.width) {
+            storedSidebarWidth = sidebarView.frame.width
+        } else if !windowResized, sidebarMode == .changes, (240...520).contains(sidebarView.frame.width),
+                  splitView.bounds.width - 161 >= reviewController.state.changesWidth {
+            reviewController.state.changesWidth = sidebarView.frame.width
+        }
+        layoutSidebar()
         updateThumbnailSize()
         sidebarController?.targetDidChange()
     }
@@ -272,10 +313,62 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
     private func applyStoredSidebarWidth() {
         guard splitView.arrangedSubviews.count == 2, splitView.bounds.width > 0 else { return }
         isApplyingSidebarLayout = true
-        splitView.setPosition(storedSidebarWidth, ofDividerAt: 0)
+        let requested = sidebarMode == .pages ? storedSidebarWidth : reviewController.state.changesWidth
+        let actual = sidebarMode == .pages ? requested : min(requested, max(0, splitView.bounds.width - 161))
+        sidebarView.isHidden = false
+        splitView.setPosition(actual, ofDividerAt: 0)
         isApplyingSidebarLayout = false
-        thumbnailView.frame = sidebarView.bounds
+        layoutSidebar()
         updateThumbnailSize()
+    }
+
+    private func layoutSidebar() {
+        let size = sidebarView.bounds.size
+        modeSelector.frame = NSRect(x: 8, y: max(0, size.height - 34), width: max(0, size.width - 16), height: 26)
+        let content = NSRect(x: 0, y: 0, width: size.width, height: max(0, size.height - 40))
+        let changed = changesView.frame != content
+        thumbnailView.frame = content; changesView.frame = content
+        if changed { changesView.needsLayout = true }
+    }
+
+    @objc private func modeChanged() {
+        setSidebarMode(modeSelector.selectedSegment == 1 ? .changes : .pages)
+    }
+
+    func setSidebarMode(_ mode: DocumentSidebarMode) {
+        guard mode != .changes || reviewController.baseline != nil else { return }
+        reviewController.state.mode = mode
+        modeSelector.selectedSegment = mode == .pages ? 0 : 1
+        thumbnailView.isHidden = mode != .pages; changesView.isHidden = mode != .changes
+        if isThumbnailSidebarVisible { applyStoredSidebarWidth() }
+        sidebarController?.targetDidChange()
+    }
+
+    func updateReview(_ snapshot: RenderedDocumentSnapshot) {
+        guard lastReviewRevision != snapshot.revision else { return }
+        if !reviewController.restorationPending { changesView.captureScrollPositions() }
+        reviewController.state.isVisible = isThumbnailSidebarVisible
+        reviewController.update(snapshot)
+        lastReviewRevision = snapshot.revision
+        modeSelector.setEnabled(snapshot.baseline != nil, forSegment: 1)
+        setSidebarMode(reviewController.state.mode)
+        setThumbnailSidebarVisible(reviewController.state.isVisible)
+        changesView.refresh()
+    }
+
+    func captureSidebarRestorationState() -> PersistedDocumentSidebar {
+        changesView.captureScrollPositions()
+        reviewController.state.isVisible = isThumbnailSidebarVisible
+        reviewController.state.pagesWidth = storedSidebarWidth
+        return reviewController.state
+    }
+
+    func restoreSidebarRestorationState(_ state: PersistedDocumentSidebar) {
+        storedSidebarWidth = state.pagesWidth
+        reviewController.restore(state)
+        setThumbnailSidebarVisible(state.isVisible)
+        // The selected mode and detail positions are applied once the restored comparison commits.
+        lastReviewRevision = nil
     }
 
     private func updateThumbnailSize() {

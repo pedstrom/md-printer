@@ -8,9 +8,18 @@ public struct PDFSectionDestination: Equatable, Sendable {
     public let point: CGPoint
 }
 
+public struct PDFReviewDestination: Equatable, Sendable {
+    public let destination: PDFSectionDestination
+    public let lastPageIndex: Int
+    public var pageLabel: String {
+        destination.pageIndex == lastPageIndex ? "p. \(lastPageIndex + 1)" : "pp. \(destination.pageIndex + 1)–\(lastPageIndex + 1)"
+    }
+}
+
 public struct PDFRenderResult: Sendable {
     public let data: Data
     public let sectionDestinations: [String: PDFSectionDestination]
+    public var reviewDestinations: [String: PDFReviewDestination] = [:]
 }
 
 @MainActor
@@ -37,7 +46,8 @@ public final class PDFExporter {
     public func render(
         from attributedText: NSAttributedString,
         footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration(),
-        decorations: RevisionDecorations = RevisionDecorations()
+        decorations: RevisionDecorations = RevisionDecorations(),
+        reviewItems: [RevisionReviewItem] = []
     ) throws -> PDFRenderResult {
         let output = try makePDFOutput()
         let pages = makePages(for: attributedText)
@@ -52,7 +62,8 @@ public final class PDFExporter {
                 decorations: decorations, revisionNotes: revisionNotes.filter { $0.page == pageIndex }, in: output.context
             )
         }
-        return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections)
+        return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections,
+                               reviewDestinations: reviewDestinations(reviewItems, text: attributedText, pages: pages))
     }
 
     public func pdfDataAsync(
@@ -66,7 +77,8 @@ public final class PDFExporter {
     public func renderAsync(
         from attributedText: NSAttributedString,
         footers: ResolvedFooterConfiguration = ResolvedFooterConfiguration(),
-        decorations: RevisionDecorations = RevisionDecorations()
+        decorations: RevisionDecorations = RevisionDecorations(),
+        reviewItems: [RevisionReviewItem] = []
     ) async throws -> PDFRenderResult {
         let output = try makePDFOutput()
         let pages = await makePagesAsync(for: attributedText)
@@ -83,7 +95,8 @@ public final class PDFExporter {
             )
             await Task.yield()
         }
-        return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections)
+        return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections,
+                               reviewDestinations: reviewDestinations(reviewItems, text: attributedText, pages: pages))
     }
 
     public func write(_ attributedText: NSAttributedString, to url: URL) throws {
@@ -845,6 +858,28 @@ public final class PDFExporter {
             with: frame,
             options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine]
         )
+    }
+
+    private func reviewDestinations(_ items: [RevisionReviewItem], text: NSAttributedString, pages: [TextPage]) -> [String: PDFReviewDestination] {
+        func position(_ location: Int) -> PDFSectionDestination {
+            guard text.length > 0 else {
+                return PDFSectionDestination(pageIndex: 0, point: CGPoint(x: configuration.pageMargins.left, y: configuration.pageSize.height - configuration.pageMargins.top))
+            }
+            let character = min(max(0, location), text.length - 1)
+            for (index, page) in pages.enumerated() {
+                let glyph = page.layoutManager.glyphIndexForCharacter(at: character)
+                guard NSLocationInRange(glyph, page.glyphRange) else { continue }
+                let rect = page.layoutManager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: page.textContainer)
+                return PDFSectionDestination(pageIndex: index, point: CGPoint(x: configuration.pageMargins.left + rect.minX,
+                    y: configuration.pageSize.height - configuration.pageMargins.top - rect.minY + 4))
+            }
+            return PDFSectionDestination(pageIndex: max(0, pages.count - 1), point: CGPoint(x: configuration.pageMargins.left, y: configuration.pageMargins.bottom))
+        }
+        return Dictionary(uniqueKeysWithValues: items.map { item in
+            let first = position(item.anchor)
+            let last = position(max(item.anchor, NSMaxRange(item.currentRange) - 1))
+            return (item.id, PDFReviewDestination(destination: first, lastPageIndex: last.pageIndex))
+        })
     }
 
     private func sectionDestinations(in text: NSAttributedString, pages: [TextPage]) -> [String: PDFSectionDestination] {

@@ -130,6 +130,7 @@ package struct DocumentWindowRestorationState: Equatable {
     let frame: CGRect?
     let viewport: PersistedPreviewViewport?
     let thumbnails: PersistedThumbnailSidebar?
+    let sidebar: PersistedDocumentSidebar?
     let explicitPageSetup: DocumentPageSetup?
     let originalSnapshotID: UUID?
 
@@ -137,12 +138,14 @@ package struct DocumentWindowRestorationState: Equatable {
         frame: CGRect?,
         viewport: PersistedPreviewViewport?,
         thumbnails: PersistedThumbnailSidebar? = nil,
+        sidebar: PersistedDocumentSidebar? = nil,
         explicitPageSetup: DocumentPageSetup? = nil,
         originalSnapshotID: UUID? = nil
     ) {
         self.frame = frame
         self.viewport = viewport
         self.thumbnails = thumbnails
+        self.sidebar = sidebar
         self.explicitPageSetup = explicitPageSetup
         self.originalSnapshotID = originalSnapshotID
     }
@@ -163,6 +166,7 @@ package struct DocumentWindowRestorationState: Equatable {
         if let thumbnails {
             result["thumbnails"] = thumbnails.propertyList
         }
+        if let sidebar { result["sidebar"] = sidebar.propertyList }
         if let originalSnapshotID { result["originalSnapshotID"] = originalSnapshotID.uuidString }
         if let explicitPageSetup,
            let data = try? JSONEncoder().encode(explicitPageSetup) {
@@ -187,6 +191,7 @@ package struct DocumentWindowRestorationState: Equatable {
         thumbnails = (propertyList["thumbnails"] as? [String: Any]).flatMap(
             PersistedThumbnailSidebar.init(propertyList:)
         )
+        sidebar = (propertyList["sidebar"] as? [String: Any]).flatMap(PersistedDocumentSidebar.init(propertyList:))
         originalSnapshotID = (propertyList["originalSnapshotID"] as? String).flatMap(UUID.init(uuidString:))
         explicitPageSetup = (propertyList["pageSetup"] as? Data).flatMap {
             try? JSONDecoder().decode(DocumentPageSetup.self, from: $0)
@@ -527,7 +532,7 @@ public final class OpenDocumentRestorationController: ObservableObject {
             let url = URL(fileURLWithPath: path).standardizedFileURL
             let state = DocumentWindowRestorationState(propertyList: document)
             let hasState = state.frame != nil || state.viewport != nil
-                || state.thumbnails != nil || state.explicitPageSetup != nil
+                || state.thumbnails != nil || state.sidebar != nil || state.explicitPageSetup != nil
             return WorkspaceWindowGroup(
                 identifier: "legacy-\(index)",
                 tabs: [.document(url, state: hasState ? state : nil)],

@@ -17,7 +17,7 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
         XCTAssertEqual(container.sidebarDividerThickness, 0)
         XCTAssertEqual(container.sidebarDividerHitThickness, 0)
         XCTAssertFalse(controller.isVisible)
-        XCTAssertEqual(controller.commandTitle, "Show Thumbnails")
+        XCTAssertEqual(controller.commandTitle, "Show Sidebar")
         XCTAssertTrue(controller.canToggle)
 
         controller.toggle()
@@ -27,7 +27,7 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
         XCTAssertGreaterThan(container.sidebarDividerThickness, 0)
         XCTAssertGreaterThanOrEqual(container.sidebarDividerHitThickness, 12)
         XCTAssertTrue(controller.isVisible)
-        XCTAssertEqual(controller.commandTitle, "Hide Thumbnails")
+        XCTAssertEqual(controller.commandTitle, "Hide Sidebar")
         XCTAssertEqual(
             container.thumbnailSidebarWidth,
             PDFPreviewContainerView.defaultSidebarWidth,
@@ -87,7 +87,7 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
             XCTAssertGreaterThan(publicationCount, 0)
             XCTAssertFalse(controller.canToggle)
             XCTAssertFalse(controller.isVisible)
-            XCTAssertEqual(controller.commandTitle, "Show Thumbnails")
+            XCTAssertEqual(controller.commandTitle, "Show Sidebar")
             withExtendedLifetime(publication) { }
         }
     }
@@ -111,7 +111,7 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
         XCTAssertEqual(publicationCount, 0)
         XCTAssertTrue(controller.canToggle)
         XCTAssertTrue(controller.isVisible)
-        XCTAssertEqual(controller.commandTitle, "Hide Thumbnails")
+        XCTAssertEqual(controller.commandTitle, "Hide Sidebar")
         controller.toggle()
         XCTAssertFalse(replacement.isThumbnailSidebarVisible)
         withExtendedLifetime(publication) { }

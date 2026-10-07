@@ -64,6 +64,7 @@ public struct RevisionDecorations: Equatable, Sendable {
 public struct RevisionRenderedText {
     public let text: NSAttributedString
     public let decorations: RevisionDecorations
+    public var reviewItems: [RevisionReviewItem] = []
 }
 
 /// Compares semantic rendering units, before pagination. The original renderer
@@ -76,13 +77,17 @@ public enum RevisionFormatter {
     public static func format(current: NSAttributedString, original: NSAttributedString) -> RevisionRenderedText {
         let old = units(in: original), new = units(in: current)
         var changes = RevisionDecorations()
+        var reviewMatches: [RevisionReviewMatch] = []
+        let oldSignatures = Set(old.map(\.signature)), newSignatures = Set(new.map(\.signature))
         let matches = matching(old.map(\.signature), new.map(\.signature))
         var oldStart = 0, newStart = 0
         for (oldEnd, newEnd) in matches + [(old.count, new.count)] {
+            let reviewStart = reviewMatches.count
             compareGap(Array(old[oldStart..<oldEnd]), Array(new[newStart..<newEnd]),
                        anchor: newEnd < new.count ? new[newEnd].range.location : current.length,
-                       allOld: old, allNew: new, changes: &changes)
-            if oldEnd < old.count { compare(old[oldEnd], new[newEnd], changes: &changes) }
+                       allOld: oldSignatures, allNew: newSignatures, changes: &changes, reviews: &reviewMatches)
+            for index in reviewStart..<reviewMatches.count { reviewMatches[index].gapID = oldStart }
+            if oldEnd < old.count { compare(old[oldEnd], new[newEnd], changes: &changes, reviews: &reviewMatches) }
             oldStart = oldEnd + 1; newStart = newEnd + 1
         }
         changes.highlights = joinPhraseHighlights(merge(changes.highlights), in: current)
@@ -92,10 +97,10 @@ public enum RevisionFormatter {
         let result = NSMutableAttributedString(attributedString: current)
         for range in changes.highlights { result.addAttribute(.revisionHighlight, value: true, range: range) }
         for range in changes.images { result.addAttribute(.revisionImageChanged, value: true, range: range) }
-        return RevisionRenderedText(text: result, decorations: changes)
+        return RevisionRenderedText(text: result, decorations: changes, reviewItems: RevisionReviewBuilder.build(current: current, original: original, matches: reviewMatches))
     }
 
-    private struct Token {
+    struct Token {
         let key: String
         let visible: String
         let range: NSRange
@@ -105,11 +110,17 @@ public enum RevisionFormatter {
         var whitespace: Bool { !image && visible.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         var word: Bool { !image && key.rangeOfCharacter(from: .alphanumerics) != nil }
     }
-    private struct Unit {
+    struct Unit {
         let kind: String
         let range: NSRange
         let tokens: [Token]
-        var signature: String { kind.components(separatedBy: ":").first! + "|" + tokens.map(\.key).joined(separator: "\u{1f}") }
+        let signature: String
+        let words: Set<String>
+        init(kind: String, range: NSRange, tokens: [Token]) {
+            self.kind = kind; self.range = range; self.tokens = tokens
+            signature = kind.components(separatedBy: ":").first! + "|" + tokens.map(\.key).joined(separator: "\u{1f}")
+            words = Set(tokens.filter { !$0.image && $0.key.rangeOfCharacter(from: .alphanumerics) != nil }.map { $0.key.lowercased() })
+        }
     }
 
     private static func units(in text: NSAttributedString) -> [Unit] {
@@ -186,7 +197,7 @@ public enum RevisionFormatter {
     }
 
     /// CollectionDifference uses a sequence diff and avoids a quadratic matrix.
-    private static func matching(_ old: [String], _ new: [String]) -> [(Int, Int)] {
+    static func matching(_ old: [String], _ new: [String]) -> [(Int, Int)] {
         let difference = new.difference(from: old)
         var removed = Set<Int>(), inserted = Set<Int>()
         for change in difference {
@@ -199,36 +210,36 @@ public enum RevisionFormatter {
     }
 
     private static func compareGap(_ old: [Unit], _ new: [Unit], anchor: Int,
-                                   allOld: [Unit], allNew: [Unit], changes: inout RevisionDecorations) {
+                                   allOld: Set<String>, allNew: Set<String>, changes: inout RevisionDecorations, reviews: inout [RevisionReviewMatch]) {
         var nextNew = 0
         for unit in old {
             // Unmatched identical units elsewhere are moves: keep their removal
             // and addition instead of matching them as an edited paragraph.
-            let moved = allNew.contains { $0.signature == unit.signature }
+            let moved = allNew.contains(unit.signature)
             let candidates = moved ? [] : Array(new.indices.dropFirst(nextNew)).filter { index in
                 new[index].kind.components(separatedBy: ":").first == unit.kind.components(separatedBy: ":").first
-                    && !allOld.contains { previous in previous.signature == new[index].signature }
+                    && !allOld.contains(new[index].signature)
                     && (similarity(unit, new[index]) >= 0.4 || (unit.tokens.contains(where: \.image) && new[index].tokens.contains(where: \.image)))
             }
             let best = candidates.max { score(unit, new[$0]) < score(unit, new[$1]) }
             if let index = best {
-                for added in new[nextNew..<index] { add(added, changes: &changes) }
-                compare(unit, new[index], changes: &changes)
+                for added in new[nextNew..<index] { add(added, changes: &changes, reviews: &reviews) }
+                compare(unit, new[index], changes: &changes, reviews: &reviews)
                 nextNew = index + 1
             } else {
                 let paragraph = unit.kind.components(separatedBy: ":").first == "paragraph" && !unit.kind.contains(":list:")
+                let count = changes.deletions.count
+                let boundary = nextNew < new.count ? new[nextNew].range.location : anchor
                 remove(unit.tokens, at: nextNew < new.count ? new[nextNew].range.location : anchor,
                        summary: paragraph ? .paragraphs(1) : removalSummary(in: unit, ranges: [unit.tokens.indices]), changes: &changes)
+                if changes.deletions.count > count { reviews.append(RevisionReviewMatch(earlier: unit, current: nil, anchor: boundary)) }
             }
         }
-        for added in new.dropFirst(nextNew) { add(added, changes: &changes) }
+        for added in new.dropFirst(nextNew) { add(added, changes: &changes, reviews: &reviews) }
     }
 
     private static func similarity(_ old: Unit, _ new: Unit) -> Double {
-        func words(_ unit: Unit) -> Set<String> {
-            Set(unit.tokens.filter { !$0.image && $0.key.rangeOfCharacter(from: .alphanumerics) != nil }.map { $0.key.lowercased() })
-        }
-        let before = words(old), after = words(new)
+        let before = old.words, after = new.words
         guard !before.isEmpty || !after.isEmpty else { return 0 }
         return 2 * Double(before.intersection(after).count) / Double(before.count + after.count)
     }
@@ -239,7 +250,13 @@ public enum RevisionFormatter {
         similarity(old, new)
     }
 
-    private static func compare(_ old: Unit, _ new: Unit, changes: inout RevisionDecorations) {
+    private static func compare(_ old: Unit, _ new: Unit, changes: inout RevisionDecorations, reviews: inout [RevisionReviewMatch]) {
+        let before = (changes.highlights.count, changes.images.count, changes.deletions.count)
+        defer {
+            if before != (changes.highlights.count, changes.images.count, changes.deletions.count) {
+                reviews.append(RevisionReviewMatch(earlier: old, current: new, anchor: new.range.location))
+            }
+        }
         let exactMatches = matching(old.tokens.map(\.key), new.tokens.map(\.key))
         let matches = phraseMatches(old, new, exactMatches: exactMatches)
         var newStart = 0
@@ -422,9 +439,10 @@ public enum RevisionFormatter {
             && ((initialCapital(a) && b == b.lowercased()) || (initialCapital(b) && a == a.lowercased()))
     }
 
-    private static func add(_ unit: Unit, changes: inout RevisionDecorations) {
+    private static func add(_ unit: Unit, changes: inout RevisionDecorations, reviews: inout [RevisionReviewMatch]) {
         guard unit.tokens.contains(where: { meaningful([$0]) }) else { return }
         for token in unit.tokens { mark(token, includeSpacing: true, changes: &changes) }
+        reviews.append(RevisionReviewMatch(earlier: nil, current: unit, anchor: unit.range.location))
     }
     private static func mark(_ token: Token, includeSpacing: Bool = false, changes: inout RevisionDecorations) {
         if token.image { changes.images.append(token.range) }
