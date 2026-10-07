@@ -3,7 +3,7 @@
 ## 2026-10-07 — Version 1.5.2
 
 - Prepare Mac version 1.5.2, build 20, with double-click and keyboard Git revision selection, comparison and clear-highlighting shortcuts, and adaptive deletion annotations that keep crowded comparisons and narrow Word exports available.
-- Focus public release notes on smoother Git comparisons, clearer change highlighting, and fixes for comparison opening, narrow Word table exports, and rapid revision selection. Update Mac bundle metadata, the README download label, and release verification assertions.
+- Focus public release notes on smoother Git comparisons, clearer change highlighting, and a concise bug-fix statement without itemizing individual fixes. Update Mac bundle metadata, the README download label, and release verification assertions.
 - Pass 76 focused Git picker, Help, PDF annotation, and Word export regressions and the full 517-test Mac gate with 96.27% testable-production line coverage, performance budgets, and universal app, extension, and CLI validation. Recheck transient responsiveness and scaling misses without changing the performance thresholds.
 - Inspect the two-page showcase, prose/table comparison, and crowded-overflow PDFs. Verify native Open, immediate arrow-key selection and Return comparison, double-click comparison, both new shortcuts, Find, text selection, PDF/Word Save, Print cancellation, and live refresh with a fixed original in an isolated app copy. Physical held-drag drops and Option switching during a drag remain unperformed because the UI driver cannot hold the mouse button; report this acceptance limitation before packaging.
 
