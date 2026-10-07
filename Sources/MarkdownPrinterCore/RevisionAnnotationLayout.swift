@@ -5,12 +5,14 @@ import CoreText
 struct RevisionPDFNote {
     let page: Int
     let anchor: CGPoint
-    let frame: CGRect
-    let label: String
+    var frame: CGRect
+    var label: String
     var cellBounds: CGRect? = nil
     var isMargin = false
     var isImage = false
     var leader: [CGPoint] = []
+
+    var isBoundaryOnly: Bool { frame.isEmpty }
 
     func wordingFrame(font: NSFont) -> CGRect {
         guard !isImage, !isMargin, label.hasPrefix("^ ") else { return frame }
@@ -20,22 +22,19 @@ struct RevisionPDFNote {
     }
 }
 
-public enum RevisionAnnotationError: LocalizedError {
+enum RevisionAnnotationError: Error {
     case noSpace
-    public var errorDescription: String? {
-        "A deletion callout could not fit without obscuring the document. Try a different page size or scale."
-    }
 }
 
 enum RevisionAnnotationLayout {
     static func place(label: String, anchor: CGPoint, line: CGRect, content: CGRect,
                       page: CGRect, occupied: [CGRect], notes: [CGRect], font: NSFont,
                       cellBounds: CGRect? = nil, isImage: Bool = false,
-                      markers: [CGRect] = [], lineBounds: [CGRect]? = nil) throws -> (CGRect, String) {
+                      markers: [CGRect] = [], lineBounds: [CGRect]? = nil) -> (CGRect, String) {
         let pageContent = content
         let content = cellBounds.map { $0.intersection(pageContent) } ?? pageContent
         let height = ceil(inkBounds(label: label, font: font).height)
-        let prefix = isImage ? label : "^ …"
+        let prefix = "^ …"
         let fullWidth = ceil((label as NSString).size(withAttributes: [.font: font]).width)
         let minimumWidth = min(fullWidth, ceil((prefix as NSString).size(withAttributes: [.font: font]).width))
         var positions = [max(content.minY, line.maxY - 1)]
@@ -78,39 +77,46 @@ enum RevisionAnnotationLayout {
                 candidates.append(CGRect(x: min(max(gap.minX, anchor.x), gap.maxX - width), y: y, width: width, height: height))
             }
         }
-        for candidate in candidates where content.width >= minimumWidth && content.height >= height {
-            let text = truncate(label, width: candidate.width, font: font)
-            guard showsRemovedWording(text, original: label, isImage: isImage) else { continue }
-            let actual = CGRect(origin: candidate.origin, size: CGSize(width: ceil((text as NSString).size(withAttributes: [.font: font]).width), height: height))
-            let prefix = !isImage && text.hasPrefix("^ ") ? ("^ " as NSString).size(withAttributes: [.font: font]).width : 0
-            let wording = CGRect(x: actual.minX + prefix, y: actual.minY,
-                                 width: max(0, actual.width - prefix), height: actual.height)
-            if content.contains(actual), fits(actual, occupied: occupied, notes: notes),
-               !markers.contains(where: { $0.insetBy(dx: -1, dy: -1).intersects(wording) }) { return (actual, text) }
-        }
-        // Use actual page margins only, after exhausting the current cell's
-        // gaps. Wrapped wording keeps a displaced note useful at seven points.
-        let marginLabel = label.hasPrefix("^ ") ? String(label.dropFirst(2)) : label
-        for maximumLines in stride(from: 4, through: 1, by: -1) {
-            for x in [pageContent.maxX + 4, page.minX + 6] {
-                let marginWidth = x > pageContent.maxX ? page.maxX - x - 6 : pageContent.minX - x - 4
-                guard marginWidth >= 36 else { continue }
-                let lines = wrapped(marginLabel, width: marginWidth, maximumLines: maximumLines, font: font)
-                let text = lines.joined(separator: "\n")
-                guard !lines.isEmpty, showsRemovedWording(text, original: label, isImage: isImage) else { continue }
-                let noteHeight = lines.map { ceil(inkBounds(label: $0, font: font).height) }.max()!
-                    + lineStep(font) * CGFloat(lines.count - 1)
-                let nearbyY = max(pageContent.minY, min(line.maxY, pageContent.maxY - noteHeight))
-                let positions = Array(stride(from: nearbyY, through: pageContent.maxY - noteHeight, by: noteHeight + 2))
-                    + Array(stride(from: pageContent.minY, through: pageContent.maxY - noteHeight, by: noteHeight + 2))
-                for y in positions {
-                    let rect = CGRect(x: x, y: y, width: marginWidth, height: noteHeight)
-                    if fits(rect, occupied: occupied, notes: notes),
-                       !markers.contains(where: { $0.insetBy(dx: -1, dy: -1).intersects(rect) }) { return (rect, text) }
+        // Retain useful wording whenever possible. If that cannot fit, repeat
+        // with progressively truncated labels, including just a caret/ellipsis.
+        for informative in [true, false] {
+            for candidate in candidates where candidate.width >= minimumWidth && content.height >= height {
+                let text = truncate(label, width: candidate.width, font: font)
+                guard !informative || showsRemovedWording(text, original: label, isImage: isImage) else { continue }
+                let actual = CGRect(origin: candidate.origin, size: CGSize(width: ceil((text as NSString).size(withAttributes: [.font: font]).width), height: height))
+                let prefix = !isImage && text.hasPrefix("^ ") ? ("^ " as NSString).size(withAttributes: [.font: font]).width : 0
+                let wording = CGRect(x: actual.minX + prefix, y: actual.minY,
+                                     width: max(0, actual.width - prefix), height: actual.height)
+                if content.contains(actual), fits(actual, occupied: occupied, notes: notes),
+                   !markers.contains(where: { $0.insetBy(dx: -1, dy: -1).intersects(wording) }) { return (actual, text) }
+            }
+            // Use actual page margins only, after exhausting the current cell's
+            // gaps. Wrapped wording keeps a displaced note useful at seven points.
+            let marginLabel = label.hasPrefix("^ ") ? String(label.dropFirst(2)) : label
+            for maximumLines in stride(from: 4, through: 1, by: -1) {
+                for x in [pageContent.maxX + 4, page.minX + 6] {
+                    let marginWidth = x > pageContent.maxX ? page.maxX - x - 6 : pageContent.minX - x - 4
+                    let minimumMarginWidth = informative ? 36 : ceil(("…" as NSString).size(withAttributes: [.font: font]).width)
+                    guard marginWidth >= minimumMarginWidth else { continue }
+                    let lines = wrapped(marginLabel, width: marginWidth, maximumLines: maximumLines, font: font)
+                    let text = lines.joined(separator: "\n")
+                    guard !lines.isEmpty, !informative || showsRemovedWording(text, original: label, isImage: isImage) else { continue }
+                    let noteHeight = lines.map { ceil(inkBounds(label: $0, font: font).height) }.max()!
+                        + lineStep(font) * CGFloat(lines.count - 1)
+                    let nearbyY = max(pageContent.minY, min(line.maxY, pageContent.maxY - noteHeight))
+                    let positions = Array(stride(from: nearbyY, through: pageContent.maxY - noteHeight, by: noteHeight + 2))
+                        + Array(stride(from: pageContent.minY, through: pageContent.maxY - noteHeight, by: noteHeight + 2))
+                    for y in positions {
+                        let rect = CGRect(x: x, y: y, width: marginWidth, height: noteHeight)
+                        if fits(rect, occupied: occupied, notes: notes),
+                           !markers.contains(where: { $0.insetBy(dx: -1, dy: -1).intersects(rect) }) { return (rect, text) }
+                    }
                 }
             }
         }
-        throw RevisionAnnotationError.noSpace
+        // No floating label can fit safely. Keep an ellipsis at the deletion
+        // boundary instead of rejecting the already successful comparison.
+        return (CGRect(origin: anchor, size: .zero), "…")
     }
 
     private static func showsRemovedWording(_ displayed: String, original: String, isImage: Bool) -> Bool {
@@ -188,6 +194,7 @@ enum RevisionAnnotationLayout {
     /// its right edge, rather than drawing a line across its removed wording.
     static func leader(for note: RevisionPDFNote, font: NSFont, page: CGRect, content: CGRect,
                        occupied: [CGRect], notes: [RevisionPDFNote], previous: [[CGPoint]]) throws -> [CGPoint] {
+        guard !note.isBoundaryOnly else { return [] }
         guard abs(note.frame.minX - note.anchor.x) > 3 || abs(note.frame.minY - note.anchor.y) > 16 else { return [] }
         let label = note.wordingFrame(font: font)
         let start = departure(for: note, font: font, notes: notes)

@@ -207,18 +207,22 @@ final class WordRevisionRegressionTests: XCTestCase {
         }
     }
 
-    func testWordTableTooNarrowForLegibleDeletionLabelReportsError() throws {
-        let columns = (1...12).map { "Column \($0)" }
-        let markdown = "| " + columns.joined(separator: " | ") + " |\n| "
-            + Array(repeating: "---", count: columns.count).joined(separator: " | ") + " |\n| "
-            + Array(repeating: "Current", count: columns.count).joined(separator: " | ") + " |"
-        let text = MarkdownRenderer().render(markdown: markdown)
-        var decorations = RevisionDecorations()
-        decorations.deletions = [RevisionDeletion(location: (text.string as NSString).range(of: "Current").location,
-                                                   text: "old wording")]
-        XCTAssertThrowsError(try WordExporter().wordData(from: text, decorations: decorations)) { error in
-            XCTAssertTrue(error is RevisionAnnotationError)
-            XCTAssertNotNil((error as? LocalizedError)?.errorDescription)
+    func testWordTableTooNarrowForRemovedWordingTruncatesInsteadOfRejectingExport() throws {
+        for columnCount in [12, 14, 20] {
+            let columns = (1...columnCount).map { "Column \($0)" }
+            let markdown = "| " + columns.joined(separator: " | ") + " |\n| "
+                + Array(repeating: "---", count: columns.count).joined(separator: " | ") + " |\n| "
+                + Array(repeating: "Current", count: columns.count).joined(separator: " | ") + " |"
+            let text = MarkdownRenderer().render(markdown: markdown)
+            var decorations = RevisionDecorations()
+            decorations.deletions = [RevisionDeletion(location: (text.string as NSString).range(of: "Current").location + 5,
+                                                       text: "old wording")]
+            let marked = try parseXML(documentXML(from: WordExporter().wordData(from: text, decorations: decorations)))
+            let plain = try parseXML(documentXML(from: WordExporter().wordData(from: text)))
+            XCTAssertEqual(try bodyParagraphs(in: marked), try bodyParagraphs(in: plain))
+            let labels = try marked.nodes(forXPath: "//w:txbxContent").compactMap(\.stringValue)
+            XCTAssertFalse(labels.isEmpty)
+            XCTAssertTrue(labels.contains { $0.hasSuffix("…") })
         }
     }
 

@@ -27,7 +27,7 @@ final class RevisionLeaderRoutingTests: XCTestCase {
         let anchor = CGPoint(x: 550, y: 120)
         let markers = [CGPoint(x: 330, y: 120), CGPoint(x: 460, y: 120), anchor]
             .map { RevisionAnnotationLayout.caretFrame(at: $0, font: font) }
-        let placed = try RevisionAnnotationLayout.place(label: "^ an earlier statement with several explanatory conditions",
+        let placed = RevisionAnnotationLayout.place(label: "^ an earlier statement with several explanatory conditions",
             anchor: anchor, line: CGRect(x: 54, y: 100, width: 504, height: 20), content: content,
             page: page, occupied: [CGRect(x: 54, y: 100, width: 504, height: 20)], notes: [],
             font: font, markers: markers)

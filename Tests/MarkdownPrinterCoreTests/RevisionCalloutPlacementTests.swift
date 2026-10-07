@@ -14,7 +14,7 @@ final class RevisionCalloutPlacementTests: XCTestCase {
                         CGRect(x: 54, y: 142, width: 504, height: 14),
                         CGRect(x: 54, y: 160, width: 504, height: 578)]
         let existing = CGRect(x: 440, y: 135, width: 110, height: 8)
-        let placed = try RevisionAnnotationLayout.place(label: "^ earlier wording with a substantial explanation",
+        let placed = RevisionAnnotationLayout.place(label: "^ earlier wording with a substantial explanation",
             anchor: CGPoint(x: 540, y: 120), line: line, content: content, page: page,
             occupied: occupied, notes: [existing], font: font)
         XCTAssertTrue(content.contains(placed.0))

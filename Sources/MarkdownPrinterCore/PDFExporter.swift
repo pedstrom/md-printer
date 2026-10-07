@@ -201,7 +201,13 @@ public final class PDFExporter {
         var drawnCarets: [CGPoint] = []
         for note in revisionNotes {
             let font = FontBook(configuration: configuration).regular(size: 7)
-            if note.isImage {
+            if note.isBoundaryOnly {
+                if !drawnCarets.contains(note.anchor) {
+                    RevisionAnnotationLayout.draw(label: "…", frame: RevisionAnnotationLayout.caretFrame(at: note.anchor, font: font),
+                        font: font, context: context, isImage: true)
+                    drawnCarets.append(note.anchor)
+                }
+            } else if note.isImage {
                 RevisionAnnotationLayout.draw(label: note.label, frame: note.frame, font: font, context: context,
                     isImage: true, hasCaret: !note.isMargin)
             } else {
@@ -209,7 +215,8 @@ public final class PDFExporter {
                 RevisionAnnotationLayout.draw(label: hasPrefix ? String(note.label.dropFirst(2)) : note.label,
                     frame: note.wordingFrame(font: font), font: font, context: context, hasCaret: false)
                 if !drawnCarets.contains(note.anchor) {
-                    RevisionAnnotationLayout.draw(label: "^", frame: RevisionAnnotationLayout.caretFrame(at: note.anchor, font: font),
+                    let marker = revisionNotes.contains { $0.anchor == note.anchor && $0.isBoundaryOnly } ? "…" : "^"
+                    RevisionAnnotationLayout.draw(label: marker, frame: RevisionAnnotationLayout.caretFrame(at: note.anchor, font: font),
                         font: font, context: context, isImage: true)
                     drawnCarets.append(note.anchor)
                 }
@@ -353,7 +360,7 @@ public final class PDFExporter {
             let markers = pending.filter { !$0.note.isImage }.map { RevisionAnnotationLayout.caretFrame(at: $0.anchor, font: font) }
             var placedNotes: [RevisionPDFNote] = []
             for item in pending {
-                let placed = try RevisionAnnotationLayout.place(label: item.note.label, anchor: item.anchor, line: item.line, content: content,
+                let placed = RevisionAnnotationLayout.place(label: item.note.label, anchor: item.anchor, line: item.line, content: content,
                     page: pageRect, occupied: occupied, notes: placedNotes.map(\.frame), font: font,
                     cellBounds: item.cell, isImage: item.note.isImage, markers: markers, lineBounds: placementInk)
                 placedNotes.append(RevisionPDFNote(page: index, anchor: item.anchor, frame: placed.0, label: placed.1,
@@ -371,15 +378,26 @@ public final class PDFExporter {
                             page: pageRect, content: content, occupied: occupied, notes: placedNotes, previous: earlierPaths)
                         break
                     } catch RevisionAnnotationError.noSpace {
-                        guard attempt < 11 else { throw RevisionAnnotationError.noSpace }
+                        guard attempt < 11 else {
+                            placedNotes[position].frame = CGRect(origin: item.anchor, size: .zero)
+                            placedNotes[position].label = "…"
+                            break
+                        }
                         // A free text rectangle can still be unreachable when
                         // shorter neighboring notes occupy its connecting gap.
-                        // Try another band without disturbing any existing path.
+                        // Shorten the label before trying another band, without
+                        // disturbing any existing path or the document body.
                         let failed = placedNotes[position]
-                        blockedBands.append(CGRect(x: area.minX, y: failed.frame.minY, width: area.width, height: failed.frame.height))
-                        if failed.isMargin { blockedBands.append(failed.frame) }
+                        let minimumWidth = ceil(("^ …" as NSString).size(withAttributes: [.font: font]).width)
+                        let shorter = RevisionAnnotationLayout.truncate(failed.label,
+                            width: max(minimumWidth, failed.frame.width / 2), font: font)
+                        let canShorten = !failed.isMargin && shorter != failed.label
+                        if !canShorten {
+                            blockedBands.append(CGRect(x: area.minX, y: failed.frame.minY, width: area.width, height: failed.frame.height))
+                            if failed.isMargin { blockedBands.append(failed.frame) }
+                        }
                         let otherFrames = placedNotes.enumerated().filter { $0.offset != position }.map { $0.element.frame }
-                        let placed = try RevisionAnnotationLayout.place(label: item.note.label, anchor: item.anchor, line: item.line,
+                        let placed = RevisionAnnotationLayout.place(label: canShorten ? shorter : item.note.label, anchor: item.anchor, line: item.line,
                             content: content, page: pageRect, occupied: occupied,
                             notes: otherFrames + blockedBands + RevisionAnnotationLayout.leaderObstacles(earlierPaths),
                             font: font, cellBounds: item.cell, isImage: item.note.isImage, markers: markers, lineBounds: placementInk)

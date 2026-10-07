@@ -167,7 +167,7 @@ final class RevisionSessionRaceTests: XCTestCase {
         XCTAssertThrowsError(try store.load(retained.id))
     }
 
-    func testFailedAsyncPageSetupRetainsSuccessfulRevisionPreview() async throws {
+    func testTinyAsyncPageSetupStillPresentsComparisonForExplicitAndDefaultSettings() async throws {
         let suite = "RevisionSessionRace-Pages-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -184,25 +184,25 @@ final class RevisionSessionRaceTests: XCTestCase {
         let window = NSWindow()
         controller.showPageSetup(window: window)
         completion?(.accepted(tiny))
-        for _ in 0..<100 where session.errorMessage == nil || session.isPreparingDocument {
+        for _ in 0..<100 where session.activePageSetup != tiny || session.isPreparingDocument {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
-        XCTAssertNotNil(session.errorMessage)
-        XCTAssertEqual(session.activePageSetup, .letter)
-        XCTAssertEqual(session.renderedSnapshot?.revision, snapshot.revision)
-        XCTAssertEqual(session.renderedSnapshot?.pdfData, snapshot.pdfData)
+        XCTAssertNil(session.errorMessage)
+        XCTAssertEqual(session.activePageSetup, tiny)
+        XCTAssertGreaterThan(try XCTUnwrap(session.renderedSnapshot?.revision), snapshot.revision)
+        XCTAssertNotNil(session.renderedSnapshot?.pdfData)
         XCTAssertEqual(session.originalSnapshot, original)
 
         try await session.applyExplicitPageSetupAsync(.letter)
         preferences.defaultPageSetup = tiny
         controller.showPageSetup(window: window)
         completion?(.useDefault)
-        for _ in 0..<100 where session.errorMessage == nil || session.isPreparingDocument {
+        for _ in 0..<100 where session.activePageSetup != tiny || session.isPreparingDocument {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
-        XCTAssertNotNil(session.errorMessage)
-        XCTAssertTrue(session.hasExplicitPageSetup)
-        XCTAssertEqual(session.activePageSetup, .letter)
+        XCTAssertNil(session.errorMessage)
+        XCTAssertFalse(session.hasExplicitPageSetup)
+        XCTAssertEqual(session.activePageSetup, tiny)
         XCTAssertEqual(session.originalSnapshot, original)
     }
 
@@ -223,7 +223,7 @@ final class RevisionSessionRaceTests: XCTestCase {
         XCTAssertTrue(session.document == document)
     }
 
-    func testClearingOriginalAfterFirstRenderFailureRecoversLiveMonitoring() async throws {
+    func testTinyPageComparisonKeepsLiveMonitoringThroughClearingOriginal() async throws {
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let current = directory.appendingPathComponent("current.md")
@@ -241,17 +241,17 @@ final class RevisionSessionRaceTests: XCTestCase {
         })
         defer { session.stopMonitoringSourceChanges() }
         try await session.setOriginalSnapshot(OriginalDocumentSnapshot(document: MarkdownDocument(title: "Old", markdown: "The date is Monday.")))
-        do {
-            try await session.applyAsync(MarkdownDocument.load(from: current))
-            XCTFail("Expected an annotation placement failure")
-        } catch is RevisionAnnotationError { }
-        XCTAssertFalse(session.hasDocument)
+        try await session.applyAsync(MarkdownDocument.load(from: current))
+        XCTAssertTrue(session.hasDocument)
+        XCTAssertTrue(session.hasOriginal)
         session.startMonitoringSourceChanges()
-        XCTAssertNil(monitor)
+        let activeMonitor = try XCTUnwrap(monitor)
+        XCTAssertTrue(activeMonitor.isMonitoring)
 
         try await session.setOriginalSnapshot(nil)
         XCTAssertTrue(session.hasDocument)
         let recoveredMonitor = try XCTUnwrap(monitor)
+        XCTAssertTrue(recoveredMonitor === activeMonitor)
         XCTAssertTrue(recoveredMonitor.isMonitoring)
         try await session.applyExplicitPageSetupAsync(.letter)
         XCTAssertTrue(monitor === recoveredMonitor)

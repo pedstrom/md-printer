@@ -67,7 +67,7 @@ public final class WordExporter {
             let width = min(240, max(42, max(minimumWidth, remaining)))
             let font = decorated.attribute(.font, at: index, effectiveRange: nil) as? NSFont ?? NSFont.systemFont(ofSize: 10)
             let geometry: CGRect
-            if let cellBounds = try tableCalloutBounds(at: index, in: decorated, minimumWidth: minimumWidth) {
+            if let cellBounds = tableCalloutBounds(at: index, in: decorated, minimumWidth: minimumWidth) {
                 geometry = CGRect(x: cellBounds.origin.x, y: ceil(font.ascender - font.descender) - 1, width: cellBounds.width, height: 10)
             } else {
                 geometry = CGRect(x: min(0, remaining - width), y: ceil(font.ascender - font.descender) - 1, width: width, height: 10)
@@ -103,7 +103,7 @@ public final class WordExporter {
         }.max() ?? 0
     }
 
-    private func tableCalloutBounds(at index: Int, in text: NSAttributedString, minimumWidth: CGFloat) throws -> CGRect? {
+    private func tableCalloutBounds(at index: Int, in text: NSAttributedString, minimumWidth: CGFloat) -> CGRect? {
         var cellRange = NSRange()
         guard let style = text.attribute(.paragraphStyle, at: index, longestEffectiveRange: &cellRange,
                                         in: NSRange(location: 0, length: text.length)) as? NSParagraphStyle,
@@ -112,11 +112,12 @@ public final class WordExporter {
         // Word tables use the existing equal-column grid, independently of PDF
         // table widths. Leave room for Word's default cell margins and border.
         let cellWidth = CGFloat(Self.tableGridWidth / columns) / 20
-        let contentWidth = max(0, cellWidth - 2 * Self.tableCellHorizontalInset - 1)
+        let contentWidth = max(1, cellWidth - 2 * Self.tableCellHorizontalInset - 1)
         // Native Word can size an autofit column slightly narrower than its
         // preferred grid and draw text wider than AppKit's measurement.
-        let calloutRight = max(0, contentWidth - Self.tableCalloutRightAllowance)
-        guard calloutRight >= minimumWidth else { throw RevisionAnnotationError.noSpace }
+        // An informative stem is a preference, not an export requirement.
+        // Narrow cells retain whatever wording fits, down to an ellipsis.
+        let calloutRight = max(1, contentWidth - Self.tableCalloutRightAllowance)
         let cell = NSMutableAttributedString(attributedString: text.attributedSubstring(from: cellRange))
         let paragraph = style.mutableCopy() as! NSMutableParagraphStyle
         paragraph.textBlocks = []
@@ -1063,9 +1064,17 @@ public final class WordExporter {
         return notes.enumerated().map { index, note in
             let y = bounds.minY + CGFloat(index * 10)
             let label = RevisionAnnotationLayout.truncate(note.label, width: bounds.width, font: font)
+            let compactWidth = ceil(("^ …" as NSString).size(withAttributes: [.font: font]).width)
+            if bounds.width < compactWidth {
+                return box("…", x: bounds.minX, y: y, width: bounds.width, strikeWording: false)
+            }
             guard bounds.minX < 0 else { return box(label, x: 0, y: y, width: bounds.width,
                                                      strikeWording: !note.isImage, includesCaret: true) }
             let caretWidth = min(8, bounds.width)
+            if bounds.width - caretWidth < ceil(("…" as NSString).size(withAttributes: [.font: font]).width) {
+                return box("^ …", x: bounds.minX, y: y, width: bounds.width,
+                           strikeWording: !note.isImage, includesCaret: true)
+            }
             let caretX = min(0, bounds.maxX - caretWidth)
             let caret = box("^", x: caretX, y: y, width: caretWidth, strikeWording: false)
             let shiftedWidth = max(0, bounds.width - caretWidth)

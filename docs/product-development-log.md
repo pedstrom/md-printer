@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-07 — Keep comparisons visible when deletion annotations cannot fit
+
+- Treat callout space and connector routing as presentation constraints. Keep useful removed wording when it fits, allow shorter excerpts and caret/ellipsis labels in narrow body gaps or margins, and retain a red ellipsis at the original deletion boundary when no floating label or clear connector can fit. Preserve the current document's typography, wrapping, pagination, and comparison evidence.
+- Shorten unreachable callouts before retrying other gaps; bound routing attempts and fall back without rejecting a successful comparison. Keep genuine source, Git, comparison, and PDF-generation failures on their existing error paths.
+- Apply the same truncation rule to narrow Word table cells instead of refusing export. Preserve editable body paragraphs and cell containment.
+- Reproduce the old refusal with narrow-gap, fully blocked, and crowded-comparison regressions. Cover synchronous/asynchronous PDF output, image-removal overflow, the Git picker with a real session, tiny explicit/default page settings, live monitoring, and narrow Word exports. Inspect ordinary, prose, crowded-table, crowded-list, and overflow PDF fixtures outside Git.
+
 ## 2026-10-06 — Double-click Git revisions to compare
 
 - Let a double-click anywhere in a Git revision row select that revision and immediately run the existing comparison action, including when the row is already selected. Recognize it simultaneously with ordinary selection so a quick single-click followed by Compare uses the newly clicked row. Retain the Compare button and keyboard confirmation.

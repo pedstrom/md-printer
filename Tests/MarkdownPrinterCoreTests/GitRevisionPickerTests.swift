@@ -66,6 +66,29 @@ final class GitRevisionPickerTests: XCTestCase {
         }
     }
 
+    func testGitComparisonCompletesWhenDeletionCalloutsCannotFit() async throws {
+        let defaults = makeDefaults()
+        defer { defaults.value.removePersistentDomain(forName: defaults.name) }
+        let pages = PagePreferences(defaults: defaults.value)
+        pages.defaultPageSetup = DocumentPageSetup(paperName: "tiny", paperSize: CGSize(width: 108, height: 108),
+            orientation: .portrait, scale: 1)
+        let session = DocumentSession(pagePreferences: pages)
+        try session.apply(MarkdownDocument(sourceURL: sourceURL, title: "Current", markdown: "Latest"))
+        var finishes = 0
+        let picker = picker(service: service(), current: "Latest", apply: { document, _ in
+            try await session.setOriginalSnapshot(OriginalDocumentSnapshot(document: document))
+        }, finished: { finishes += 1 })
+        picker.load()
+        try await wait { !picker.isLoading }
+        picker.compare()
+        try await wait { finishes == 1 || picker.errorMessage != nil }
+        XCTAssertEqual(finishes, 1)
+        XCTAssertNil(picker.errorMessage)
+        XCTAssertTrue(session.hasDocument)
+        XCTAssertTrue(session.hasOriginal)
+        XCTAssertFalse(try XCTUnwrap(session.renderedSnapshot).decorations.deletions.isEmpty)
+    }
+
     func testDoubleClickIgnoresLoadingUnknownAndCancelledRevisions() async throws {
         var applications = 0
         var finishes = 0

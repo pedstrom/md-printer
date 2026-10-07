@@ -56,7 +56,7 @@ final class RevisionTableCalloutTests: XCTestCase {
         let page = CGRect(x: 0, y: 0, width: 612, height: 792)
         let content = CGRect(x: 54, y: 54, width: 504, height: 684)
         let cell = CGRect(x: 350, y: 100, width: 145, height: 50)
-        let placed = try RevisionAnnotationLayout.place(label: "^ a lengthy clause describing the original business validation outcome",
+        let placed = RevisionAnnotationLayout.place(label: "^ a lengthy clause describing the original business validation outcome",
             anchor: CGPoint(x: cell.maxX - 2, y: 120), line: CGRect(x: 350, y: 108, width: 145, height: 12),
             content: content, page: page, occupied: [], notes: [], font: font, cellBounds: cell)
         XCTAssertTrue(cell.contains(placed.0))
@@ -78,7 +78,7 @@ final class RevisionTableCalloutTests: XCTestCase {
         let page = CGRect(x: 0, y: 0, width: 612, height: 792)
         let content = CGRect(x: 54, y: 54, width: 504, height: 684)
         let occupiedCell = CGRect(x: 350, y: 100, width: 145, height: 30)
-        let margin = try RevisionAnnotationLayout.place(label: "^ preparing the development-environment review",
+        let margin = RevisionAnnotationLayout.place(label: "^ preparing the development-environment review",
             anchor: CGPoint(x: 400, y: 110), line: occupiedCell, content: content, page: page,
             occupied: [occupiedCell], notes: [], font: font, cellBounds: occupiedCell)
         XCTAssertGreaterThan(margin.0.minX, content.maxX)
@@ -86,15 +86,19 @@ final class RevisionTableCalloutTests: XCTestCase {
         XCTAssertTrue(margin.1.hasPrefix("preparing"))
         XCTAssertTrue(margin.1.replacingOccurrences(of: "\n", with: "").contains("preparing"))
         XCTAssertTrue((2...4).contains(margin.1.components(separatedBy: "\n").count))
-        XCTAssertThrowsError(try RevisionAnnotationLayout.place(label: "^ old words", anchor: occupiedCell.origin,
-            line: occupiedCell, content: content, page: page, occupied: [page], notes: [], font: font, cellBounds: occupiedCell))
+        let blocked = RevisionAnnotationLayout.place(label: "^ old words", anchor: occupiedCell.origin,
+            line: occupiedCell, content: content, page: page, occupied: [page], notes: [], font: font, cellBounds: occupiedCell)
+        XCTAssertTrue(blocked.0.isEmpty)
+        XCTAssertEqual(blocked.1, "…")
         let narrowCell = CGRect(x: 350, y: 100, width: 12, height: 30)
-        XCTAssertThrowsError(try RevisionAnnotationLayout.place(label: "^ old words", anchor: narrowCell.origin,
-            line: .zero, content: content, page: content, occupied: [], notes: [], font: font, cellBounds: narrowCell))
-        XCTAssertThrowsError(try RevisionAnnotationLayout.place(label: "^ removed image", anchor: narrowCell.origin,
-            line: .zero, content: content, page: content, occupied: [], notes: [], font: font, cellBounds: narrowCell, isImage: true))
+        for isImage in [false, true] {
+            let compact = RevisionAnnotationLayout.place(label: isImage ? "^ removed image" : "^ old words", anchor: narrowCell.origin,
+                line: .zero, content: content, page: content, occupied: [], notes: [], font: font, cellBounds: narrowCell, isImage: isImage)
+            XCTAssertTrue(narrowCell.contains(compact.0))
+            XCTAssertTrue(compact.1.hasSuffix("…"))
+        }
         let wideCell = CGRect(x: 350, y: 100, width: 145, height: 30)
-        XCTAssertEqual(try? RevisionAnnotationLayout.place(label: "^ removed image", anchor: CGPoint(x: wideCell.maxX, y: 105),
+        XCTAssertEqual(RevisionAnnotationLayout.place(label: "^ removed image", anchor: CGPoint(x: wideCell.maxX, y: 105),
             line: .zero, content: content, page: page, occupied: [], notes: [], font: font, cellBounds: wideCell, isImage: true).1, "^ removed image")
     }
 
