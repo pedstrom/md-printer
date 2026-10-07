@@ -72,22 +72,24 @@ package struct GitProcessRunner: GitProcessRunning {
     }
 }
 
-private final class GitProcessExecution: @unchecked Sendable {
+package final class GitProcessExecution: @unchecked Sendable {
     private let lock = NSLock()
     private let process = Process()
     private var cancelled = false
 
-    init(executableURL: URL, arguments: [String], environment: [String: String]) {
+    package init(executableURL: URL, arguments: [String], environment: [String: String]) {
         process.executableURL = executableURL
         process.arguments = arguments
         process.environment = environment
         process.standardInput = FileHandle.nullDevice
     }
 
-    func run() throws -> GitProcessResult {
+    package func run() throws -> GitProcessResult {
         let output = Pipe(), error = Pipe()
         process.standardOutput = output
         process.standardError = error
+        let termination = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in termination.signal() }
         try lock.withLock {
             guard !cancelled else { throw CancellationError() }
             try process.run()
@@ -104,7 +106,10 @@ private final class GitProcessExecution: @unchecked Sendable {
                 readers.leave()
             }
         }
-        process.waitUntilExit()
+        // waitUntilExit pumps this worker's run loop. A reused rendering worker
+        // can have pending PDFKit annotation notifications that would then reach
+        // the preview's AppKit thumbnail layout off the main thread.
+        termination.wait()
         readers.wait()
         try lock.withLock {
             guard !cancelled else { throw CancellationError() }

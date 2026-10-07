@@ -278,6 +278,28 @@ final class GitDocumentHistoryTests: XCTestCase {
         } catch { XCTAssertFalse(error is CancellationError) }
     }
 
+    func testProcessWaitDoesNotServicePendingWorkerRunLoopCallbacks() async throws {
+        let (result, callbackFired) = try await withCheckedThrowingContinuation { continuation in
+            // PDFKit can leave delayed annotation notifications on a reused worker.
+            // Reproduce that pending work without risking an AppKit exception.
+            Thread {
+                let probe = GitWorkerRunLoopProbe()
+                let timer = Timer(timeInterval: 0.01, repeats: false) { _ in probe.fire() }
+                RunLoop.current.add(timer, forMode: .default)
+                defer { timer.invalidate() }
+                continuation.resume(with: Result {
+                    let execution = GitProcessExecution(executableURL: URL(fileURLWithPath: "/bin/sh"),
+                        arguments: ["-c", "/bin/sleep 0.2; printf complete; exit 7"], environment: [:])
+                    let result = try execution.run()
+                    return (result, probe.didFire)
+                })
+            }.start()
+        }
+        XCTAssertEqual(result.status, 7)
+        XCTAssertEqual(String(decoding: result.standardOutput, as: UTF8.self), "complete")
+        XCTAssertFalse(callbackFired, "Waiting for Git must not dispatch delayed PDFKit/UI work on a worker thread")
+    }
+
     func testCancellationBeforeLaunchAndDuringProcessTerminatesPromptly() async throws {
         let before = Task {
             withUnsafeCurrentTask { $0?.cancel() }
@@ -316,6 +338,13 @@ final class GitDocumentHistoryTests: XCTestCase {
         do { try await operation(); XCTFail("Expected \(expected)", file: file, line: line) }
         catch { XCTAssertEqual(error as? GitDocumentHistoryError, expected, file: file, line: line) }
     }
+}
+
+private final class GitWorkerRunLoopProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fired = false
+    var didFire: Bool { lock.withLock { fired } }
+    func fire() { lock.withLock { fired = true } }
 }
 
 private final class GitResultRunner: GitProcessRunning, @unchecked Sendable {

@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-07 — Prevent a crash when reopening Git comparison
+
+- Replace the Git worker's `Process.waitUntilExit()` with a termination-handler semaphore. The previous wait serviced the worker's run loop and could deliver delayed PDFKit annotation notifications into AppKit thumbnail layout on a background thread after a comparison was displayed.
+- Add a deterministic regression with pending worker-thread timer work; confirm it fails against the old wait. Preserve concurrent stdout/stderr draining, exit status, launch errors, and bounded cancellation.
+- Pass 32 focused Git tests and the full 531-test macOS gate with 96.30% testable-production line coverage, performance budgets, and universal bundle validation. In an isolated native app copy, complete three Control-Command-G comparisons across two earlier versions with thumbnails visible, including reopening the picker after each displayed comparison. Keep the app version unchanged.
+
 ## 2026-10-07 — Summarize substantial text removals
 
 - Replace complete prose deletions with plain red count labels such as `^ removed 3 sentences` or `^ removed 2 paragraphs`, following the removed-image presentation. Prefer whole-paragraph counts, combine compatible summaries at the same boundary, and retain the original removed wording as comparison evidence.
