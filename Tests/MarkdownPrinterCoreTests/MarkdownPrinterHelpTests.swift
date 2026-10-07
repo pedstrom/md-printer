@@ -61,6 +61,10 @@ final class MarkdownPrinterHelpTests: XCTestCase {
         XCTAssertEqual(shortcuts["New Tab"]?.keys, "⌘T")
         XCTAssertEqual(shortcuts["Save Export"]?.keys, "⌘S")
         XCTAssertEqual(shortcuts["Save As"]?.keys, "⇧⌘S")
+        XCTAssertEqual(shortcuts["Compare with Git Version"]?.keys, "⌃⌘G")
+        XCTAssertEqual(shortcuts["Compare with Git Version"]?.spokenKeys, "Control-Command-G")
+        XCTAssertEqual(shortcuts["Clear Change Highlighting"]?.keys, "⌃⌘H")
+        XCTAssertEqual(shortcuts["Clear Change Highlighting"]?.spokenKeys, "Control-Command-H")
         XCTAssertEqual(shortcuts["Page Setup"]?.keys, "⇧⌘P")
         XCTAssertEqual(shortcuts["Print"]?.keys, "⌘P")
         XCTAssertEqual(shortcuts["Find"]?.keys, "⌘F")
@@ -98,7 +102,8 @@ final class MarkdownPrinterHelpTests: XCTestCase {
         )
         let text = section.paragraphs.joined(separator: "\n")
         for phrase in ["Compare with Git Version…", "Compare with Older Version…",
-                       "Clear Change Highlighting", "locally available history",
+                       "Clear Change Highlighting", "Control-Command-G", "Control-Command-H",
+                       "locally available history",
                        "current modification date above the original date", "yellow background",
                        "red with strikethrough", "selected commit’s timestamp"] {
             XCTAssertTrue(text.contains(phrase), phrase)

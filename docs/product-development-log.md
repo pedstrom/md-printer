@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-07 — Keyboard shortcuts for Git comparison and clearing highlights
+
+- Add Control-Command-G to File → Compare with Git Version… and Control-Command-H to File → Clear Change Highlighting. Show the native key equivalents in the menu and use the existing focused-document actions and availability rules.
+- Document both shortcuts in the bundled comparison guidance, accessible keyboard reference, and README. Cover their displayed and spoken labels and preserve the existing Find Next/Previous shortcuts.
+- Pass 33 focused comparison/Help tests and the full 516-test Mac gate with 96.27% testable-production line coverage, performance checks, and universal bundle validation. Verify both keyboard actions on a synthetic Git-backed document in the native app, and inspect the Help shortcut rows and accessibility labels.
+
 ## 2026-10-07 — Keep comparisons visible when deletion annotations cannot fit
 
 - Treat callout space and connector routing as presentation constraints. Keep useful removed wording when it fits, allow shorter excerpts and caret/ellipsis labels in narrow body gaps or margins, and retain a red ellipsis at the original deletion boundary when no floating label or clear connector can fit. Preserve the current document's typography, wrapping, pagination, and comparison evidence.

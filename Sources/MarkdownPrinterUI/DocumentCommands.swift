@@ -62,10 +62,12 @@ package struct DocumentFileCommands: Commands {
 
         CommandGroup(replacing: .importExport) {
             Button("Compare with Git Version…") { controller?.compareWithGitVersion() }
+                .keyboardShortcut("g", modifiers: [.control, .command])
                 .disabled(controller?.canCompareWithGit != true)
             Button("Compare with Older Version…") { controller?.compareWithOlderVersion() }
                 .disabled(controller?.canCompare != true)
             Button("Clear Change Highlighting") { controller?.clearOriginal() }
+                .keyboardShortcut("h", modifiers: [.control, .command])
                 .disabled(controller?.canClearOriginal != true)
             Divider()
             Button("Show in Finder") {
