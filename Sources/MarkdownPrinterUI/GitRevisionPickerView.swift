@@ -3,6 +3,7 @@ import SwiftUI
 /// Thin native sheet composition; all work and lifecycle state live in its controller.
 package struct GitRevisionPickerView: View {
     @ObservedObject var controller: GitRevisionPickerController
+    @FocusState private var isRevisionListFocused: Bool
     let cancel: () -> Void
 
     package var body: some View {
@@ -46,6 +47,8 @@ package struct GitRevisionPickerView: View {
                     }
                 }
                 .disabled(controller.isComparing)
+                .focused($isRevisionListFocused)
+                .onAppear { isRevisionListFocused = true }
                 .accessibilityIdentifier("git-revision-list")
             }
             if let error = controller.errorMessage {

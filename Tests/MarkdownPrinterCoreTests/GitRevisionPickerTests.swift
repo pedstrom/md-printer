@@ -419,6 +419,43 @@ final class GitRevisionPickerTests: XCTestCase {
         }
     }
 
+    func testRevisionListReceivesFocusAndArrowKeysWhenHistoryAppears() async throws {
+        var appliedRevisionID: String?
+        let picker = picker(service: service(), current: "Latest", apply: { _, revision in
+            appliedRevisionID = revision.id
+        })
+        let parent = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 440),
+                             styleMask: [.titled], backing: .buffered, defer: false)
+        parent.isReleasedWhenClosed = false
+        sheet.isReleasedWhenClosed = false
+        sheet.contentView = NSHostingView(rootView: GitRevisionPickerView(controller: picker, cancel: picker.cancel))
+        parent.beginSheet(sheet, completionHandler: { _ in })
+        defer { parent.endSheet(sheet); sheet.close(); parent.close(); picker.cancel() }
+        picker.load()
+        try await wait { !picker.isLoading && sheet.firstResponder is NSView }
+        XCTAssertEqual(picker.selectedRevisionID, "old-commit")
+
+        func press(_ character: String, keyCode: UInt16) throws {
+            let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                modifierFlags: [], timestamp: 0, windowNumber: sheet.windowNumber, context: nil,
+                characters: character, charactersIgnoringModifiers: character, isARepeat: false, keyCode: keyCode))
+            sheet.sendEvent(event)
+        }
+        try press("\u{F700}", keyCode: 126) // Up
+        try await wait { picker.selectedRevisionID == "latest-commit" }
+        try press("\u{F700}", keyCode: 126)
+        XCTAssertEqual(picker.selectedRevisionID, "latest-commit")
+        try press("\u{F701}", keyCode: 125) // Down
+        try await wait { picker.selectedRevisionID == "old-commit" }
+        try press("\u{F701}", keyCode: 125)
+        XCTAssertEqual(picker.selectedRevisionID, "old-commit")
+        XCTAssertNil(appliedRevisionID)
+        try press("\r", keyCode: 36)
+        try await wait { appliedRevisionID == "old-commit" }
+    }
+
     private func service(revisions: [GitDocumentRevision]? = nil) -> PickerTestService {
         let values = revisions ?? [
             GitDocumentRevision(commitID: "latest-commit", historicalPath: "current.md", subject: "Newest document", committerDate: Date(timeIntervalSince1970: 2_000)),

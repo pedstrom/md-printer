@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-07 — Focus Git history for immediate arrow-key selection
+
+- Give the native Git revision list keyboard focus when loaded history appears. Up and Down select adjacent versions immediately, and Return confirms the selected version through the existing Compare action. Preserve native list boundaries, mouse selection, double-click confirmation, and Escape cancellation.
+- Reproduce the unfocused sheet in the real app and with a native hosted-sheet regression that sends arrow and Return events through AppKit. Confirm the regression fails against the previous view. Document the keyboard flow in README and bundled Help.
+- Pass 24 focused picker/Help tests and the full 517-test Mac gate with 96.27% testable-production line coverage, performance checks, and universal bundle validation. Verify physical Up/Down presses and both list boundaries before any mouse click, Return comparison, renewed focus after reopening, double-click comparison, and Escape cancellation in an isolated native app copy.
+
 ## 2026-10-07 — Keyboard shortcuts for Git comparison and clearing highlights
 
 - Add Control-Command-G to File → Compare with Git Version… and Control-Command-H to File → Clear Change Highlighting. Show the native key equivalents in the menu and use the existing focused-document actions and availability rules.

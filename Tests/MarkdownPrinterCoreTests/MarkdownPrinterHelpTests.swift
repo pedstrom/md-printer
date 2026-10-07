@@ -103,7 +103,7 @@ final class MarkdownPrinterHelpTests: XCTestCase {
         let text = section.paragraphs.joined(separator: "\n")
         for phrase in ["Compare with Git Version…", "Compare with Older Version…",
                        "Clear Change Highlighting", "Control-Command-G", "Control-Command-H",
-                       "locally available history",
+                       "locally available history", "Up and Down arrow keys", "Return to compare",
                        "current modification date above the original date", "yellow background",
                        "red with strikethrough", "selected commit’s timestamp"] {
             XCTAssertTrue(text.contains(phrase), phrase)
