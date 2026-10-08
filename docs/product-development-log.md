@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-10-08 — Context and selection emphasis for change navigation
+
+- Identify the active Changes entry with a persistent pale yellow preview band, thin amber outline, left accent, and circular change number. Extend the band around related red removal notes, split long passages into separate page fragments, and keep page gaps and footers clear. Hiding the sidebar, returning to Pages, or clearing the comparison removes the emphasis; reopening Changes restores the remembered selection without navigation.
+- Place ordinary navigation targets about 25% down the preview; use about 15% for tall passages, preserve comfortably visible targets, and let native clip constraints handle document boundaries. Keep initial comparison reveal and ordinary refresh free of navigation.
+- Capture full passage and deletion-note geometry during the existing pagination pass, without changing PDF drawing or PDF/Word export markings. Apply selection and navigation only after the matching buffered PDF revision becomes active, including identical-data handoffs and superseded renders. Keep overlays transparent to text selection, links, Find, and drag gestures.
+- Unify unmodified arrow navigation in the Changes list, detail text, and Previous/Next controls: Down/Right advances and Up/Left goes back, including collapsed groups, without wrapping or resetting detail scroll at the ends. Preserve modified arrow text selection and existing Find shortcuts.
+- Add focused geometry, adaptive-placement, native scrolling, selected-only drawing, margin expansion, multi-page, empty/trailing removal, mode switching, refresh, multiple-window, and asynchronous-handoff regressions. Update README and bundled Help. Keep this feature Mac-only and retain the app version.
+
 ## 2026-10-08 — Avoid redundant thumbnail layout during window resizing
 
 - Skip unchanged PDFKit thumbnail-size assignments during sidebar and window layout, and explicitly keep page thumbnails in one column. A native regression observes 17 identical assignments across three window resizes before the fix and none afterward; an actual sidebar-width change still updates the thumbnail size once.

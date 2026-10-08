@@ -12,6 +12,7 @@ struct RevisionPDFNote {
     var isImage = false
     var strikeWording = true
     var leader: [CGPoint] = []
+    var location: Int? = nil
 
     var isBoundaryOnly: Bool { frame.isEmpty }
 

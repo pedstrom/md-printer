@@ -606,19 +606,28 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
         }
         DispatchQueue.main.async { completed(request, error) }
     }
-    private var pendingReviewNavigation: (String, UInt64, PDFSectionDestination)?
-    func navigateReview(id: String, revision: UInt64, destination: PDFSectionDestination) {
+    private var pendingReviewNavigation: (String, UInt64, PDFReviewDestination)?
+    private var reviewFocus: (revision: UInt64, selection: RevisionReviewFocus?)?
+    func updateReviewFocus(_ focus: RevisionReviewFocus?, revision: UInt64) {
+        reviewFocus = (revision, focus)
+        if focus == nil { activeView.reviewFocusProvider.update(nil) }
+        applyReviewFocus()
+    }
+    private func applyReviewFocus() {
+        guard let reviewFocus, reviewFocus.revision == activeRevision else { return }
+        activeView.reviewFocusProvider.update(reviewFocus.selection)
+    }
+    func navigateReview(id: String, revision: UInt64, destination: PDFReviewDestination) {
         pendingReviewNavigation = (id, revision, destination)
         applyReviewNavigation()
     }
     private func applyReviewNavigation() {
+        if let pendingReviewNavigation, let activeRevision, pendingReviewNavigation.1 < activeRevision { self.pendingReviewNavigation = nil }
         guard let (_, revision, destination) = pendingReviewNavigation, activeRevision == revision else { return }
         pendingReviewNavigation = nil
-        guard let page = activeView.document?.page(at: destination.pageIndex) else { return }
         activeView.prepareForSectionNavigation()
-        let target = PDFDestination(page: page, at: destination.point)
-        target.zoom = activeView.scaleFactor
-        activeView.go(to: target)
+        activeView.layoutSubtreeIfNeeded()
+        RevisionReviewScrollPlacement.navigate(to: destination, in: activeView)
     }
     private var pendingCommit: DispatchWorkItem?
     private var stagedView: PageAdvancingPDFView?
@@ -780,6 +789,8 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
     func display(_ document: PDFDocument, data: Data, revision: UInt64) {
         guard activeData != data else {
             activeRevision = revision
+            applyReviewFocus()
+            applyReviewNavigation()
             return
         }
 
@@ -793,6 +804,8 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
             activeData = data
             activeRevision = revision
             activeView.displayInitial(document)
+            applyReviewFocus()
+            applyReviewNavigation()
             activeViewDidChange?(activeView)
             notifyViewingController()
             searchState = makeSearchState(
@@ -1132,6 +1145,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
         activeViewDidChange?(stagedView)
         activeData = data
         activeRevision = revision
+        applyReviewFocus()
         applySectionNavigation()
         applyReviewNavigation()
         self.searchState = searchState
@@ -1194,6 +1208,7 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
 }
 
 final class PageAdvancingPDFView: PDFView, NSDraggingSource {
+    let reviewFocusProvider = RevisionReviewFocusProvider()
     private var needsInitialPageFit = false
     private var displayRevision = 0
     private var fittedViewWidth: CGFloat?
@@ -1522,6 +1537,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     }
 
     private func configure() {
+        pageOverlayViewProvider = reviewFocusProvider
         autoScales = false
         displayMode = .singlePageContinuous
         displayDirection = .vertical

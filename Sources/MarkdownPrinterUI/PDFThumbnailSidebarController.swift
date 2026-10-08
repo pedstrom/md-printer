@@ -177,6 +177,7 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         reviewController.navigate = { [weak self] id, revision, destination in
             self?.previewView.navigateReview(id: id, revision: revision, destination: destination)
         }
+        reviewController.selectionDidChange = { [weak self] in self?.updateReviewFocus() }
 
         splitView.addArrangedSubview(sidebarView)
         splitView.addArrangedSubview(previewView)
@@ -242,6 +243,7 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         if isVisible {
             applyStoredSidebarWidth()
         }
+        updateReviewFocus()
         sidebarController?.targetDidChange()
     }
 
@@ -352,6 +354,7 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         reviewController.state.mode = mode
         modeSelector.selectedSegment = mode == .pages ? 0 : 1
         thumbnailView.isHidden = mode != .pages; changesView.isHidden = mode != .changes
+        updateReviewFocus()
         if isThumbnailSidebarVisible { applyStoredSidebarWidth() }
         sidebarController?.targetDidChange()
     }
@@ -366,6 +369,16 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         setSidebarMode(reviewController.state.mode)
         setThumbnailSidebarVisible(reviewController.state.isVisible)
         changesView.refresh()
+        updateReviewFocus()
+    }
+
+    private func updateReviewFocus() {
+        let focus: RevisionReviewFocus?
+        if isThumbnailSidebarVisible, reviewController.state.mode == .changes, let index = reviewController.selectedIndex,
+           let item = reviewController.selectedItem, let destination = reviewController.destinations[item.id] {
+            focus = RevisionReviewFocus(id: item.id, number: index + 1, destination: destination)
+        } else { focus = nil }
+        previewView.updateReviewFocus(focus, revision: reviewController.revision)
     }
 
     func captureSidebarRestorationState() -> PersistedDocumentSidebar {

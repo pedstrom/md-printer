@@ -11,8 +11,36 @@ public struct PDFSectionDestination: Equatable, Sendable {
 public struct PDFReviewDestination: Equatable, Sendable {
     public let destination: PDFSectionDestination
     public let lastPageIndex: Int
+    public var fragments: [PDFReviewFragment] = []
     public var pageLabel: String {
         destination.pageIndex == lastPageIndex ? "p. \(lastPageIndex + 1)" : "pp. \(destination.pageIndex + 1)–\(lastPageIndex + 1)"
+    }
+}
+
+/// Preview-only geometry in the PDF's bottom-left coordinate system.
+public struct PDFReviewFragment: Equatable, Sendable {
+    public let pageIndex: Int
+    public let passageBounds: CGRect
+    public let bandBounds: CGRect
+}
+
+enum PDFReviewFragmentLayout {
+    static func fragment(pageIndex: Int, passage: CGRect, configuration: RendererConfiguration, notes: [RevisionPDFNote]) -> PDFReviewFragment {
+        let margins = configuration.pageMargins, height = configuration.pageSize.height
+        var band = CGRect(x: margins.left / 2, y: passage.minY - 4,
+                          width: configuration.pageSize.width - (margins.left + margins.right) / 2,
+                          height: passage.height + 8)
+        for note in notes {
+            if !note.frame.isEmpty { band = band.union(note.frame.insetBy(dx: -4, dy: -4)) }
+            for point in note.leader { band = band.union(CGRect(x: point.x - 2, y: point.y - 2, width: 4, height: 4)) }
+        }
+        // Keep the page gap and footer free of selection paint.
+        band = band.intersection(CGRect(x: 0, y: margins.top - 4, width: configuration.pageSize.width,
+                                        height: height - margins.top - margins.bottom + 8))
+        func pdfRect(_ rect: CGRect) -> CGRect {
+            CGRect(x: rect.minX, y: height - rect.maxY, width: rect.width, height: rect.height)
+        }
+        return PDFReviewFragment(pageIndex: pageIndex, passageBounds: pdfRect(passage), bandBounds: pdfRect(band))
     }
 }
 
@@ -63,7 +91,7 @@ public final class PDFExporter {
             )
         }
         return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections,
-                               reviewDestinations: reviewDestinations(reviewItems, text: attributedText, pages: pages))
+                               reviewDestinations: reviewDestinations(reviewItems, text: attributedText, pages: pages, notes: revisionNotes))
     }
 
     public func pdfDataAsync(
@@ -96,7 +124,7 @@ public final class PDFExporter {
             await Task.yield()
         }
         return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections,
-                               reviewDestinations: reviewDestinations(reviewItems, text: attributedText, pages: pages))
+                               reviewDestinations: reviewDestinations(reviewItems, text: attributedText, pages: pages, notes: revisionNotes))
     }
 
     public func write(_ attributedText: NSAttributedString, to url: URL) throws {
@@ -378,7 +406,7 @@ public final class PDFExporter {
                     cellBounds: item.cell, isImage: item.note.isImage, isSummary: item.note.summary != nil, markers: markers, lineBounds: placementInk)
                 placedNotes.append(RevisionPDFNote(page: index, anchor: item.anchor, frame: placed.0, label: placed.1,
                     cellBounds: item.cell, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX,
-                    isImage: item.note.isImage, strikeWording: item.note.strikesWording))
+                    isImage: item.note.isImage, strikeWording: item.note.strikesWording, location: item.note.location))
             }
             for position in placedNotes.indices {
                 var blockedBands: [CGRect] = []
@@ -416,7 +444,7 @@ public final class PDFExporter {
                             font: font, cellBounds: item.cell, isImage: item.note.isImage, isSummary: item.note.summary != nil, markers: markers, lineBounds: placementInk)
                         placedNotes[position] = RevisionPDFNote(page: index, anchor: item.anchor, frame: placed.0, label: placed.1,
                             cellBounds: item.cell, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX,
-                            isImage: item.note.isImage, strikeWording: item.note.strikesWording)
+                            isImage: item.note.isImage, strikeWording: item.note.strikesWording, location: item.note.location)
                     }
                 }
             }
@@ -860,7 +888,7 @@ public final class PDFExporter {
         )
     }
 
-    private func reviewDestinations(_ items: [RevisionReviewItem], text: NSAttributedString, pages: [TextPage]) -> [String: PDFReviewDestination] {
+    private func reviewDestinations(_ items: [RevisionReviewItem], text: NSAttributedString, pages: [TextPage], notes: [RevisionPDFNote]) -> [String: PDFReviewDestination] {
         func position(_ location: Int) -> PDFSectionDestination {
             guard text.length > 0 else {
                 return PDFSectionDestination(pageIndex: 0, point: CGPoint(x: configuration.pageMargins.left, y: configuration.pageSize.height - configuration.pageMargins.top))
@@ -878,8 +906,36 @@ public final class PDFExporter {
         return Dictionary(uniqueKeysWithValues: items.map { item in
             let first = position(item.anchor)
             let last = position(max(item.anchor, NSMaxRange(item.currentRange) - 1))
-            return (item.id, PDFReviewDestination(destination: first, lastPageIndex: last.pageIndex))
+            let fragments = reviewFragments(item, text: text, pages: pages, notes: notes, destination: first)
+            return (item.id, PDFReviewDestination(destination: first, lastPageIndex: last.pageIndex, fragments: fragments))
         })
+    }
+
+    private func reviewFragments(_ item: RevisionReviewItem, text: NSAttributedString, pages: [TextPage],
+                                 notes: [RevisionPDFNote], destination: PDFSectionDestination) -> [PDFReviewFragment] {
+        let margins = configuration.pageMargins
+        let height = configuration.pageSize.height
+        return pages.enumerated().compactMap { index, page in
+            var passage = CGRect.null
+            if item.currentRange.length > 0 {
+                let range = NSIntersectionRange(item.currentRange, NSRange(location: 0, length: text.length))
+                let glyphs = NSIntersectionRange(page.glyphRange, page.layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil))
+                if glyphs.length > 0 {
+                    passage = page.layoutManager.boundingRect(forGlyphRange: glyphs, in: page.textContainer)
+                        .offsetBy(dx: margins.left, dy: margins.top)
+                }
+            } else if index == destination.pageIndex {
+                // A removal marks its boundary rather than the next complete paragraph.
+                passage = CGRect(x: margins.left, y: height - destination.point.y, width: 1, height: 12)
+            }
+            guard !passage.isNull else { return nil }
+            let related = notes.filter { note in note.page == index && note.location.map({ location in
+                item.currentRange.length == 0 ? location == item.anchor
+                    : NSLocationInRange(location, item.currentRange)
+                        || (location == text.length && location == NSMaxRange(item.currentRange))
+            }) == true }
+            return PDFReviewFragmentLayout.fragment(pageIndex: index, passage: passage, configuration: configuration, notes: related)
+        }
     }
 
     private func sectionDestinations(in text: NSAttributedString, pages: [TextPage]) -> [String: PDFSectionDestination] {

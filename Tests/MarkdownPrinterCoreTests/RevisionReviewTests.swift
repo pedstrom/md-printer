@@ -267,12 +267,12 @@ final class RevisionReviewTests: XCTestCase {
         preview.stagingDelay = 0
         preview.display(try XCTUnwrap(PDFDocument(data: first.pdfData)), data: first.pdfData, revision: first.revision)
         let target = PDFSectionDestination(pageIndex: 2, point: CGPoint(x: 54, y: 700))
-        preview.navigateReview(id: "later", revision: committed.revision, destination: target)
+        preview.navigateReview(id: "later", revision: committed.revision, destination: PDFReviewDestination(destination: target, lastPageIndex: 2))
         XCTAssertEqual(preview.activeView.document?.index(for: try XCTUnwrap(preview.activeView.currentPage)), 0)
         preview.display(try XCTUnwrap(PDFDocument(data: committed.pdfData)), data: committed.pdfData, revision: committed.revision)
         for _ in 0..<100 where preview.activeRevision != committed.revision { try await Task.sleep(nanoseconds: 10_000_000) }
         XCTAssertEqual(preview.activeView.document?.index(for: try XCTUnwrap(preview.activeView.currentPage)), 2)
-        preview.navigateReview(id: "invalid", revision: committed.revision, destination: PDFSectionDestination(pageIndex: 999, point: .zero))
+        preview.navigateReview(id: "invalid", revision: committed.revision, destination: PDFReviewDestination(destination: PDFSectionDestination(pageIndex: 999, point: .zero), lastPageIndex: 999))
         try await session.setOriginalSnapshot(nil)
         XCTAssertNil(session.renderedSnapshot?.baseline); XCTAssertTrue(session.renderedSnapshot?.reviewItems.isEmpty == true)
         preview.prepareForDismantling()

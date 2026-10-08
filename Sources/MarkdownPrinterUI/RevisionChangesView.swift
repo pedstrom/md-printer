@@ -17,18 +17,18 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
     }
 
     let controller: RevisionReviewController
-    let outline = NSOutlineView()
+    let outline = ReviewOutlineView()
     let listScroll = NSScrollView()
     let detailScroll = NSScrollView()
-    let detailText = NSTextView()
+    let detailText = ReviewDetailTextView()
     let split = ReviewSplitView()
     private let detailPane = ReviewPane()
     private let baselineLabel = NSTextField(wrappingLabelWithString: "")
     private let countLabel = NSTextField(labelWithString: "")
     private let selectionLabel = NSTextField(labelWithString: "")
     private let contextLabel = NSTextField(labelWithString: "")
-    private let previousButton = NSButton()
-    private let nextButton = NSButton()
+    private let previousButton = ReviewNavigationButton()
+    private let nextButton = ReviewNavigationButton()
     private var groups: [Group] = []
     private var entries: [String: Entry] = [:]
     private var updating = false
@@ -38,6 +38,10 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
     init(controller: RevisionReviewController) {
         self.controller = controller
         super.init(frame: .zero)
+        outline.navigateArrow = { [weak self] in self?.navigateArrow($0) ?? false }
+        detailText.navigateArrow = { [weak self] in self?.navigateArrow($0) ?? false }
+        previousButton.navigateArrow = { [weak self] in self?.navigateArrow($0) ?? false }
+        nextButton.navigateArrow = { [weak self] in self?.navigateArrow($0) ?? false }
         baselineLabel.font = .systemFont(ofSize: 11); baselineLabel.textColor = .secondaryLabelColor
         countLabel.font = .systemFont(ofSize: 12, weight: .semibold)
         selectionLabel.font = .systemFont(ofSize: 12, weight: .semibold)
@@ -163,8 +167,22 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
         updating = false
         showDetail(force: true); restoreScroll(detailScroll, offset: 0)
     }
-    @objc private func previous() { controller.previous(); showSelection() }
-    @objc private func next() { controller.next(); showSelection() }
+    @objc private func previous() { guard controller.canPrevious else { return }; controller.previous(); showSelection() }
+    @objc private func next() { guard controller.canNext else { return }; controller.next(); showSelection() }
+
+    private func navigateArrow(_ event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else { return false }
+        switch event.keyCode {
+        case 123, 126: previous()
+        case 124, 125: next()
+        default: return false
+        }
+        return true
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if !navigateArrow(event) { super.keyDown(with: event) }
+    }
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { (item as? Group)?.items.count ?? groups.count }
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { if let group = item as? Group { return group.items[index] }; return groups[index] }
@@ -203,5 +221,29 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
     func splitViewDidResizeSubviews(_ notification: Notification) {
         if !updating, NSApp.currentEvent?.type == .leftMouseDragged, split.bounds.height > 0 { controller.state.listProportion = Double(listScroll.frame.height / split.bounds.height) }
         layoutDetail()
+    }
+}
+
+@MainActor
+final class ReviewOutlineView: NSOutlineView {
+    var navigateArrow: (NSEvent) -> Bool = { _ in false }
+    override func keyDown(with event: NSEvent) {
+        if !navigateArrow(event) { super.keyDown(with: event) }
+    }
+}
+
+@MainActor
+final class ReviewDetailTextView: NSTextView {
+    var navigateArrow: (NSEvent) -> Bool = { _ in false }
+    override func keyDown(with event: NSEvent) {
+        if !navigateArrow(event) { super.keyDown(with: event) }
+    }
+}
+
+@MainActor
+final class ReviewNavigationButton: NSButton {
+    var navigateArrow: (NSEvent) -> Bool = { _ in false }
+    override func keyDown(with event: NSEvent) {
+        if !navigateArrow(event) { super.keyDown(with: event) }
     }
 }

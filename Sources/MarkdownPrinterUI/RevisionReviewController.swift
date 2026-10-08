@@ -48,7 +48,8 @@ package final class RevisionReviewController {
     private(set) var revision: UInt64 = 0
     var state = PersistedDocumentSidebar()
     private(set) var restorationPending = false
-    var navigate: (String, UInt64, PDFSectionDestination) -> Void = { _, _, _ in }
+    var navigate: (String, UInt64, PDFReviewDestination) -> Void = { _, _, _ in }
+    var selectionDidChange: () -> Void = {}
 
     var selectedIndex: Int? { items.firstIndex { $0.id == state.selectedID } }
     var selectedItem: RevisionReviewItem? { selectedIndex.map { items[$0] } }
@@ -91,7 +92,8 @@ package final class RevisionReviewController {
         guard let item = items.first(where: { $0.id == id }) else { return }
         state.selectedID = id; state.detailOffset = 0
         state.collapsedGroups.remove(item.sectionID)
-        if let destination = destinations[id] { navigate(id, revision, destination.destination) }
+        selectionDidChange()
+        if let destination = destinations[id] { navigate(id, revision, destination) }
     }
 
     func previous() { if let index = selectedIndex, index > 0 { select(items[index - 1].id) } }
