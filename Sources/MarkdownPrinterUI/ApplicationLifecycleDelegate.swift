@@ -29,6 +29,17 @@ public final class ApplicationLifecycleDelegate: NSObject, NSApplicationDelegate
     private lazy var editMenuDelegateProxy = EditMenuDelegateProxy(owner: self)
     private lazy var helpMenuDelegateProxy = HelpMenuDelegateProxy(owner: self)
 
+    public override convenience init() {
+        self.init(defaults: .standard)
+    }
+
+    package init(defaults: UserDefaults) {
+        // AppKit caches this preference when its document controller is created.
+        // Configure it before SwiftUI builds the document scenes and native menus.
+        defaults.set(20, forKey: "NSRecentDocumentsLimit")
+        super.init()
+    }
+
     public func applicationDidFinishLaunching(_ notification: Notification) {
         NotificationCenter.default.addObserver(
             self,

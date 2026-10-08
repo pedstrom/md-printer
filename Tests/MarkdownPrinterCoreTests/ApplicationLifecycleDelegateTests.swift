@@ -4,6 +4,25 @@ import XCTest
 
 @MainActor
 final class ApplicationLifecycleDelegateTests: XCTestCase {
+    func testInitializationExpandsRecentDocumentsToTwenty() throws {
+        let suiteName = "ApplicationLifecycleDelegateTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(10, forKey: "NSRecentDocumentsLimit")
+        defaults.set("preserved", forKey: "unrelatedPreference")
+
+        _ = ApplicationLifecycleDelegate(defaults: defaults)
+
+        XCTAssertEqual(defaults.integer(forKey: "NSRecentDocumentsLimit"), 20)
+        XCTAssertEqual(defaults.string(forKey: "unrelatedPreference"), "preserved")
+    }
+
+    func testNativeDocumentControllerUsesTwentyRecentDocumentsAfterInitialization() {
+        _ = ApplicationLifecycleDelegate()
+
+        XCTAssertEqual(NSDocumentController().maximumRecentDocumentCount, 20)
+    }
+
     func testApplicationTerminatesAfterLastWindowCloses() {
         let delegate = ApplicationLifecycleDelegate()
 

@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-08 — Expand Open Recent to twenty files
+
+- Set the Mac app's recent-document limit to 20 during application-delegate initialization, before SwiftUI creates its document controller and native menus. Retain the system-managed Open Recent menu and document-opening path.
+- Cover upgrading an existing ten-file preference, preserving unrelated preferences, and the native document controller's effective twenty-file limit. Keep this Mac-only and retain the app version.
+- Validation: 17 focused lifecycle tests and the full 581-test Mac gate pass with 96.34% testable-production line coverage, performance checks, and universal bundle validation. In an isolated native app, open 22 synthetic files, confirm exactly 20 recent entries, and reopen a closed document through the recent menu.
+
 ## 2026-10-08 — Version 1.5.3
 
 - Prepare Mac version 1.5.3, build 21, with the native Changes sidebar, complete Earlier/Current review, numbered passage emphasis, contextual scrolling, immediate arrow navigation, clearer deletion counts, and comparison/sidebar reliability fixes.
