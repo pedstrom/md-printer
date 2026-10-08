@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-08 — Version 1.5.4
+
+- Bundle structural comparison grouping and matching, consistent highlights and change numbering, PDF-to-Changes selection with immediate arrow navigation, and the twenty-file Open Recent list as Mac version 1.5.4, build 22.
+- Update Mac bundle metadata, the README download label, release notes, and current release verification assertions. Keep the mobile version independent and use the existing saved signing and notarization credentials for Pete's authorized GitHub and Sparkle publication.
+- Validation: 52 focused regressions and the full 589-test Mac gate pass with 96.35% testable-production line coverage, performance checks, and universal bundle validation. Verify native PDF-to-list selection and immediate arrows, Open, Find, text selection and Copy availability, PDF/Word Save, Print preview, and source refresh in isolated apps with synthetic local documents. Inspect both showcase PDF pages and the comparison preview.
+- Retain the reported manual acceptance limitation: physical held-drag PDF/Word drops and Option switching during a drag remain unperformed because the automation interface cannot keep a press held into a separate drag. Existing export gesture regressions pass.
+
 ## 2026-10-08 — Select Changes entries from the PDF
 
 - With the Changes sidebar visible, select and reveal the matching list entry by clicking its changed passage, paragraph, table row, or removal note in the PDF. Expand its heading group, update the complete Earlier/Current detail and numbered preview emphasis, and focus the list for immediate arrow navigation. Retain the PDF reading position when selecting from its own content.
