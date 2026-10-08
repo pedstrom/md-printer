@@ -209,6 +209,40 @@ final class PDFThumbnailSidebarControllerTests: XCTestCase {
         XCTAssertGreaterThan(wideSize.height, narrowSize.height)
     }
 
+    func testWindowResizingKeepsOneThumbnailColumnWithoutReapplyingItsSize() async throws {
+        let container = PDFPreviewContainerView(frame: NSRect(x: 0, y: 0, width: 760, height: 800))
+        let window = NSWindow(contentRect: container.frame, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.contentView = container
+        let pdf = try makePDF((1...12).map { "# Page \($0)\n\n" + String(repeating: "Paragraph content. ", count: 100) }.joined(separator: "\n\n"))
+        container.previewView.display(pdf.document, data: pdf.data, revision: 1)
+        container.setThumbnailSidebarVisible(true)
+        container.layoutSubtreeIfNeeded()
+        let thumbnailSize = container.thumbnailView.thumbnailSize
+        let activePreview = container.previewView.activeView
+        var sizeAssignments = 0
+        let observation = container.thumbnailView.observe(\.thumbnailSize, options: [.new]) { _, _ in
+            sizeAssignments += 1
+        }
+
+        for size in [NSSize(width: 1000, height: 900), NSSize(width: 408, height: 560), NSSize(width: 760, height: 800)] {
+            window.setContentSize(size)
+            container.layoutSubtreeIfNeeded()
+            try await Task.sleep(nanoseconds: 30_000_000)
+            XCTAssertEqual(container.thumbnailView.thumbnailSize, thumbnailSize)
+            XCTAssertTrue(container.thumbnailView.pdfView === activePreview)
+            XCTAssertTrue(container.thumbnailView.pdfView?.document === pdf.document)
+        }
+        XCTAssertEqual(sizeAssignments, 0, "Window resizing must not ask PDFKit to rebuild unchanged thumbnails.")
+        XCTAssertEqual(container.thumbnailView.maximumNumberOfColumns, 1)
+
+        container.setThumbnailSidebarWidth(220)
+        container.layoutSubtreeIfNeeded()
+        XCTAssertEqual(sizeAssignments, 1, "Changing the sidebar width should update thumbnail size once.")
+        XCTAssertEqual(container.thumbnailView.thumbnailSize.width, 196, accuracy: 1)
+        withExtendedLifetime(observation) { }
+        container.prepareForDismantling()
+    }
+
     private func makePDF(_ markdown: String) throws -> (data: Data, document: PDFDocument) {
         let text = MarkdownRenderer().render(markdown: markdown)
         let data = try PDFExporter().pdfData(from: text)

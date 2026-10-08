@@ -1,5 +1,10 @@
 # Product Development Log
 
+## 2026-10-08 — Avoid redundant thumbnail layout during window resizing
+
+- Skip unchanged PDFKit thumbnail-size assignments during sidebar and window layout, and explicitly keep page thumbnails in one column. A native regression observes 17 identical assignments across three window resizes before the fix and none afterward; an actual sidebar-width change still updates the thumbnail size once.
+- Cover a multi-page PDF, repeated ordinary/narrow window sizes, stable preview/document identity, and the independent sidebar resize behavior. Inspect the real Pages sidebar and confirm its five thumbnails retain their ordered column and saved width through native window zoom and restore. Preserve PDF rendering and comparison/navigation behavior.
+
 ## 2026-10-08 — Preserve the sidebar while resizing a window
 
 - Reproduce the Changes sidebar disappearing during a physical window-edge drag. Give the native split view explicit window-resize sizing so AppKit cannot proportionally collapse the sidebar or mistake temporary frames for a new width preference.

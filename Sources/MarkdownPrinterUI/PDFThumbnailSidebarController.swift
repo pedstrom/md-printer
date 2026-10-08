@@ -164,6 +164,7 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         sidebarView.wantsLayer = true
         sidebarView.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         thumbnailView.autoresizingMask = [.width, .height]
+        thumbnailView.maximumNumberOfColumns = 1
         layoutSidebar()
         thumbnailView.backgroundColor = .windowBackgroundColor
         sidebarView.addSubview(thumbnailView)
@@ -391,6 +392,10 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         } else {
             aspectRatio = 11 / 8.5
         }
-        thumbnailView.thumbnailSize = NSSize(width: width, height: width * aspectRatio)
+        let size = NSSize(width: width, height: width * aspectRatio)
+        // Window layout runs several times without changing thumbnail geometry.
+        // Avoid asking PDFKit to refresh the same thumbnail size on every pass.
+        guard thumbnailView.thumbnailSize != size else { return }
+        thumbnailView.thumbnailSize = size
     }
 }
