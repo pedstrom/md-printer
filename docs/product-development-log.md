@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-08 — Focus the selected change when Changes opens
+
+- Reproduce the initially gray Changes row and ineffective Down key with native window events: the row was selected, but the PDF preview retained keyboard focus. Focus the selected outline row when a comparison opens, when switching to Changes, and when reopening its sidebar. Retain the remembered selection after reopening or restoration and keep initial PDF navigation unchanged.
+- Defer the focus request until the native window and comparison-sheet dismissal are ready, expose a restored selected row inside its own group, and cancel pending requests when leaving Changes or hiding the sidebar. Return sidebar keyboard focus to the PDF when closing it. Keep ordinary refreshes from taking focus away from selectable details or the PDF, and keep document windows independent.
+- Make the preview's delayed initial focus respect a responder elsewhere in the same window. Cover immediate and delayed first focus, real Up/Down/Left/Right events, reopening, Pages/Changes switching, live refresh, restored/collapsed groups, multiple windows, and native sheet dismissal. Keep this Mac-only and retain the app version.
+- Pass 78 focused regressions and the full 559-test Mac gate with 96.27% testable-production line coverage, performance checks, and universal bundle validation. In the built native app, confirm a fresh comparison shows its first row in blue and Down immediately advances without a row click; confirm the same behavior after reopening the sidebar.
+
 ## 2026-10-08 — Context and selection emphasis for change navigation
 
 - Identify the active Changes entry with a persistent pale yellow preview band, thin amber outline, left accent, and circular change number. Extend the band around related red removal notes, split long passages into separate page fragments, and keep page gaps and footers clear. Hiding the sidebar, returning to Pages, or clearing the comparison removes the emphasis; reopening Changes restores the remembered selection without navigation.

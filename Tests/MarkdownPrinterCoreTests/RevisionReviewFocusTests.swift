@@ -14,6 +14,140 @@ final class RevisionReviewFocusTests: XCTestCase {
         return (output, pdf)
     }
 
+    private func keyboardSnapshot(revision: UInt64 = 1, baseline: OriginalDocumentSnapshot? = nil) throws -> RenderedDocumentSnapshot {
+        let old = "# First\n\nOld first.\n\n# Second\n\nOld second."
+        let new = old.replacingOccurrences(of: "Old", with: "New")
+        let (output, pdf) = try render(old, new)
+        return RenderedDocumentSnapshot(document: MarkdownDocument(title: "Sample", markdown: new), renderedText: output.text,
+            pdfData: pdf.data, sectionDestinations: pdf.sectionDestinations, pageSetup: .letter, footers: .init(), revision: revision,
+            decorations: output.decorations, reviewItems: output.reviewItems, reviewDestinations: pdf.reviewDestinations,
+            baseline: baseline ?? OriginalDocumentSnapshot(document: MarkdownDocument(title: "Original", markdown: old)))
+    }
+
+    private func changes(in container: PDFPreviewContainerView) throws -> RevisionChangesView {
+        let split = try XCTUnwrap(container.subviews.first as? NSSplitView)
+        return try XCTUnwrap(split.subviews[0].subviews.compactMap { $0 as? RevisionChangesView }.first)
+    }
+
+    private func arrow(_ code: UInt16, in window: NSWindow) throws -> NSEvent {
+        let character = String(UnicodeScalar([123: 0xF702, 124: 0xF703, 125: 0xF701, 126: 0xF700][Int(code)]!)!)
+        return try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.function, .numericPad], timestamp: 0,
+            windowNumber: window.windowNumber, context: nil, characters: character, charactersIgnoringModifiers: character, isARepeat: false, keyCode: code))
+    }
+
+    func testComparisonRevealFocusesSelectedRowForImmediateWindowArrowEvents() async throws {
+        let snapshot = try keyboardSnapshot()
+        let container = PDFPreviewContainerView(frame: CGRect(x: 0, y: 0, width: 900, height: 750))
+        let window = NSWindow(contentRect: container.frame, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.contentView = container; window.makeKeyAndOrderFront(nil)
+        defer { container.prepareForDismantling(); window.orderOut(nil) }
+        container.previewView.display(try XCTUnwrap(PDFDocument(data: snapshot.pdfData)), data: snapshot.pdfData, revision: snapshot.revision)
+        container.layoutSubtreeIfNeeded()
+        window.makeFirstResponder(container.previewView.activeView)
+        let before = container.previewView.capturePersistedViewport()
+        var navigations = 0
+        let navigate = container.reviewController.navigate
+        container.reviewController.navigate = { id, revision, destination in
+            navigations += 1; navigate(id, revision, destination)
+        }
+        container.updateReview(snapshot)
+        let view = try changes(in: container)
+        XCTAssertTrue(window.firstResponder === view.outline)
+        XCTAssertEqual((view.outline.item(atRow: view.outline.selectedRow) as? RevisionChangesView.Entry)?.value.id, snapshot.reviewItems[0].id)
+        // Keep the initial comparison reveal free of PDF navigation.
+        XCTAssertEqual(container.reviewController.selectedIndex, 0)
+        XCTAssertEqual(navigations, 0)
+        XCTAssertEqual(container.previewView.capturePersistedViewport()?.pageIndex, before?.pageIndex)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(window.firstResponder === view.outline, "Delayed PDF focus must not replace the Changes row focus")
+        window.sendEvent(try arrow(125, in: window))
+        XCTAssertEqual(container.reviewController.selectedIndex, 1)
+        window.sendEvent(try arrow(123, in: window))
+        XCTAssertEqual(container.reviewController.selectedIndex, 0)
+    }
+
+    func testReopeningChangesFocusesRememberedRowWhileRefreshPreservesReadingFocus() async throws {
+        let snapshot = try keyboardSnapshot()
+        let container = PDFPreviewContainerView(frame: CGRect(x: 0, y: 0, width: 900, height: 750))
+        let window = NSWindow(contentRect: container.frame, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.contentView = container
+        defer { container.prepareForDismantling(); window.orderOut(nil) }
+        container.previewView.display(try XCTUnwrap(PDFDocument(data: snapshot.pdfData)), data: snapshot.pdfData, revision: 1)
+        container.updateReview(snapshot); container.layoutSubtreeIfNeeded()
+        let view = try changes(in: container)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        window.makeFirstResponder(view.detailText)
+        let refresh = try keyboardSnapshot(revision: 2, baseline: snapshot.baseline)
+        container.previewView.display(try XCTUnwrap(PDFDocument(data: refresh.pdfData)), data: refresh.pdfData, revision: 2)
+        container.updateReview(refresh)
+        XCTAssertTrue(window.firstResponder === view.detailText)
+        window.sendEvent(try arrow(124, in: window))
+        XCTAssertEqual(container.reviewController.selectedIndex, 1)
+        container.setThumbnailSidebarVisible(false)
+        XCTAssertTrue(window.firstResponder === container.previewView.activeView)
+        container.setThumbnailSidebarVisible(true)
+        XCTAssertTrue(window.firstResponder === view.outline)
+        XCTAssertEqual(container.reviewController.selectedIndex, 1)
+        container.setSidebarMode(.pages)
+        XCTAssertTrue(window.firstResponder === container.previewView.activeView)
+        container.setSidebarMode(.changes)
+        XCTAssertTrue(window.firstResponder === view.outline)
+        window.makeFirstResponder(container.previewView.activeView)
+        container.updateReview(try keyboardSnapshot(revision: 3, baseline: snapshot.baseline))
+        XCTAssertTrue(window.firstResponder === container.previewView.activeView)
+    }
+
+    func testRestoredSelectionGainsFocusAfterWindowAttachmentAndKeepsOtherGroupsCollapsed() async throws {
+        let snapshot = try keyboardSnapshot()
+        let container = PDFPreviewContainerView(frame: .zero)
+        var state = PersistedDocumentSidebar(); state.mode = .changes; state.isVisible = true
+        state.selectedID = snapshot.reviewItems[1].id
+        state.collapsedGroups = Set(snapshot.reviewItems.map(\.sectionID))
+        container.restoreSidebarRestorationState(state)
+        container.updateReview(snapshot)
+        container.previewView.display(try XCTUnwrap(PDFDocument(data: snapshot.pdfData)), data: snapshot.pdfData, revision: 1)
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 900, height: 750), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.contentView = container; container.layoutSubtreeIfNeeded()
+        defer { container.prepareForDismantling(); window.orderOut(nil) }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let view = try changes(in: container)
+        XCTAssertTrue(window.firstResponder === view.outline)
+        XCTAssertEqual(container.reviewController.selectedIndex, 1)
+        XCTAssertEqual(container.reviewController.state.collapsedGroups, [snapshot.reviewItems[0].sectionID])
+        window.sendEvent(try arrow(126, in: window))
+        XCTAssertEqual(container.reviewController.selectedIndex, 0)
+        let other = PDFPreviewContainerView(frame: container.frame)
+        let otherWindow = NSWindow(contentRect: container.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        otherWindow.contentView = other
+        other.updateReview(snapshot)
+        XCTAssertTrue(window.firstResponder === view.outline)
+        XCTAssertTrue(otherWindow.firstResponder === (try changes(in: other)).outline)
+        other.prepareForDismantling(); otherWindow.orderOut(nil)
+    }
+
+    func testPendingSelectionFocusWaitsForComparisonSheetAndCancelsWhenHidden() async throws {
+        let snapshot = try keyboardSnapshot()
+        let container = PDFPreviewContainerView(frame: CGRect(x: 0, y: 0, width: 900, height: 750))
+        let window = NSWindow(contentRect: container.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = container; window.makeKeyAndOrderFront(nil)
+        defer { container.prepareForDismantling(); window.orderOut(nil) }
+        container.previewView.display(try XCTUnwrap(PDFDocument(data: snapshot.pdfData)), data: snapshot.pdfData, revision: 1)
+        let sheet = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: false)
+        window.beginSheet(sheet, completionHandler: nil)
+        container.updateReview(snapshot)
+        let view = try changes(in: container)
+        XCTAssertFalse(window.firstResponder === view.outline)
+        window.endSheet(sheet); sheet.orderOut(nil)
+        for _ in 0..<100 where window.firstResponder !== view.outline { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertTrue(window.firstResponder === view.outline)
+        window.beginSheet(sheet, completionHandler: nil)
+        container.setThumbnailSidebarVisible(false); container.setThumbnailSidebarVisible(true)
+        container.setThumbnailSidebarVisible(false)
+        window.endSheet(sheet); sheet.orderOut(nil)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertFalse(window.firstResponder === view.outline)
+    }
+
     func testAdaptivePlacementKeepsContextAndAvoidsUnnecessaryScrolling() throws {
         let viewport = CGRect(x: 0, y: 100, width: 600, height: 800)
         func passage(_ y: CGFloat, _ height: CGFloat) -> CGRect { CGRect(x: 54, y: y, width: 504, height: height) }

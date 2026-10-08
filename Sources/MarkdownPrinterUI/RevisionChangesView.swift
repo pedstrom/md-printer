@@ -33,6 +33,7 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
     private var entries: [String: Entry] = [:]
     private var updating = false
     private var displayedID: String?
+    private var selectionFocusPending = false
 
     override var isFlipped: Bool { true }
     init(controller: RevisionReviewController) {
@@ -78,6 +79,54 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
     }
     required init?(coder: NSCoder) { nil }
 
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didBecomeKeyNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didEndSheetNotification, object: nil)
+        if let window {
+            for name in [NSWindow.didBecomeKeyNotification, NSWindow.didEndSheetNotification] {
+                NotificationCenter.default.addObserver(self, selector: #selector(windowReadyForSelectionFocus), name: name, object: window)
+            }
+        }
+        applySelectionFocus()
+    }
+
+    func requestSelectionFocus() {
+        guard controller.selectedItem != nil else { selectionFocusPending = false; return }
+        selectionFocusPending = true
+        applySelectionFocus()
+        DispatchQueue.main.async { [weak self] in self?.applySelectionFocus() }
+    }
+
+    func cancelSelectionFocus() { selectionFocusPending = false }
+
+    @objc private func windowReadyForSelectionFocus(_ notification: Notification) {
+        applySelectionFocus()
+        // A completed comparison sheet can notify before its window has fully detached.
+        DispatchQueue.main.async { [weak self] in self?.applySelectionFocus() }
+    }
+
+    private func applySelectionFocus() {
+        guard selectionFocusPending, !isHiddenOrHasHiddenAncestor,
+              let window, window.attachedSheet == nil,
+              let item = controller.selectedItem, let entry = entries[item.id] else { return }
+        selectionFocusPending = false
+        updating = true
+        if let group = groups.first(where: { $0.id == item.sectionID }) {
+            outline.expandItem(group)
+            controller.state.collapsedGroups.remove(group.id)
+        }
+        let row = outline.row(forItem: entry)
+        if row >= 0 {
+            outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            outline.scrollRowToVisible(row)
+        }
+        updating = false
+        if row < 0 || !window.makeFirstResponder(outline) { selectionFocusPending = true }
+    }
+
     override func layout() {
         updating = true
         super.layout()
@@ -89,6 +138,7 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
         outline.setFrameSize(NSSize(width: listScroll.contentSize.width, height: outline.frame.height))
         outline.tableColumns.first?.width = max(20, listScroll.contentSize.width - 20)
         layoutDetail()
+        applySelectionFocus()
     }
 
     var listHeight: CGFloat { min(max(120, split.bounds.height * controller.state.listProportion), max(120, split.bounds.height - 180)) }

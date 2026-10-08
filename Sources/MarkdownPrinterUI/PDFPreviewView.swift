@@ -1702,6 +1702,8 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
                   let window,
                   self.window === window
             else { return }
+            if let focused = window.firstResponder as? NSView,
+               focused !== self, !focused.isDescendant(of: self) { return }
             window.makeFirstResponder(self)
         }
     }

@@ -224,6 +224,7 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
     }
 
     func prepareForDismantling() {
+        changesView.cancelSelectionFocus()
         if let sidebarController {
             sidebarController.detachForDismantling(from: self)
         }
@@ -234,6 +235,8 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
 
     func setThumbnailSidebarVisible(_ isVisible: Bool) {
         guard isThumbnailSidebarVisible != isVisible else { return }
+        let focusedChanges = (window?.firstResponder as? NSView)?.isDescendant(of: changesView) == true
+        if !isVisible { changesView.cancelSelectionFocus() }
         isApplyingSidebarLayout = true
         sidebarIsShown = isVisible
         splitView.hidesDivider = !isVisible
@@ -244,6 +247,8 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
             applyStoredSidebarWidth()
         }
         updateReviewFocus()
+        if isVisible, sidebarMode == .changes { changesView.requestSelectionFocus() }
+        else if !isVisible, focusedChanges { window?.makeFirstResponder(previewView.activeView) }
         sidebarController?.targetDidChange()
     }
 
@@ -351,16 +356,24 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
 
     func setSidebarMode(_ mode: DocumentSidebarMode) {
         guard mode != .changes || reviewController.baseline != nil else { return }
+        let enteringChanges = mode == .changes && changesView.isHidden
+        let focusedChanges = (window?.firstResponder as? NSView)?.isDescendant(of: changesView) == true
         reviewController.state.mode = mode
         modeSelector.selectedSegment = mode == .pages ? 0 : 1
         thumbnailView.isHidden = mode != .pages; changesView.isHidden = mode != .changes
         updateReviewFocus()
         if isThumbnailSidebarVisible { applyStoredSidebarWidth() }
+        if mode == .pages {
+            changesView.cancelSelectionFocus()
+            if focusedChanges { window?.makeFirstResponder(previewView.activeView) }
+        } else if enteringChanges, isThumbnailSidebarVisible { changesView.requestSelectionFocus() }
         sidebarController?.targetDidChange()
     }
 
     func updateReview(_ snapshot: RenderedDocumentSnapshot) {
         guard lastReviewRevision != snapshot.revision else { return }
+        let comparisonOpened = snapshot.baseline != nil
+            && (lastReviewRevision == nil || snapshot.baseline?.id != reviewController.baseline?.id)
         if !reviewController.restorationPending { changesView.captureScrollPositions() }
         reviewController.state.isVisible = isThumbnailSidebarVisible
         reviewController.update(snapshot)
@@ -370,6 +383,7 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         setThumbnailSidebarVisible(reviewController.state.isVisible)
         changesView.refresh()
         updateReviewFocus()
+        if comparisonOpened, isThumbnailSidebarVisible, sidebarMode == .changes { changesView.requestSelectionFocus() }
     }
 
     private func updateReviewFocus() {
