@@ -206,6 +206,48 @@ final class RevisionReviewTests: XCTestCase {
         container.prepareForDismantling(); restored.prepareForDismantling()
     }
 
+    func testWindowResizingPreservesVisibleSidebarInBothModes() async throws {
+        let container = PDFPreviewContainerView(frame: NSRect(x: 0, y: 0, width: 760, height: 800))
+        let window = NSWindow(contentRect: container.frame, styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.contentView = container
+        let controller = PDFSidebarController(); container.attach(sidebarController: controller)
+        let comparison = try snapshot("# Title\n\nEarlier passage.", "# Title\n\nCurrent passage.")
+        container.updateReview(comparison)
+        container.layoutSubtreeIfNeeded()
+        let split = try XCTUnwrap(container.subviews.first as? NSSplitView)
+        split.setPosition(410, ofDividerAt: 0)
+        container.setThumbnailSidebarWidth(260)
+
+        for mode in [DocumentSidebarMode.changes, .pages, .changes] {
+            container.setSidebarMode(mode)
+            for size in [NSSize(width: 1050, height: 850), NSSize(width: 408, height: 540), NSSize(width: 760, height: 800)] {
+                window.setContentSize(size)
+                // Allow AppKit's deferred split-view layout after the container has laid out.
+                container.layoutSubtreeIfNeeded()
+                try await Task.sleep(nanoseconds: 30_000_000)
+                XCTAssertTrue(container.isThumbnailSidebarVisible)
+                XCTAssertTrue(controller.isVisible)
+                XCTAssertFalse(split.subviews[0].isHidden)
+                let preferredWidth: CGFloat = mode == .pages ? 260 : 410
+                let expectedWidth = min(preferredWidth, size.width - split.dividerThickness - 160)
+                XCTAssertEqual(split.subviews[0].frame.width, expectedWidth, accuracy: 1)
+                XCTAssertGreaterThanOrEqual(container.previewView.frame.width, 160)
+                let saved = container.captureSidebarRestorationState()
+                XCTAssertEqual(saved.mode, mode)
+                XCTAssertEqual(saved.pagesWidth, 260, accuracy: 1)
+                XCTAssertEqual(saved.changesWidth, 410, accuracy: 1)
+            }
+        }
+        container.setThumbnailSidebarVisible(false)
+        window.setContentSize(NSSize(width: 900, height: 700))
+        container.layoutSubtreeIfNeeded()
+        try await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertFalse(container.isThumbnailSidebarVisible)
+        XCTAssertTrue(split.subviews[0].isHidden)
+        XCTAssertEqual(container.previewView.frame.width, container.bounds.width, accuracy: 1)
+        container.prepareForDismantling()
+    }
+
     func testCommittedReviewIsAtomicAndPreviewNavigationWaitsForActiveRevision() async throws {
         let session = DocumentSession()
         let current = "# Review\n\n" + (0..<160).map { "Current paragraph \($0) has ordinary useful wording." }.joined(separator: "\n\n")

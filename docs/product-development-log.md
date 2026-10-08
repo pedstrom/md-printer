@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-08 — Preserve the sidebar while resizing a window
+
+- Reproduce the Changes sidebar disappearing during a physical window-edge drag. Give the native split view explicit window-resize sizing so AppKit cannot proportionally collapse the sidebar or mistake temporary frames for a new width preference.
+- Preserve independent Pages and Changes widths, clamp either pane to leave room for the PDF at narrow sizes, and retain deliberate hidden state. Cover repeated native window resizing, mode switching, saved widths, and deferred layout with a regression that fails against the previous implementation.
+- Confirm both modes remain visible at their saved widths through native window zoom and restore in an isolated app build. Retain the original PDF rendering path and app version.
+
 ## 2026-10-07 — Changes navigation in the Mac sidebar
 
 - Add Pages and Changes to the existing native left sidebar. Open Changes after a committed comparison, retaining a separately scrollable heading-grouped list and complete stacked Earlier/Current passages, with resizable sidebar and list/detail divider. Keep source rendering, PDF/Word markings, and document geometry unchanged.

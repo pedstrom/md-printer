@@ -99,7 +99,6 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
     private var lastReviewRevision: UInt64?
     var sidebarMode: DocumentSidebarMode { reviewController.state.mode }
     private var isApplyingSidebarLayout = false
-    private var lastSplitWidth: CGFloat = 0
 
     var isThumbnailSidebarVisible: Bool {
         sidebarIsShown
@@ -205,7 +204,6 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         isApplyingSidebarLayout = true
         super.layout()
         splitView.frame = bounds
-        lastSplitWidth = splitView.bounds.width
         layoutSidebar()
         isApplyingSidebarLayout = false
         updateThumbnailSize()
@@ -273,6 +271,23 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
         subview === sidebarView
     }
 
+    public func splitView(_ splitView: NSSplitView, resizeSubviewsWithOldSize oldSize: NSSize) {
+        // AppKit's proportional resizing can collapse the left pane during a window
+        // drag. Window resizing must use the preferred width, never infer visibility
+        // or a new preference from transient subview frames.
+        let wasApplyingLayout = isApplyingSidebarLayout
+        isApplyingSidebarLayout = true
+        defer { isApplyingSidebarLayout = wasApplyingLayout }
+        let width = isThumbnailSidebarVisible ? actualSidebarWidth : 0
+        let divider = splitView.dividerThickness
+        sidebarView.frame = NSRect(x: 0, y: 0, width: width, height: splitView.bounds.height)
+        previewView.frame = NSRect(x: width + divider, y: 0,
+                                  width: max(0, splitView.bounds.width - width - divider),
+                                  height: splitView.bounds.height)
+        layoutSidebar()
+        updateThumbnailSize()
+    }
+
     public func splitView(
         _ splitView: NSSplitView,
         effectiveRect proposedEffectiveRect: NSRect,
@@ -285,13 +300,6 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
 
     public func splitViewDidResizeSubviews(_ notification: Notification) {
         guard !isApplyingSidebarLayout else { return }
-        let windowResized = lastSplitWidth != splitView.bounds.width
-        lastSplitWidth = splitView.bounds.width
-        if windowResized {
-            if isThumbnailSidebarVisible { applyStoredSidebarWidth() }
-            else { layoutSidebar() }
-            return
-        }
         if sidebarView.frame.width < 1 {
             if NSApp.currentEvent?.type == .leftMouseDragged {
                 setThumbnailSidebarVisible(false)
@@ -299,10 +307,10 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
             return
         }
         guard isThumbnailSidebarVisible else { return }
-        if !windowResized, sidebarMode == .pages, (Self.minimumSidebarWidth...Self.maximumSidebarWidth).contains(sidebarView.frame.width) {
+        let dividerMoved = abs(sidebarView.frame.width - actualSidebarWidth) > 0.5
+        if dividerMoved, sidebarMode == .pages, (Self.minimumSidebarWidth...Self.maximumSidebarWidth).contains(sidebarView.frame.width) {
             storedSidebarWidth = sidebarView.frame.width
-        } else if !windowResized, sidebarMode == .changes, (240...520).contains(sidebarView.frame.width),
-                  splitView.bounds.width - 161 >= reviewController.state.changesWidth {
+        } else if dividerMoved, sidebarMode == .changes, (240...520).contains(sidebarView.frame.width) {
             reviewController.state.changesWidth = sidebarView.frame.width
         }
         layoutSidebar()
@@ -313,13 +321,16 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
     private func applyStoredSidebarWidth() {
         guard splitView.arrangedSubviews.count == 2, splitView.bounds.width > 0 else { return }
         isApplyingSidebarLayout = true
-        let requested = sidebarMode == .pages ? storedSidebarWidth : reviewController.state.changesWidth
-        let actual = sidebarMode == .pages ? requested : min(requested, max(0, splitView.bounds.width - 161))
         sidebarView.isHidden = false
-        splitView.setPosition(actual, ofDividerAt: 0)
+        splitView.setPosition(actualSidebarWidth, ofDividerAt: 0)
         isApplyingSidebarLayout = false
         layoutSidebar()
         updateThumbnailSize()
+    }
+
+    private var actualSidebarWidth: CGFloat {
+        let requested = sidebarMode == .pages ? storedSidebarWidth : reviewController.state.changesWidth
+        return min(requested, max(0, splitView.bounds.width - splitView.dividerThickness - 160))
     }
 
     private func layoutSidebar() {
