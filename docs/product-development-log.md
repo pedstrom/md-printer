@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-08 — Version 1.5.3
+
+- Prepare Mac version 1.5.3, build 21, with the native Changes sidebar, complete Earlier/Current review, numbered passage emphasis, contextual scrolling, immediate arrow navigation, clearer deletion counts, and comparison/sidebar reliability fixes.
+- Preserve Pete's approved release-note wording and patch version choice. Update Mac bundle metadata, the README download label, and current release verification assertions. Keep the mobile version independent.
+- Validation: 31 focused Help, review-focus, and deletion-summary tests pass; the full Mac gate passes 559 tests with 96.27% testable production line coverage. Native acceptance confirms immediate arrow navigation, numbered passage emphasis, Find, PDF and Word saving, print preview, text selection, file opening, and live refresh in an isolated app using synthetic documents. Physical hold-and-drag drops and Option switching during an active drag remain unperformed because the automation interface cannot continue a held press into a separate drag.
+
 ## 2026-10-08 — Focus the selected change when Changes opens
 
 - Reproduce the initially gray Changes row and ineffective Down key with native window events: the row was selected, but the PDF preview retained keyboard focus. Focus the selected outline row when a comparison opens, when switching to Changes, and when reopening its sidebar. Retain the remembered selection after reopening or restoration and keep initial PDF navigation unchanged.
