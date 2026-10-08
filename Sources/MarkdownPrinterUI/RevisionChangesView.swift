@@ -245,7 +245,7 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
         label.font = .systemFont(ofSize: 12); label.maximumNumberOfLines = 2; label.lineBreakMode = .byTruncatingTail
         if let group = item as? Group { label.stringValue = "\(group.title)  (\(group.items.count))"; label.font = .systemFont(ofSize: 12, weight: .semibold) }
         else if let entry = item as? Entry {
-            label.stringValue = entry.value.kind.rawValue + (controller.destinations[entry.value.id].map { " · " + $0.pageLabel } ?? "") + "\n" + entry.value.excerpt
+            label.stringValue = "\((controller.items.firstIndex { $0.id == entry.value.id } ?? 0) + 1) · " + entry.value.changeLabel + (controller.destinations[entry.value.id].map { " · " + $0.pageLabel } ?? "") + "\n" + entry.value.excerpt
         }
         label.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(label); cell.textField = label

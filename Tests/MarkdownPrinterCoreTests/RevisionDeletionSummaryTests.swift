@@ -81,15 +81,15 @@ final class RevisionDeletionSummaryTests: XCTestCase {
         }
         XCTAssertEqual(revision("> Retired quotation.\n\nKept body.", "Kept body.").decorations.deletions.first?.summary, .paragraphs(1))
         let list = "- " + Array(repeating: "retired", count: 13).joined(separator: " ")
-        XCTAssertEqual(revision(list + "\n\nKept body.", "Kept body.").decorations.deletions.first?.summary, .words(13))
+        XCTAssertEqual(revision(list + "\n\nKept body.", "Kept body.").decorations.deletions.first?.summary, .listItems(1))
         let heading = "# " + Array(repeating: "outdated", count: 13).joined(separator: " ")
-        XCTAssertEqual(revision(heading + "\n\n" + list + "\n\nKept body.", "Kept body.").decorations.deletions.first?.summary, .words(26))
+        XCTAssertEqual(revision(heading + "\n\n" + list + "\n\nKept body.", "Kept body.").decorations.deletions.map(\.summary), [.words(13), .listItems(1)])
     }
 
     func testSentencesInListsCellsAndBesideInlineCodeUseSentenceCounts() {
-        for old in ["- Retired list sentence.", "| Topic |\n| --- |\n| Retired cell sentence. |"] {
+        for (old, summary) in [("- Retired list sentence.", RevisionDeletion.Summary.listItems(1)), ("| Topic |\n| --- |\n| Retired cell sentence. |", .tables(1))] {
             let result = revision(old + "\n\nKept body.", "Kept body.")
-            XCTAssertTrue(result.decorations.deletions.contains { $0.summary == .sentences(1) }, old)
+            XCTAssertTrue(result.decorations.deletions.contains { $0.summary == summary }, old)
             XCTAssertFalse(result.decorations.deletions.contains { if case .paragraphs = $0.summary { return true }; return false })
         }
         let current = "Keep the `originalCode` in this opening sentence. Keep this closing sentence unchanged."

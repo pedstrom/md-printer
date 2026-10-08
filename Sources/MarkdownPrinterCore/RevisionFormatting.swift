@@ -5,6 +5,8 @@ import NaturalLanguage
 extension NSAttributedString.Key {
     static let revisionBlock = Self("MarkdownPrinter.revisionBlock")
     static let revisionKind = Self("MarkdownPrinter.revisionKind")
+    static let revisionContainer = Self("MarkdownPrinter.revisionContainer")
+    static let revisionListItem = Self("MarkdownPrinter.revisionListItem")
     static let revisionReference = Self("MarkdownPrinter.revisionReference")
     static let revisionImage = Self("MarkdownPrinter.revisionImage")
     static let revisionLiteral = Self("MarkdownPrinter.revisionLiteral")
@@ -16,7 +18,7 @@ extension NSAttributedString.Key {
 
 public struct RevisionDeletion: Equatable, Sendable {
     public enum Summary: Equatable, Sendable {
-        case paragraphs(Int), sentences(Int), words(Int)
+        case paragraphs(Int), sentences(Int), words(Int), tables(Int), listItems(Int), sections(Int)
 
         var wording: String {
             let count: Int, noun: String
@@ -24,6 +26,9 @@ public struct RevisionDeletion: Equatable, Sendable {
             case let .paragraphs(value): count = value; noun = "paragraph"
             case let .sentences(value): count = value; noun = "sentence"
             case let .words(value): count = value; noun = "word"
+            case let .tables(value): count = value; noun = "table"
+            case let .listItems(value): count = value; noun = "list item"
+            case let .sections(value): count = value; noun = "section"
             }
             return "removed \(count) \(noun)\(count == 1 ? "" : "s")"
         }
@@ -33,6 +38,9 @@ public struct RevisionDeletion: Equatable, Sendable {
             case let (.paragraphs(a), .paragraphs(b)): return .paragraphs(a + b)
             case let (.sentences(a), .sentences(b)): return .sentences(a + b)
             case let (.words(a), .words(b)): return .words(a + b)
+            case let (.tables(a), .tables(b)): return .tables(a + b)
+            case let (.listItems(a), .listItems(b)): return .listItems(a + b)
+            case let (.sections(a), .sections(b)): return .sections(a + b)
             default: return nil
             }
         }
@@ -78,17 +86,22 @@ public enum RevisionFormatter {
         let old = units(in: original), new = units(in: current)
         var changes = RevisionDecorations()
         var reviewMatches: [RevisionReviewMatch] = []
-        let oldSignatures = Set(old.map(\.signature)), newSignatures = Set(new.map(\.signature))
-        let matches = matching(old.map(\.signature), new.map(\.signature))
-        var oldStart = 0, newStart = 0
-        for (oldEnd, newEnd) in matches + [(old.count, new.count)] {
-            let reviewStart = reviewMatches.count
-            compareGap(Array(old[oldStart..<oldEnd]), Array(new[newStart..<newEnd]),
-                       anchor: newEnd < new.count ? new[newEnd].range.location : current.length,
-                       allOld: oldSignatures, allNew: newSignatures, changes: &changes, reviews: &reviewMatches)
-            for index in reviewStart..<reviewMatches.count { reviewMatches[index].gapID = oldStart }
-            if oldEnd < old.count { compare(old[oldEnd], new[newEnd], changes: &changes, reviews: &reviewMatches) }
-            oldStart = oldEnd + 1; newStart = newEnd + 1
+        for group in RevisionStructure.matches(old: old, new: new, original: original, current: current) {
+            let start = reviewMatches.count
+            for pair in group.pairs {
+                if let before = pair.earlier, let after = pair.current {
+                    compare(before, after, changes: &changes, reviews: &reviewMatches)
+                } else if let after = pair.current {
+                    add(after, changes: &changes, reviews: &reviewMatches)
+                } else if let before = pair.earlier {
+                    remove(before.tokens, at: pair.anchor, summary: group.summary ?? removalSummary(in: before, ranges: [before.tokens.indices]), changes: &changes)
+                    reviewMatches.append(pair)
+                }
+            }
+            if reviewMatches.count > start {
+                reviewMatches.removeSubrange(start...)
+                reviewMatches.append(group.review)
+            }
         }
         changes.highlights = joinPhraseHighlights(merge(changes.highlights), in: current)
         // Adjacent attachments still need separate borders inside each image.
@@ -97,7 +110,7 @@ public enum RevisionFormatter {
         let result = NSMutableAttributedString(attributedString: current)
         for range in changes.highlights { result.addAttribute(.revisionHighlight, value: true, range: range) }
         for range in changes.images { result.addAttribute(.revisionImageChanged, value: true, range: range) }
-        return RevisionRenderedText(text: result, decorations: changes, reviewItems: RevisionReviewBuilder.build(current: current, original: original, matches: reviewMatches))
+        return RevisionRenderedText(text: result, decorations: changes, reviewItems: RevisionReviewBuilder.build(current: current, original: original, matches: reviewMatches, highlights: changes.highlights))
     }
 
     struct Token {
@@ -133,10 +146,10 @@ public enum RevisionFormatter {
         return result
     }
 
-    private static func tokens(in text: NSAttributedString, range: NSRange) -> [Token] {
+    static func tokens(in text: NSAttributedString, range: NSRange) -> [Token] {
         var result: [Token] = []
         let string = text.string as NSString
-        let regex = try! NSRegularExpression(pattern: #"[\p{L}\p{M}\p{N}_]+|[^\s]|\s+"#)
+        let regex = try! NSRegularExpression(pattern: #"\p{N}+(?:[,.]\p{N}+)+|[\p{L}\p{M}\p{N}_]+|[^\s]|\s+"#)
         var consumedThrough = range.location
         for match in regex.matches(in: text.string, range: range) {
             guard match.range.location >= consumedThrough else { continue }
@@ -207,47 +220,6 @@ public enum RevisionFormatter {
             }
         }
         return Array(zip(old.indices.filter { !removed.contains($0) }, new.indices.filter { !inserted.contains($0) }))
-    }
-
-    private static func compareGap(_ old: [Unit], _ new: [Unit], anchor: Int,
-                                   allOld: Set<String>, allNew: Set<String>, changes: inout RevisionDecorations, reviews: inout [RevisionReviewMatch]) {
-        var nextNew = 0
-        for unit in old {
-            // Unmatched identical units elsewhere are moves: keep their removal
-            // and addition instead of matching them as an edited paragraph.
-            let moved = allNew.contains(unit.signature)
-            let candidates = moved ? [] : Array(new.indices.dropFirst(nextNew)).filter { index in
-                new[index].kind.components(separatedBy: ":").first == unit.kind.components(separatedBy: ":").first
-                    && !allOld.contains(new[index].signature)
-                    && (similarity(unit, new[index]) >= 0.4 || (unit.tokens.contains(where: \.image) && new[index].tokens.contains(where: \.image)))
-            }
-            let best = candidates.max { score(unit, new[$0]) < score(unit, new[$1]) }
-            if let index = best {
-                for added in new[nextNew..<index] { add(added, changes: &changes, reviews: &reviews) }
-                compare(unit, new[index], changes: &changes, reviews: &reviews)
-                nextNew = index + 1
-            } else {
-                let paragraph = unit.kind.components(separatedBy: ":").first == "paragraph" && !unit.kind.contains(":list:")
-                let count = changes.deletions.count
-                let boundary = nextNew < new.count ? new[nextNew].range.location : anchor
-                remove(unit.tokens, at: nextNew < new.count ? new[nextNew].range.location : anchor,
-                       summary: paragraph ? .paragraphs(1) : removalSummary(in: unit, ranges: [unit.tokens.indices]), changes: &changes)
-                if changes.deletions.count > count { reviews.append(RevisionReviewMatch(earlier: unit, current: nil, anchor: boundary)) }
-            }
-        }
-        for added in new.dropFirst(nextNew) { add(added, changes: &changes, reviews: &reviews) }
-    }
-
-    private static func similarity(_ old: Unit, _ new: Unit) -> Double {
-        let before = old.words, after = new.words
-        guard !before.isEmpty || !after.isEmpty else { return 0 }
-        return 2 * Double(before.intersection(after).count) / Double(before.count + after.count)
-    }
-
-    private static func score(_ old: Unit, _ new: Unit) -> Double {
-        // Whitespace, punctuation, and repeated words must not make a longer
-        // unrelated block outrank the edited block beside it.
-        similarity(old, new)
     }
 
     private static func compare(_ old: Unit, _ new: Unit, changes: inout RevisionDecorations, reviews: inout [RevisionReviewMatch]) {

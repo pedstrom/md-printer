@@ -6,6 +6,15 @@
 - Cover upgrading an existing ten-file preference, preserving unrelated preferences, and the native document controller's effective twenty-file limit. Keep this Mac-only and retain the app version.
 - Validation: 17 focused lifecycle tests and the full 581-test Mac gate pass with 96.34% testable-production line coverage, performance checks, and universal bundle validation. In an isolated native app, open 22 synthetic files, confirm exactly 20 recent entries, and reopen a closed document through the recent menu.
 
+## 2026-10-08 — Structural comparison grouping and matching
+
+- Align heading sections, lists, and tables before comparing words. Keep whole added lists/sections, removed subsections, and table additions/removals together; retain complete earlier/current evidence for paragraph consolidation and table/list rewrites. Promote surviving content across removed headings and align consolidated tables without re-adding retained rows.
+- Match table rows by identifiers and corresponding column headers/roles across insertions and reordering. Keep complete changed rows together and derive exact removal evidence from their cell correspondences. Preserve independent additions/removals when structure and content do not support a replacement.
+- Use the same coherent current highlights in the sidebar and PDF, retain exact deleted-word evidence, and tokenize grouped numeric amounts as complete values. Add explicit table/list/section removal summaries without changing current text geometry or literal-code evidence.
+- Give the sidebar entries visible numbers and one canonical section sequence shared by navigation, selected-passage emphasis, counts, and restoration. Keep renamed-section changes together. Document grouping and structural summaries in README and offline Help.
+- Cover structural matching, complete evidence, table boundaries/consolidation, numeric highlights, native list/navigation order, and unchanged PDF body positions with synthetic regressions. Recheck the supplied documents only through private temporary diagnostics and generated visual artifacts; keep their content and operational details out of Git. Retain the app version and keep this Mac-only.
+- Validation: 72 focused comparison regressions pass. The full Mac suite passes 582 tests with 96.35% testable-production line coverage. Inspect representative comparison and showcase PDF pages, confirm unchanged long-document pagination and body positions, and use an isolated native app to verify complete grouped passages, consecutive numbers, and arrow navigation. The universal app and Quick Look extension build and validate successfully.
+
 ## 2026-10-08 — Version 1.5.3
 
 - Prepare Mac version 1.5.3, build 21, with the native Changes sidebar, complete Earlier/Current review, numbered passage emphasis, contextual scrolling, immediate arrow navigation, clearer deletion counts, and comparison/sidebar reliability fixes.

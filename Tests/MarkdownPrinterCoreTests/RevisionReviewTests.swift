@@ -84,7 +84,7 @@ final class RevisionReviewTests: XCTestCase {
         XCTAssertTrue(code.isCode); XCTAssertTrue(code.current!.contains("a  b"))
         let detail = RevisionReviewDetail.text(for: code)
         XCTAssertTrue((detail.attribute(.font, at: 8, effectiveRange: nil) as? NSFont)?.isFixedPitch == true)
-        XCTAssertEqual(review("| A | B |\n|---|---|\n| Old | Old |", "| A | B |\n|---|---|\n| New | New |").reviewItems.count, 2)
+        XCTAssertEqual(review("| A | B |\n|---|---|\n| Old | Old |", "| A | B |\n|---|---|\n| New | New |").reviewItems.count, 1)
         let centered = review("| H |\n|---|\n| Value |", "| H |\n|:---:|\n| Value |").reviewItems
         XCTAssertTrue(centered.contains { $0.metadata.joined().contains("Center") })
         XCTAssertTrue(review("1. Same item", "2. Same item").reviewItems.contains { $0.metadata.joined().contains("starting at 2") })

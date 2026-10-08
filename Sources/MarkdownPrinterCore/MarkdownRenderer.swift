@@ -90,6 +90,14 @@ public final class MarkdownRenderer {
     ) {
         let unitStart = result.length
         defer {
+            if tracksRevisions {
+                switch block {
+                case .list, .table:
+                    result.addAttribute(.revisionContainer, value: UUID().uuidString,
+                                        range: NSRange(location: unitStart, length: result.length - unitStart))
+                default: break
+                }
+            }
             let kind: String?
             switch block {
             case let .heading(level, _): kind = "heading:\(level)"
@@ -194,6 +202,10 @@ public final class MarkdownRenderer {
                     }
                 }
                 if tracksRevisions {
+                    let itemID = UUID().uuidString
+                    line.enumerateAttribute(.revisionListItem, in: line.fullRange) { marker, range, _ in
+                        if marker == nil { line.addAttribute(.revisionListItem, value: itemID, range: range) }
+                    }
                     line.enumerateAttribute(.revisionKind, in: line.fullRange) { kind, range, _ in
                         guard let kind = kind as? String else { return }
                         line.addAttribute(.revisionKind, value: kind + ":list:\(ordered):\(start):\(String(describing: item.checked))", range: range)
@@ -387,9 +399,12 @@ public final class MarkdownRenderer {
                     for: columnIndex < alignments.count ? alignments[columnIndex] : .leading
                 )
                 cell.addAttribute(.paragraphStyle, value: paragraph, range: cell.fullRange)
-                markRevisionUnit(cell, range: cell.fullRange, kind: "cell")
+                let cellStart = result.length
                 result.append(cell)
                 result.append(NSAttributedString(string: "\n", attributes: [.paragraphStyle: paragraph]))
+                // Include the generated separator so an empty cell still has
+                // an identity and never shifts a later cell into its column.
+                markRevisionUnit(result, range: NSRange(location: cellStart, length: result.length - cellStart), kind: "cell")
             }
         }
     }

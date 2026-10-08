@@ -16,6 +16,12 @@ public struct RevisionReviewItem: Equatable, Sendable, Identifiable {
     public let currentRange: NSRange
     public let anchor: Int
     public let isCode: Bool
+    public var structure: String = "paragraph"
+
+    public var changeLabel: String {
+        let noun = ["table": "table", "row": "table row", "cell": "table cell", "list": "list", "section": "section", "passage": "passage"][structure]
+        return kind.rawValue + (noun.map { " " + $0 } ?? "")
+    }
 
     public var excerpt: String {
         let text = (current ?? earlier ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
@@ -27,7 +33,9 @@ struct RevisionReviewMatch {
     let earlier: RevisionFormatter.Unit?
     let current: RevisionFormatter.Unit?
     let anchor: Int
-    var gapID: Int? = nil
+    var section: (String, String)? = nil
+    var parts: [RevisionReviewMatch] = []
+    var metadata: [String] = []
 }
 
 enum RevisionReviewBuilder {
@@ -37,32 +45,37 @@ enum RevisionReviewBuilder {
         let metadata: [String]
     }
 
-    static func build(current: NSAttributedString, original: NSAttributedString, matches: [RevisionReviewMatch]) -> [RevisionReviewItem] {
+    static func build(current: NSAttributedString, original: NSAttributedString, matches: [RevisionReviewMatch], highlights: [NSRange]) -> [RevisionReviewItem] {
         var occurrences: [String: Int] = [:]
         var result: [RevisionReviewItem] = []
         var previousSourceEnd: Int?
         let currentHeadings = headings(in: current), originalHeadings = headings(in: original)
-        for match in pairedCells(matches, current: current, original: original, currentHeadings: currentHeadings, originalHeadings: originalHeadings).sorted(by: { $0.anchor < $1.anchor }) {
+        for match in matches {
             let old = match.earlier, new = match.current
             defer { previousSourceEnd = NSMaxRange((new ?? old)!.range) }
             let kind: RevisionReviewItem.Kind = old == nil ? .added : (new == nil ? .removed : .changed)
-            let section = (new == nil ? originalHeadings : currentHeadings).last(where: { $0.0 <= (new ?? old)!.range.location })?.1 ?? ("document", "Document")
-            let pairs = RevisionFormatter.matching(old?.tokens.map(\.key) ?? [], new?.tokens.map(\.key) ?? [])
-            let oldMatches = Set(pairs.map(\.0)), newMatches = Set(pairs.map(\.1))
+            let section = match.section ?? (new == nil ? originalHeadings : currentHeadings).last(where: { $0.0 <= (new ?? old)!.range.location })?.1 ?? ("document", "Document")
+            var oldMatches = Set<Int>(), newMatches = Set<Int>()
+            for part in match.parts.isEmpty ? [match] : match.parts {
+                let pairs = RevisionFormatter.matching(part.earlier?.tokens.map(\.key) ?? [], part.current?.tokens.map(\.key) ?? [])
+                oldMatches.formUnion(pairs.map { part.earlier!.tokens[$0.0].range.location })
+                newMatches.formUnion(pairs.map { part.current!.tokens[$0.1].range.location })
+            }
             let before = old.map { passage($0, in: original, unchanged: oldMatches) }
-            let after = new.map { passage($0, in: current, unchanged: newMatches) }
+            let after = new.map { passage($0, in: current, unchanged: newMatches, highlights: highlights) }
             var metadata: [String] = []
             if let before, let after, before.metadata != after.metadata {
                 metadata = ["Earlier details: " + (before.metadata.isEmpty ? "Regular prose" : before.metadata.joined(separator: "; ")),
                             "Current details: " + (after.metadata.isEmpty ? "Regular prose" : after.metadata.joined(separator: "; "))]
             } else if kind != .changed { metadata = (after ?? before)?.metadata ?? [] }
+            metadata += match.metadata
             let code = (new ?? old)!.kind.hasPrefix("code") || (new ?? old)!.kind.hasPrefix("html")
             let range = new?.range ?? NSRange(location: match.anchor, length: 0)
             // Combine complete adjacent prose only. Cell, list and code boundaries remain independent.
             if kind != .changed, let previous = result.last, previous.kind == kind,
                previous.sectionID == section.0, !code,
                (new ?? old)!.kind.hasPrefix("paragraph"), !(new ?? old)!.kind.contains(":list:"),
-               previousSourceEnd.map { $0 + 1 >= (new ?? old)!.range.location } == true,
+               previousSourceEnd.map({ $0 + 1 >= (new ?? old)!.range.location }) == true,
                (kind == .removed ? previous.anchor == match.anchor : NSMaxRange(previous.currentRange) + 1 >= range.location),
                previous.metadata == metadata {
                 result.removeLast()
@@ -71,37 +84,21 @@ enum RevisionReviewBuilder {
                                    removed: earlier.map { [NSRange(location: 0, length: ($0 as NSString).length)] } ?? [],
                                    added: later.map { [NSRange(location: 0, length: ($0 as NSString).length)] } ?? [],
                                    metadata: metadata, range: kind == .added ? NSUnionRange(previous.currentRange, range) : range,
-                                   anchor: previous.anchor, code: false, occurrences: &occurrences))
+                                   anchor: previous.anchor, code: false, structure: previous.structure, occurrences: &occurrences))
             } else {
                 result.append(item(kind: kind, section: section, earlier: before?.text, current: after?.text,
                                    removed: before?.ranges ?? [], added: after?.ranges ?? [], metadata: metadata,
-                                   range: range, anchor: match.anchor, code: code, occurrences: &occurrences))
+                                   range: range, anchor: match.anchor, code: code, structure: (new ?? old)!.kind.components(separatedBy: ":")[0], occurrences: &occurrences))
             }
         }
-        return result
-    }
-
-    private static func pairedCells(_ matches: [RevisionReviewMatch], current: NSAttributedString, original: NSAttributedString, currentHeadings: [(Int, (String, String))], originalHeadings: [(Int, (String, String))]) -> [RevisionReviewMatch] {
-        func coordinate(_ unit: RevisionFormatter.Unit, in text: NSAttributedString) -> (Int, Int)? {
-            guard unit.kind == "cell", let style = text.attribute(.paragraphStyle, at: unit.range.location, effectiveRange: nil) as? NSParagraphStyle,
-                  let block = style.textBlocks.first as? NSTextTableBlock else { return nil }
-            return (block.startingRow, block.startingColumn)
+        // The outline and Previous/Next consume this same section order.
+        var sections: [String] = []
+        var groups: [String: [RevisionReviewItem]] = [:]
+        for item in result {
+            if groups[item.sectionID] == nil { sections.append(item.sectionID) }
+            groups[item.sectionID, default: []].append(item)
         }
-        var consumed = Set<Int>(), result: [RevisionReviewMatch] = []
-        for (index, match) in matches.enumerated() where !consumed.contains(index) {
-            if match.current == nil, let old = match.earlier, let position = coordinate(old, in: original),
-               let next = matches.indices.first(where: { other in
-                   guard other > index, !consumed.contains(other), matches[other].gapID == match.gapID, matches[other].earlier == nil, let new = matches[other].current, old.signature != new.signature,
-                         let location = coordinate(new, in: current) else { return false }
-                   let oldSection = originalHeadings.last(where: { $0.0 <= old.range.location })?.1.0
-                   let newSection = currentHeadings.last(where: { $0.0 <= new.range.location })?.1.0
-                   return position == location && oldSection == newSection && new.range.location >= match.anchor
-               }), let new = matches[next].current {
-                consumed.insert(next)
-                result.append(RevisionReviewMatch(earlier: old, current: new, anchor: new.range.location))
-            } else { result.append(match) }
-        }
-        return result
+        return sections.flatMap { groups[$0]! }
     }
 
     private static func combine(_ first: String?, _ second: String?) -> String? {
@@ -111,13 +108,13 @@ enum RevisionReviewBuilder {
 
     private static func item(kind: RevisionReviewItem.Kind, section: (String, String), earlier: String?, current: String?,
                              removed: [NSRange], added: [NSRange], metadata: [String], range: NSRange, anchor: Int,
-                             code: Bool, occurrences: inout [String: Int]) -> RevisionReviewItem {
+                             code: Bool, structure: String, occurrences: inout [String: Int]) -> RevisionReviewItem {
         let fingerprint = [kind.rawValue, section.0, earlier ?? "", current ?? "", metadata.joined(separator: "\n")].joined(separator: "\u{1f}")
         let hash = SHA256.hash(data: Data(fingerprint.utf8)).map { String(format: "%02x", $0) }.joined()
         let occurrence = occurrences[hash, default: 0]; occurrences[hash] = occurrence + 1
         return RevisionReviewItem(id: hash + ":\(occurrence)", kind: kind, sectionID: section.0, sectionTitle: section.1,
                                   earlier: earlier, current: current, removedRanges: removed, addedRanges: added,
-                                  metadata: metadata, currentRange: range, anchor: anchor, isCode: code)
+                                  metadata: metadata, currentRange: range, anchor: anchor, isCode: code, structure: structure)
     }
 
     private static func headings(in text: NSAttributedString) -> [(Int, (String, String))] {
@@ -130,11 +127,11 @@ enum RevisionReviewBuilder {
         return sections
     }
 
-    private static func passage(_ unit: RevisionFormatter.Unit, in text: NSAttributedString, unchanged: Set<Int>) -> Passage {
+    private static func passage(_ unit: RevisionFormatter.Unit, in text: NSAttributedString, unchanged: Set<Int>, highlights: [NSRange]? = nil) -> Passage {
         var output = "", changed: [NSRange] = [], metadata: [String] = []
         let source = text.string as NSString
         var cursor = unit.range.location
-        for (index, token) in unit.tokens.enumerated() {
+        for token in unit.tokens {
             if token.range.location > cursor { output += source.substring(with: NSRange(location: cursor, length: token.range.location - cursor)) }
             let start = (output as NSString).length
             if token.image {
@@ -146,7 +143,9 @@ enum RevisionReviewBuilder {
                     metadata.append((parts[2].hasPrefix("Optional(") ? "Image width: " : "Image title: ") + value)
                 }
             } else { output += source.substring(with: token.range) }
-            if !unchanged.contains(index) { changed.append(NSRange(location: start, length: (output as NSString).length - start)) }
+            let marked = highlights.map { ranges in ranges.contains { NSIntersectionRange($0, token.range).length > 0 } }
+                ?? !unchanged.contains(token.range.location)
+            if marked { changed.append(NSRange(location: start, length: (output as NSString).length - start)) }
             if let reference = text.attribute(.revisionReference, at: token.range.location, effectiveRange: nil) as? String {
                 let parts = reference.components(separatedBy: "|")
                 let label = "Link: " + parts[0] + (parts.count > 1 && !parts[1].isEmpty ? " (" + parts[1] + ")" : "")
@@ -183,7 +182,13 @@ enum RevisionReviewBuilder {
             if kind[list + 3].contains("true") { metadata.append("Completed task") }
             else if kind[list + 3].contains("false") { metadata.append("Incomplete task") }
         }
-        return Passage(text: output, ranges: changed, metadata: metadata)
+        if ["table", "row", "list", "section", "passage"].contains(kind[0]) { metadata.insert(kind[0] == "row" ? "Table row" : kind[0].capitalized, at: 0) }
+        var ranges: [NSRange] = []
+        for range in changed {
+            if let last = ranges.last, NSMaxRange(last) == range.location { ranges[ranges.count - 1] = NSUnionRange(last, range) }
+            else { ranges.append(range) }
+        }
+        return Passage(text: output, ranges: ranges, metadata: metadata)
     }
 }
 #endif
