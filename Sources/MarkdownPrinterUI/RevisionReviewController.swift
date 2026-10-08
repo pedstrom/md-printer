@@ -88,12 +88,12 @@ package final class RevisionReviewController {
         restorationPending = false
     }
 
-    func select(_ id: String) {
+    func select(_ id: String, navigating: Bool = true) {
         guard let item = items.first(where: { $0.id == id }) else { return }
         state.selectedID = id; state.detailOffset = 0
         state.collapsedGroups.remove(item.sectionID)
         selectionDidChange()
-        if let destination = destinations[id] { navigate(id, revision, destination) }
+        if navigating, let destination = destinations[id] { navigate(id, revision, destination) }
     }
 
     func previous() { if let index = selectedIndex, index > 0 { select(items[index - 1].id) } }

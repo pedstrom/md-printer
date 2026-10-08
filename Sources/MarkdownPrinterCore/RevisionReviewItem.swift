@@ -17,6 +17,7 @@ public struct RevisionReviewItem: Equatable, Sendable, Identifiable {
     public let anchor: Int
     public let isCode: Bool
     public var structure: String = "paragraph"
+    var reviewMatches: Set<Int> = []
 
     public var changeLabel: String {
         let noun = ["table": "table", "row": "table row", "cell": "table cell", "list": "list", "section": "section", "passage": "passage"][structure]
@@ -50,7 +51,7 @@ enum RevisionReviewBuilder {
         var result: [RevisionReviewItem] = []
         var previousSourceEnd: Int?
         let currentHeadings = headings(in: current), originalHeadings = headings(in: original)
-        for match in matches {
+        for (matchIndex, match) in matches.enumerated() {
             let old = match.earlier, new = match.current
             defer { previousSourceEnd = NSMaxRange((new ?? old)!.range) }
             let kind: RevisionReviewItem.Kind = old == nil ? .added : (new == nil ? .removed : .changed)
@@ -84,11 +85,13 @@ enum RevisionReviewBuilder {
                                    removed: earlier.map { [NSRange(location: 0, length: ($0 as NSString).length)] } ?? [],
                                    added: later.map { [NSRange(location: 0, length: ($0 as NSString).length)] } ?? [],
                                    metadata: metadata, range: kind == .added ? NSUnionRange(previous.currentRange, range) : range,
-                                   anchor: previous.anchor, code: false, structure: previous.structure, occurrences: &occurrences))
+                                   anchor: previous.anchor, code: false, structure: previous.structure,
+                                   matches: previous.reviewMatches.union([matchIndex]), occurrences: &occurrences))
             } else {
                 result.append(item(kind: kind, section: section, earlier: before?.text, current: after?.text,
                                    removed: before?.ranges ?? [], added: after?.ranges ?? [], metadata: metadata,
-                                   range: range, anchor: match.anchor, code: code, structure: (new ?? old)!.kind.components(separatedBy: ":")[0], occurrences: &occurrences))
+                                   range: range, anchor: match.anchor, code: code, structure: (new ?? old)!.kind.components(separatedBy: ":")[0],
+                                   matches: [matchIndex], occurrences: &occurrences))
             }
         }
         // The outline and Previous/Next consume this same section order.
@@ -108,13 +111,13 @@ enum RevisionReviewBuilder {
 
     private static func item(kind: RevisionReviewItem.Kind, section: (String, String), earlier: String?, current: String?,
                              removed: [NSRange], added: [NSRange], metadata: [String], range: NSRange, anchor: Int,
-                             code: Bool, structure: String, occurrences: inout [String: Int]) -> RevisionReviewItem {
+                             code: Bool, structure: String, matches: Set<Int>, occurrences: inout [String: Int]) -> RevisionReviewItem {
         let fingerprint = [kind.rawValue, section.0, earlier ?? "", current ?? "", metadata.joined(separator: "\n")].joined(separator: "\u{1f}")
         let hash = SHA256.hash(data: Data(fingerprint.utf8)).map { String(format: "%02x", $0) }.joined()
         let occurrence = occurrences[hash, default: 0]; occurrences[hash] = occurrence + 1
         return RevisionReviewItem(id: hash + ":\(occurrence)", kind: kind, sectionID: section.0, sectionTitle: section.1,
                                   earlier: earlier, current: current, removedRanges: removed, addedRanges: added,
-                                  metadata: metadata, currentRange: range, anchor: anchor, isCode: code, structure: structure)
+                                  metadata: metadata, currentRange: range, anchor: anchor, isCode: code, structure: structure, reviewMatches: matches)
     }
 
     private static func headings(in text: NSAttributedString) -> [(Int, (String, String))] {

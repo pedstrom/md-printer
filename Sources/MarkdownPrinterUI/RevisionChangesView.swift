@@ -102,6 +102,19 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
 
     func cancelSelectionFocus() { selectionFocusPending = false }
 
+    func selectFromPreview(_ id: String, preservingTextSelection: Bool) {
+        controller.select(id, navigating: false)
+        showSelection()
+        if preservingTextSelection { cancelSelectionFocus() }
+        else { requestSelectionFocus() }
+    }
+
+    func navigateFromPreview(_ event: NSEvent) -> Bool {
+        guard navigateArrow(event) else { return false }
+        requestSelectionFocus()
+        return true
+    }
+
     @objc private func windowReadyForSelectionFocus(_ notification: Notification) {
         applySelectionFocus()
         // A completed comparison sheet can notify before its window has fully detached.

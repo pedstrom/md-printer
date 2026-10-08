@@ -608,12 +608,54 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
     }
     private var pendingReviewNavigation: (String, UInt64, PDFReviewDestination)?
     private var reviewFocus: (revision: UInt64, selection: RevisionReviewFocus?)?
+    private var reviewInteraction: (revision: UInt64, items: [RevisionReviewItem], destinations: [String: PDFReviewDestination], enabled: Bool)?
+    var selectReviewItem: (String, UInt64, Bool) -> Void = { _, _, _ in }
+    var navigateReviewArrow: (NSEvent, UInt64) -> Bool = { _, _ in false }
+    func updateReviewInteraction(items: [RevisionReviewItem], destinations: [String: PDFReviewDestination], revision: UInt64, enabled: Bool) {
+        reviewInteraction = (revision, items, destinations, enabled)
+        applyReviewInteraction()
+    }
+    private func applyReviewInteraction() {
+        let view = activeView
+        view.reviewClickRecognizer.onClick = { _ in }
+        view.reviewNavigateArrow = { _ in false }
+        guard let reviewInteraction, reviewInteraction.enabled, reviewInteraction.revision == activeRevision else {
+            view.reviewArrowNavigationEnabled = false
+            return
+        }
+        let revision = reviewInteraction.revision
+        view.reviewNavigateArrow = { [weak self, weak view] event in
+            guard let self, let view, self.activeView === view, self.activeRevision == revision,
+                  self.reviewInteraction?.enabled == true, self.reviewInteraction?.revision == revision else { return false }
+            return self.navigateReviewArrow(event, revision)
+        }
+        view.reviewClickRecognizer.onClick = { [weak self, weak view] event in
+            guard let self, let view, self.activeView === view, self.activeRevision == revision,
+                  let document = view.document, view.window?.attachedSheet == nil else { return }
+            let location = view.convert(event.locationInWindow, from: nil)
+            guard let page = view.page(for: location, nearest: false) else { return }
+            let point = view.convert(location, to: page)
+            // Links and interactive annotations retain their existing actions.
+            guard !page.annotations.contains(where: { $0.bounds.contains(point) && ($0.url != nil || $0.action != nil || $0.widgetFieldType != nil) }),
+                  let id = RevisionReviewHitTest.item(at: point, pageIndex: document.index(for: page),
+                      items: reviewInteraction.items, destinations: reviewInteraction.destinations) else { return }
+            let sequence = view.reviewClickRecognizer.sequence
+            DispatchQueue.main.async { [weak self, weak view] in
+                guard let self, let view, self.activeView === view, self.activeRevision == revision,
+                      self.reviewInteraction?.enabled == true, self.reviewInteraction?.revision == revision,
+                      view.window?.attachedSheet == nil, view.reviewClickRecognizer.sequence == sequence else { return }
+                view.reviewArrowNavigationEnabled = true
+                self.selectReviewItem(id, revision, view.currentSelection?.string?.isEmpty == false)
+            }
+        }
+    }
     func updateReviewFocus(_ focus: RevisionReviewFocus?, revision: UInt64) {
         reviewFocus = (revision, focus)
         if focus == nil { activeView.reviewFocusProvider.update(nil) }
         applyReviewFocus()
     }
     private func applyReviewFocus() {
+        applyReviewInteraction()
         guard let reviewFocus, reviewFocus.revision == activeRevision else { return }
         activeView.reviewFocusProvider.update(reviewFocus.selection)
     }
@@ -688,6 +730,8 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
     }
 
     func prepareForDismantling() {
+        reviewInteraction = nil
+        previewViews.forEach { $0.reviewClickRecognizer.onClick = { _ in }; $0.reviewArrowNavigationEnabled = false }
         searchControllerUpdateSequence &+= 1
         searchController?.detachForDismantling(from: self)
         searchController = nil
@@ -1209,6 +1253,14 @@ public final class BufferedPDFPreviewView: NSView, PDFSearchTarget, PDFViewingTa
 
 final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     let reviewFocusProvider = RevisionReviewFocusProvider()
+    var reviewArrowNavigationEnabled = false
+    var reviewNavigateArrow: (NSEvent) -> Bool = { _ in false }
+    private(set) lazy var reviewClickRecognizer: RevisionReviewClickRecognizer = {
+        let recognizer = RevisionReviewClickRecognizer(target: nil, action: nil)
+        recognizer.onPress = { [weak self] in self?.reviewArrowNavigationEnabled = false }
+        recognizer.maximumClickDuration = { [weak self] in self?.outboundExportDragRecognizer.minimumPressDuration ?? NSEvent.doubleClickInterval }
+        return recognizer
+    }()
     private var needsInitialPageFit = false
     private var displayRevision = 0
     private var fittedViewWidth: CGFloat?
@@ -1418,6 +1470,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
     }
 
     override func keyDown(with event: NSEvent) {
+        if reviewArrowNavigationEnabled, reviewNavigateArrow(event) { return }
         let navigationModifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
         guard event.charactersIgnoringModifiers == " " else {
             super.keyDown(with: event)
@@ -1543,6 +1596,7 @@ final class PageAdvancingPDFView: PDFView, NSDraggingSource {
         displayDirection = .vertical
         displaysPageBreaks = true
         addGestureRecognizer(outboundExportDragRecognizer)
+        addGestureRecognizer(reviewClickRecognizer)
     }
 
     func handleOutboundExportDrag(

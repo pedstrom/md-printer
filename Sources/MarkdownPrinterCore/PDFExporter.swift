@@ -22,6 +22,7 @@ public struct PDFReviewFragment: Equatable, Sendable {
     public let pageIndex: Int
     public let passageBounds: CGRect
     public let bandBounds: CGRect
+    public var noteBounds: [CGRect] = []
 }
 
 enum PDFReviewFragmentLayout {
@@ -40,7 +41,8 @@ enum PDFReviewFragmentLayout {
         func pdfRect(_ rect: CGRect) -> CGRect {
             CGRect(x: rect.minX, y: height - rect.maxY, width: rect.width, height: rect.height)
         }
-        return PDFReviewFragment(pageIndex: pageIndex, passageBounds: pdfRect(passage), bandBounds: pdfRect(band))
+        return PDFReviewFragment(pageIndex: pageIndex, passageBounds: pdfRect(passage), bandBounds: pdfRect(band),
+                                 noteBounds: notes.filter { !$0.frame.isEmpty }.map { pdfRect($0.frame.insetBy(dx: -2, dy: -2)) })
     }
 }
 
@@ -406,7 +408,7 @@ public final class PDFExporter {
                     cellBounds: item.cell, isImage: item.note.isImage, isSummary: item.note.summary != nil, markers: markers, lineBounds: placementInk)
                 placedNotes.append(RevisionPDFNote(page: index, anchor: item.anchor, frame: placed.0, label: placed.1,
                     cellBounds: item.cell, isMargin: placed.0.minX < content.minX || placed.0.maxX > content.maxX,
-                    isImage: item.note.isImage, strikeWording: item.note.strikesWording, location: item.note.location))
+                    isImage: item.note.isImage, strikeWording: item.note.strikesWording, location: item.note.location, reviewMatches: item.note.reviewMatches))
             }
             for position in placedNotes.indices {
                 var blockedBands: [CGRect] = []
@@ -929,7 +931,9 @@ public final class PDFExporter {
                 passage = CGRect(x: margins.left, y: height - destination.point.y, width: 1, height: 12)
             }
             guard !passage.isNull else { return nil }
-            let related = notes.filter { note in note.page == index && note.location.map({ location in
+            let related = notes.filter { note in
+                let belongs = note.reviewMatches.isEmpty || item.reviewMatches.isEmpty || !note.reviewMatches.isDisjoint(with: item.reviewMatches)
+                return belongs && note.page == index && note.location.map({ location in
                 item.currentRange.length == 0 ? location == item.anchor
                     : NSLocationInRange(location, item.currentRange)
                         || (location == text.length && location == NSMaxRange(item.currentRange))

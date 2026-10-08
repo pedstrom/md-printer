@@ -50,6 +50,8 @@ public struct RevisionDeletion: Equatable, Sendable {
     public let text: String
     public let isImage: Bool
     public let summary: Summary?
+    // Preview associations survive note coalescing without entering export text.
+    var reviewMatches: Set<Int> = []
 
     public init(location: Int, text: String, isImage: Bool = false, summary: Summary? = nil) {
         self.location = location
@@ -88,6 +90,7 @@ public enum RevisionFormatter {
         var reviewMatches: [RevisionReviewMatch] = []
         for group in RevisionStructure.matches(old: old, new: new, original: original, current: current) {
             let start = reviewMatches.count
+            let noteStart = changes.deletions.count
             for pair in group.pairs {
                 if let before = pair.earlier, let after = pair.current {
                     compare(before, after, changes: &changes, reviews: &reviewMatches)
@@ -101,6 +104,7 @@ public enum RevisionFormatter {
             if reviewMatches.count > start {
                 reviewMatches.removeSubrange(start...)
                 reviewMatches.append(group.review)
+                for index in noteStart..<changes.deletions.count { changes.deletions[index].reviewMatches.insert(start) }
             }
         }
         changes.highlights = joinPhraseHighlights(merge(changes.highlights), in: current)
@@ -484,12 +488,14 @@ public enum RevisionFormatter {
                 let previous = result[index]
                 result[index] = RevisionDeletion(location: note.location, text: previous.text + " " + note.text,
                                                  isImage: note.isImage, summary: combined)
+                result[index].reviewMatches = previous.reviewMatches.union(note.reviewMatches)
                 continue
             }
             if let last = result.last, last.location == note.location, last.isImage == note.isImage,
                last.summary == nil && note.summary == nil {
                 result[result.count - 1] = RevisionDeletion(location: note.location,
                     text: last.isImage ? "" : last.text + " " + note.text, isImage: note.isImage)
+                result[result.count - 1].reviewMatches = last.reviewMatches.union(note.reviewMatches)
             } else { result.append(note) }
         }
         return result

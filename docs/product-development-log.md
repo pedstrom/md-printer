@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-08 — Select Changes entries from the PDF
+
+- With the Changes sidebar visible, select and reveal the matching list entry by clicking its changed passage, paragraph, table row, or removal note in the PDF. Expand its heading group, update the complete Earlier/Current detail and numbered preview emphasis, and focus the list for immediate arrow navigation. Retain the PDF reading position when selecting from its own content.
+- Observe completed ordinary clicks without delaying or consuming native mouse events. Preserve text drags and copying, double-click selection, modified clicks, links and interactive annotations, and held export drags. When PDFKit selects table-cell text on a single click, retain PDF focus for Copy and route unmodified arrows into change navigation; a subsequent text-selection gesture restores native arrow handling. Match only the active PDF revision, cancel stale clicks during refresh or sidebar changes, and keep document windows independent.
+- Retain exact removal-note rectangles and note-to-review associations alongside the existing preview geometry to disambiguate overlapping note and passage targets, including different removals at one boundary. Preserve associations through note and prose coalescing and section grouping. Keep PDF drawing, pagination, and export data unchanged. Cover native list focus/reveal, collapsed and offscreen groups, arrow events, selection/copy, hit testing, and buffered refresh with focused regressions. Update README and offline Help; retain the app version and keep this Mac-only.
+- Validation: 123 focused comparison/preview regressions and the full 589-test Mac gate pass, including the coverage threshold, performance checks, and universal bundle validation. In an isolated native app, confirm paragraph, table-cell, and removal-note clicks select their entries; collapsed groups expand; arrows work immediately; native drag and double-click selections remain usable; and Copy stays available. Verify copying selected PDF text while retaining native focus in the regression suite.
+
 ## 2026-10-08 — Expand Open Recent to twenty files
 
 - Set the Mac app's recent-document limit to 20 during application-delegate initialization, before SwiftUI creates its document controller and native menus. Retain the system-managed Open Recent menu and document-opening path.

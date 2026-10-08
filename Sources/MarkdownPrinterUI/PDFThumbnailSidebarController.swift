@@ -178,6 +178,16 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
             self?.previewView.navigateReview(id: id, revision: revision, destination: destination)
         }
         reviewController.selectionDidChange = { [weak self] in self?.updateReviewFocus() }
+        previewView.selectReviewItem = { [weak self] id, revision, preservingTextSelection in
+            guard let self, self.isThumbnailSidebarVisible, self.sidebarMode == .changes,
+                  self.reviewController.revision == revision else { return }
+            self.changesView.selectFromPreview(id, preservingTextSelection: preservingTextSelection)
+        }
+        previewView.navigateReviewArrow = { [weak self] event, revision in
+            guard let self, self.isThumbnailSidebarVisible, self.sidebarMode == .changes,
+                  self.reviewController.revision == revision else { return false }
+            return self.changesView.navigateFromPreview(event)
+        }
 
         splitView.addArrangedSubview(sidebarView)
         splitView.addArrangedSubview(previewView)
@@ -393,6 +403,8 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
             focus = RevisionReviewFocus(id: item.id, number: index + 1, destination: destination)
         } else { focus = nil }
         previewView.updateReviewFocus(focus, revision: reviewController.revision)
+        previewView.updateReviewInteraction(items: reviewController.items, destinations: reviewController.destinations,
+            revision: reviewController.revision, enabled: isThumbnailSidebarVisible && sidebarMode == .changes)
     }
 
     func captureSidebarRestorationState() -> PersistedDocumentSidebar {
