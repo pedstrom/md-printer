@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-13 — Make the GitHub README a product introduction
+
+- Audit the root, development, and fixture READMEs and supporting guides. Reduce the root README from roughly 3,200 words to 650, leading with the practical value of reading, sharing, printing, editable Mac exports, and revision review. Retain clear free Mac and paid mobile downloads, platform requirements, privacy boundaries, and the distinct source licenses.
+- Move operating details into a Mac guide and Markdown-support reference, and add a documentation index that separates everyday guides from development instructions and dated project records. Preserve comparison, navigation, footer, command-line, image, compatibility, restoration, and Quick Look guidance. Correct stale mobile version/build wording, the outdated App Store publication hold, and the development README's claim that the default gate runs iOS tests.
+- At Pete's request, publish three reviewed native app screenshots as intentional README assets: the Mac PDF preview and Changes sidebar with a synthetic weekend guide, and the existing iOS 1.1 iPad sample reader capture. Keep raw captures, temporary app copies, rendered review HTML, and other QA artifacts outside Git; record asset provenance in `docs/images/README.md`.
+- Verify the live stable Mac release and the public paid iPhone/iPad listing against the documented requirements. Recheck CommonMark compatibility at 641/652, inspect GitHub's rendered Markdown with the images, and validate local documentation links and heading fragments. The full Mac gate passes 589 tests with 96.35% testable-production line coverage, performance budgets, and universal app/extension bundle checks. This changes documentation and publication images only.
+
 ## 2026-10-08 — Version 1.5.4
 
 - Bundle structural comparison grouping and matching, consistent highlights and change numbering, PDF-to-Changes selection with immediate arrow navigation, and the twenty-file Open Recent list as Mac version 1.5.4, build 22.

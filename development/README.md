@@ -1,5 +1,7 @@
 # Developing Markdown Printer
 
+[Project and downloads](../README.md) · [User guides and project records](../docs/README.md)
+
 Markdown Printer contains a native SwiftUI/AppKit macOS app and a separate SwiftUI/UIKit iPhone and iPad viewer. The shared parser and syntax tree, each platform’s renderer and PDF generator, preview, save path, print path, and Finder Quick Look renderer are all local and dependency-free. Sparkle 2 supplies the isolated macOS update client; it does not participate in document rendering.
 
 The full app uses the generated PDF as the single source of truth for preview, save, and print. The embedded `MarkdownPrinterQuickLook.appex` is a separate continuous reading surface that shares `MarkdownPrinterCore` before PDF pagination. Its testable behavior lives in the `MarkdownPrinterQuickLookSupport` SwiftPM library; the Xcode app-extension target under `QuickLookExtension/` is only the `QLPreviewingController` bridge required by macOS.
@@ -7,8 +9,9 @@ The full app uses the generated PDF as the single source of truth for preview, s
 ## Requirements
 
 - macOS 14 Sonoma or newer
-- Xcode with Swift 6.1, the iOS 26 SDK, and an iOS 26 simulator
-- An iPhone or iPad running iOS/iPadOS 26 or newer for device installation; a paid Apple Developer team for the non-seven-day device helper
+- Xcode with Swift 6.1 or newer for the Mac app and bundled Quick Look extension
+- For mobile development: the iOS 26 SDK or newer and an installed iOS/iPadOS 26-or-newer simulator runtime
+- For mobile device installation: an iPhone or iPad running iOS/iPadOS 26 or newer; a paid Apple Developer team for the non-seven-day device helper
 
 ## Build and run
 
@@ -44,7 +47,7 @@ The launcher sends local app URLs to its containing app, including when already 
 
 Personal builds and modifications are welcome. The mobile code is source-available under the [Markdown Printer iOS Source-Available License 1.0](../LICENSE-IOS.md): use at work and free sharing are allowed, while monetized redistribution of the code, app, or derivatives requires Peter Edstrom's written permission. The Mac app and shared core remain [MIT-licensed](../LICENSE), and earlier MIT grants remain valid.
 
-Open `iOS/MarkdownPrinterIOS.xcodeproj` in Xcode and select the **MarkdownPrinterIOS** scheme. It builds version 1.0 (build 1) for iPhone and iPad with bundle ID `com.peteedstrom.markdown-printer.ios`. For a simulator build, choose an iPhone or iPad simulator and Run. For a device build, choose your Apple Developer team under **Signing & Capabilities**, connect an iPhone or iPad running iOS/iPadOS 26 or newer, select it as the destination, and Run. The target uses automatic signing and deliberately does not track a development-team identifier.
+Open `iOS/MarkdownPrinterIOS.xcodeproj` in Xcode and select the **MarkdownPrinterIOS** scheme. Its `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` build settings define the mobile version independently of the Mac release; the bundle ID is `com.peteedstrom.markdown-printer.ios`. For a simulator build, choose an iPhone or iPad simulator and Run. For a device build, choose your Apple Developer team under **Signing & Capabilities**, connect an iPhone or iPad running iOS/iPadOS 26 or newer, select it as the destination, and Run. The target uses automatic signing and deliberately does not track a development-team identifier.
 
 Xcode also supports manual builds with a free Personal Team, whose provisioning profile expires after seven days. The command-line device helper below requires a paid team, rejects seven-day-or-shorter profiles, and reports the actual provisioning lifetime before optionally installing.
 
@@ -58,11 +61,11 @@ The helper derives the paid team from the local Apple Development certificate un
 
 The iOS target hosts `UIDocumentBrowserViewController`, so Recents, Shared, Browse, Open In, local files, iCloud Drive, and other system file providers stay under Apple’s document APIs. Each iPad window owns its document session, navigation, search, reading state, and PDF actions. Its `MobileDocumentSession` owns security-scoped access, coordinates reads, refreshes provider changes, and caches one asynchronous Letter PDF per document revision. The native SwiftUI screen renderer is independent from the Core Graphics/TextKit print renderer, while both consume the same shared Markdown syntax tree. See the [iPhone and iPad support guide](../docs/ios-support.md) for behavior and the [iPad validation record](../docs/ipad-validation.md) for automated results and pending physical-device acceptance.
 
-### Mobile App Store documentation publication hold
+### Public availability and mobile licensing
 
-The App Store presentation in the README is prepared locally for publication with the paid iPhone/iPad release. Do not push these documentation and license changes until [the public product page](https://apps.apple.com/app/id6811229585) resolves to Markdown Printer by Peter Edstrom and offers the paid app for both iPhone and iPad. A known Apple ID, a submitted archive, a pending review, or an iPhone-only listing does not satisfy this check.
+The paid iPhone/iPad app is available on [the public product page](https://apps.apple.com/app/id6811229585). Before publishing availability claims for a future mobile release, verify that the public listing offers the stated version and device support. A known Apple ID, submitted archive, or pending review does not establish public availability.
 
-Before pushing, compare the product page's device support and OS requirements with the completed mobile implementation, review the outstanding device-acceptance items, and inspect the exact unpushed commit range for premature availability claims, placeholders, and private machine state. Ensure the mobile license is present before the first newly published iPad implementation commit; a later license change must not accidentally expose the new code through an earlier MIT-only commit. Preserve all previously public MIT history and grants.
+Compare the listing's device support and OS requirements with the implementation, review outstanding device-acceptance items, and inspect the exact unpushed commit range for premature claims, placeholders, and private machine state. Keep the mobile license with covered mobile code in every newly published commit. Preserve all previously public MIT history and grants. See the dated [iPad validation record](../docs/ipad-validation.md) and [iOS 1.1 handoff](../docs/ios-1.1-release.md) for that release's evidence and remaining physical-device acceptance.
 
 ### Mac release packaging
 
@@ -108,7 +111,7 @@ The appcast and both linked assets are EdDSA-signed. Its enclosure and release-n
 Create the matching GitHub Release as a draft and upload all three generated assets before publication. Do not publish, push the tag, or alter an existing public release without Pete's separate authorization. Once publication is authorized and complete, verify the stable release, the `latest` redirect, all signatures, notarization, Gatekeeper, and the public ZIP digest:
 
 ```sh
-scripts/build-and-run/verify_published_release.sh v1.4.7
+scripts/build-and-run/verify_published_release.sh v1.5.4
 ```
 
 Drafts and prereleases are not update channels. A release intended for the app must be stable, and the release tag must match the display version exactly.
@@ -121,13 +124,21 @@ scripts/verify.sh
 
 The release gate runs all XCTest coverage, enforces at least 95% testable-production line coverage, builds the release app, validates its bundle metadata, icon, Sparkle configuration, embedded helpers, Quick Look principal class and supported content types, sandbox entitlements, runtime linkage, nested versions and signatures, and universal architectures, checks every shell script, and rejects common repository-hygiene problems.
 
-The same gate runs the iOS unit, structural PDF, and UI suites on an installed iPhone simulator and separately enforces at least 95% line coverage for `MarkdownPrinterMobileSupport`. Run only the iOS gate with:
+The default gate covers macOS. Include mobile verification when the intended change affects the iOS app, mobile support, or shared code used by iOS:
+
+```sh
+scripts/verify.sh --include-ios
+```
+
+That runs the iPhone and iPad unit, structural PDF, and UI suites and separately enforces at least 95% line coverage for `MarkdownPrinterMobileSupport`. For Mac-only work, use the default scope even if unrelated iOS edits are present. Run only the iOS gate with:
 
 ```sh
 scripts/build-and-run/test_ios.sh
 ```
 
-Set `MARKDOWN_PRINTER_IOS_SIMULATOR_ID` to choose a particular iPhone simulator. Thin SwiftUI view composition is exercised by UI tests but excluded from the mobile-support coverage denominator.
+Set `MARKDOWN_PRINTER_IOS_SIMULATOR_ID` to choose a particular iPhone simulator; the mobile script also selects its iPad validation destinations. Thin SwiftUI view composition is exercised by UI tests but excluded from the mobile-support coverage denominator.
+
+Stage only the intended files, inspect the staged diff, then commit through `scripts/commit_staged.sh "Commit message"`. Add `--include-ios` to that command for the same mobile/shared-code scope described above. The wrapper reruns staged verification before committing. Update `docs/product-development-log.md` for meaningful changes.
 
 It also builds a release-mode benchmark executable and enforces latency, main-thread responsiveness, memory, and 10× input-scaling budgets for representative 100 KB and 1 MB Markdown documents across parsing, attributed rendering, PDF generation, Finder Quick Look rendering, and Word export. Run that gate alone with:
 

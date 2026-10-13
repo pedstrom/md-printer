@@ -2,6 +2,8 @@
 
 Markdown Printer opens local Markdown files and turns them into polished, searchable PDFs without uploading the source document.
 
+[Get the app on the App Store](https://apps.apple.com/app/id6811229585) for iPhone and iPad running iOS/iPadOS 26 or newer. See [all documentation](README.md) for the Mac guide, Markdown support, and development instructions.
+
 ## Getting started
 
 1. Open Markdown Printer and choose a `.md`, `.markdown`, `.mdown`, or `.mkd` file from Files.

@@ -4,117 +4,62 @@
 
 <h1 align="center">Markdown Printer</h1>
 
-<p align="center">Read Markdown and create polished PDFs on Mac, iPhone, and iPad.</p>
+<p align="center"><strong>Give your Markdown a finished page.</strong><br>Read comfortably. Share a polished PDF. Print something worth keeping.</p>
 
 <p align="center">
-  <a href="https://apps.apple.com/app/id6811229585"><strong>Get the iPhone and iPad app on the App Store · Paid download</strong></a><br>
-  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download Markdown Printer 1.5.4 for Mac · Free</strong></a>
+  <a href="https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip"><strong>Download for Mac · Free</strong></a><br>
+  <a href="https://apps.apple.com/app/id6811229585"><strong>Get the iPhone and iPad app · Paid download</strong></a>
 </p>
 
-Markdown is suddenly everywhere. AI tools, coding assistants, note apps, and research workflows are producing copious `.md` files, but those files are not always pleasant to print, share, or read away from an editor. Markdown Printer gives them a polished page without sending the document anywhere.
+AI conversations, project notes, research, and plans often end up as Markdown files. Markdown Printer turns them into documents you can read, hand to someone, or bring to a meeting—with thoughtful typography, clean tables, and searchable text. Everything is rendered on your device, without an account or uploading your document.
 
-**For iPhone and iPad, the App Store is the recommended way to get Markdown Printer.** The paid download gives you the ready-to-use app without managing Xcode builds or signing, and your purchase supports development. Prefer to build it yourself? The source is public, and you're welcome to [build and modify it for your own use](development/README.md#build-and-install-the-iphone-and-ipad-app).
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/mac-preview.jpg" alt="Markdown Printer on Mac showing a sample weekend guide with headings, a quotation, a table, and a checklist"></td>
+    <td width="50%"><img src="docs/images/ipad-reader.png" alt="Markdown Printer on iPad showing sample field notes with headings, a table, and code"></td>
+  </tr>
+  <tr>
+    <td><strong>A finished page on Mac.</strong> Ready to save, share, or print.</td>
+    <td><strong>A comfortable reader on iPad.</strong> PDF sharing is a tap away.</td>
+  </tr>
+</table>
 
-On Mac, drop one file—or a whole batch—onto the app. Each document opens in its own window as a finished PDF that you can save, print, or drag directly into Finder, Microsoft Teams, Messages, and other apps. When coworkers need something editable, save or drag a Microsoft Word version instead.
+## From Markdown to something you can use
 
-## What it does on Mac
+- **Share a finished document.** On Mac, drop in a file and save, print, or drag its PDF into another app. Need an editable handoff? Export Microsoft Word instead.
+- **See what changed.** Compare a document with an older file or a Git version on Mac. Review complete earlier and current passages, then share a PDF or Word copy with the changes marked.
+- **Keep writing in your favorite editor.** Open Mac previews refresh as the source changes, keeping your place. Drop a whole batch of files to open each in its own window.
+- **Read wherever you are.** Preview Markdown in Finder with Space. On iPhone and iPad, open it from Files and read with adjustable text, selectable passages, and scrolling tables and code. Keep several documents open in separate iPad windows.
+- **Enjoy the page.** Avenir Next typography, clear headings, local images, lists, footnotes, and properly monospaced code give your notes room to breathe. The Mac preview is the PDF you save or print.
 
-- Formats ATX and Setext headings, paragraphs, bold, italics, underlining, strikethrough, inline and reference links, core and GitHub-style bare autolinks, section links, footnotes, ordinary and task lists, quotations, tables, fenced and indented code, entity references, and inline or reference images
-- Previews Markdown directly in Finder with a continuous, screen-optimized Quick Look view: select a file and press Space or Command-Y
-- Uses Avenir Next for the document and a proper monospaced font for code
-- Produces searchable, US Letter PDFs with page numbers
-- Exports editable Microsoft Word documents with formatting, links, tables, and local images
-- Compares with an older Markdown version, adding yellow highlights, red removal summaries, and struck short edits to PDF and Word exports without reflowing the current document
-- Opens multiple Markdown files at once, each in its own window
-- Refreshes open documents automatically when their Markdown files change while preserving the window, zoom, and reading position
-- Finds text in the rendered PDF with the standard Command-F, Command-G, and Shift-Command-G shortcuts
-- Checks GitHub for signed stable updates and installs them only after you approve
-- Lets you hold and drag the preferred PDF or Word export directly to the Desktop or another app
-- Keeps your files entirely on your Mac: no account, upload, analytics, or remote rendering
+![Mac comparison view with numbered changes, complete Earlier and Current passages, and highlighted PDF text](docs/images/mac-comparison.jpg)
 
-The PDF in the app preview is the same print-ready, paginated PDF that gets saved or printed. Finder Quick Look is intentionally different: it reuses the native Markdown renderer before PDF pagination to provide a continuous, screen-optimized reading view with selectable text and adaptive light/dark colors. PDF remains the default export, while **Markdown Printer > Settings** can make Microsoft Word the default for Save, Share, and dragging. Hold **Option** when dragging from the preview or clicking **Share** to use the other format just once; the Save dialog can also switch formats for one export. Saved and dragged files keep the original Markdown filename with the appropriate `.pdf` or `.docx` extension. A dragged file is prepared locally only when the drag begins, so apps that accept normal Mac file attachments receive a concrete file with the correct name. Local images are resolved relative to the Markdown file. On Mac, a remote image begins as a readable placeholder; click it to download that image, or use its context menu to download every remote image in the document. On iPhone and iPad, secure remote images are fetched automatically when their document opens. Downloads are kept in the app's disposable cache and are never written beside the Markdown file. Finder Quick Look stays offline. Because macOS gives the Quick Look sandbox access to the selected Markdown file but may withhold access to neighboring files, a relative local image can be unavailable in Finder even when it renders in the full app. Quick Look marks unavailable images with a bordered box and a centered filename, without showing the full path.
+## Get started
 
-Revision formatting uses the same document window and export actions. Choose **File > Compare with Git Version…** (**⌃⌘G**) to select a commit that changed the current file, or **Compare with Older Version…** to supply another Markdown document; **Clear Change Highlighting** (**⌃⌘H**) removes it. Changed phrases receive continuous yellow highlights, including their internal spaces. Substantial rewrites highlight passages while preserving meaningful unchanged sections; new or moved paragraphs, formatting changes, and changed link targets are also highlighted. Short removed words and phrases appear in small red callouts with an unstruck caret (`^`) followed by wording with strikethrough. Complete prose removals use plain red summaries such as `^ removed 3 sentences` or `^ removed 2 paragraphs`, with whole-paragraph counts taking priority over sentence counts. Partial prose fragments longer than 12 words use an exact deleted-word count such as `^ removed 18 words`; surviving words in broad rewrite excerpts are excluded from that count. Complete table, list, and subsection removals use structural summaries such as `^ removed 1 table`, `^ removed 3 list items`, or `^ removed 1 section`. Headings and list items are not counted as whole paragraphs, and literal code retains its removed wording. Summary labels prefer enough space for their complete count and unit. The current text does not move. Callout wording uses precise removals even when a broad rewrite is highlighted. Table callouts truncate before their cell boundary. Available body and cell gaps are preferred over page margins, and the caret stays at the deletion boundary when wording is displaced. PDF connectors are dashed, attach to the nearest available edge of the removed wording, and avoid current text, other notes, and carets. Text removals at the same boundary share one caret; separate removals keep separate anchors. Space limits never block a successful comparison: callouts shorten with an ellipsis, and an ellipsis at the deletion boundary replaces the floating label when it cannot fit or connect safely. When a PDF callout needs a page margin, it omits the caret and wraps up to four lines to show the removed wording, with a leader to its location. Standalone prose whitespace and minor punctuation changes receive no highlight. Minor punctuation-only removals and ordinary initial-capitalization changes omit the red callout; numbers, negations, quantity symbols, acronyms, images, and code remain meaningful changes. Fragmented replacements in rewritten sentences use a single old-phrase excerpt instead of many individual-word callouts. Changed image references get a yellow border; removed images get `^ removed image`. Image files themselves are not compared. The original stays fixed while the current file refreshes, and its local snapshot survives session restoration even if the original was temporary. PDF and Word exports include these markings; Word retains editable body text and floating deletion callouts.
+**Mac · macOS 14 Sonoma or newer · Apple silicon and Intel**
 
-The Mac sidebar offers **Pages** and **Changes**. Pages retains the native page thumbnails. After a comparison succeeds, Changes opens with its first change selected and keyboard focus ready for immediate arrow navigation. Reopening Changes focuses the remembered selection. Its heading-grouped list sits above complete, selectable **Earlier** and **Current** passages. The list and details scroll independently; drag their divider or resize the sidebar to give long passages more room. Comparison aligns sections and their Markdown structure before comparing words. Whole added lists and sections, removed subsections, and complete table additions or removals appear as single entries. Changed table rows keep their complete cells together and match row identifiers and column meanings; table/list rewrites and paragraph consolidation retain complete Earlier and Current passages. Consecutive complete prose additions and removals are combined. Sidebar highlights use the same coherent current passages as the PDF, while removed-word detail retains exact evidence. Entry numbers, heading groups, arrow navigation, and preview numbers follow one sequence, including renamed sections. Click an entry or use Previous/Next to visit its current PDF location, including changes in collapsed groups. With Changes open, click a changed paragraph or removal note in the PDF to reveal and select its list entry, then immediately use the arrow keys. Selecting from the PDF keeps its reading position. Text selection and copying, double clicks, modified clicks, links, and held export drags keep their normal behavior. In the Changes list or details, Down/Right Arrow visits the next change and Up/Left Arrow visits the previous change; navigation stops at both ends. A pale yellow band, amber outline, and circular change number identify the selected passage in the preview. The band includes related removal notes in the margin and continues separately on each page of a long passage. Navigation normally places the passage about a quarter of the way down the preview to retain context above; tall passages use less space above, and comfortably visible passages stay in place. The initial comparison selection does not scroll. Hiding the sidebar removes the band; reopening Changes restores the selected entry’s emphasis without navigating. This selection emphasis stays out of PDF and Word exports. Removed passages navigate to their deletion boundary and retain their full wording even when a printed note is shortened or summarized. Formatting, link targets, and image references are described explicitly; image pixels are not compared. Scrolling preserves the selection, ordinary live refreshes retain sidebar choices, and workspace reopening restores the sidebar layout and reading state. **View → Show/Hide Sidebar** controls visibility. Clearing comparison markings returns to Pages.
+Download the ZIP above, unzip it, and move **Markdown Printer** to Applications. Open the app and drop in a Markdown file. The Mac release is signed and notarized by Apple; future updates are available from **Markdown Printer > Check for Updates…**.
 
-The native Git picker shows locally available history reachable from `HEAD`, with commit dates, messages, and IDs, and follows detected renames. Use **Up/Down** to select a version and **Return** to compare, or double-click a row. Git must already be installed. Reading history and comparing never changes the repository or fetches remote history. The newest committed version is selected for an edited file; a file that already matches it defaults to the preceding distinct version. The selected historical text and commit timestamp are captured together and remain fixed after reopening.
+**iPhone and iPad · iOS/iPadOS 26 or newer**
 
-When a configured footer includes a date, differing dates appear on two lines: the current file’s modification date above the original date. The current date has a yellow background; the original is red with strikethrough, with no labels. Existing date/time/time-zone preferences apply to both. Git originals use their commit timestamp; ordinary file originals use their captured file modification time. Matching displayed dates stay ordinary, and unavailable original dates are omitted. PDF and editable Word exports include the same styled footer dates.
+Install from the App Store, choose a Markdown file in Files, and use the share icon to save, send, or print a PDF. The paid app supports the project's continued development.
 
-AI or shell workflows can open the current file with an explicit original:
+Your source files stay unchanged. Local images resolve beside the Markdown file. Remote images download when you choose on Mac and automatically on iPhone and iPad; Finder Quick Look stays offline. See the [privacy policy](docs/privacy-policy.md) for details.
 
-```sh
-"/Applications/Markdown Printer.app/Contents/MacOS/MarkdownPrinterCLI" open current.md --original older.md
-```
+## Explore further
 
-Without `--original`, `open` accepts multiple files and opens them normally. An original requires exactly one current file. The app reads both inputs locally and snapshots the original text and file modification timestamp before the CLI returns. Use the native Git picker to capture a historical commit timestamp directly; a file extracted elsewhere from Git retains only the timestamp available on that file.
+- [Mac guide](docs/mac-guide.md) — exporting, comparing versions, Finder previews, and shortcuts.
+- [iPhone and iPad guide](docs/ios-support.md) — Files, windows, sharing, and troubleshooting.
+- [Markdown support](docs/markdown-support.md) — formatting, images, links, and compatibility.
+- [Development guide](development/README.md) — build, modify, test, and contribute.
+- [Release notes](release-notes/) · [All documentation](docs/README.md) · [Report an issue](https://github.com/pedstrom/md-printer/issues).
 
+## Made for a practical need
 
-Markdown Printer implements selected CommonMark 0.31.2 syntax rather than claiming complete CommonMark conformance. Its compatibility suite currently matches 641 of the specification's 652 normative examples (98.3%), including every example for headings, emphasis, code spans and blocks, references, autolinks, entities, raw HTML, images, and line breaks. The remaining gaps are uncommon block-quote and deeply nested-list edge cases plus one unusual link-label case. Arbitrary raw HTML is displayed as literal, code-styled source and is never executed. A standalone `<img>` tag is the narrow exception: it uses the same local or user-initiated remote-image pipeline as Markdown image syntax. The app's established `<u>` underline and `<br>` line-break extensions remain available.
-
-On Mac, background source changes never require dismissing a read-error dialog. If a source temporarily disappears or cannot be read, the last successful preview remains visible while the app retries. After about two seconds, a compact banner says “Source file unavailable. Showing the last rendered version.” A successful read refreshes the document as needed and clears the banner, including when its content is unchanged. Confirmed renames and moves update the source filename, relative image/link folder, and window restoration location automatically. If the source stays unavailable, you can close the window and open another file.
-
-After a normal quit, **File → Reopen Windows from Last Session** restores your Mac documents, tabs, window positions and sizes, preview zoom, and scroll positions. Installing an app update restores the same workspace automatically. Windows stay on an available screen if a display has been disconnected; changed document pagination uses the saved page-relative reading position.
-
-## Install
-
-### Mac
-
-Markdown Printer requires macOS 14 Sonoma or newer.
-
-1. [Download Markdown Printer](https://github.com/pedstrom/md-printer/releases/latest/download/Markdown-Printer.zip).
-2. Unzip it and move **Markdown Printer** to your Applications folder.
-3. Open the app, then drop Markdown files onto it or use Finder's **Open With** command.
-
-The Finder Quick Look extension is bundled inside the app, so removing Markdown Printer also removes its Quick Look capability. To use it, select a Markdown file in Finder and press Space or Command-Y. If macOS has disabled the extension, open **System Settings → General → Login Items & Extensions → Quick Look ⓘ** and turn on Markdown Printer. The app's Settings window includes that written path and an **Open System Settings…** button.
-
-Markdown Printer advertises itself as a viewer for Markdown without silently changing an existing default. If you want Markdown files to open in it when double-clicked, use **Make Markdown Printer Default** in the app's Settings. macOS may ask for consent and records the choice by Markdown content type rather than by filename extension; Markdown Printer makes one request for its declared Markdown type, which covers `.md`, `.markdown`, `.mdown`, and `.mkd`.
-
-The release is signed with a Developer ID certificate and notarized by Apple, so it opens through the normal macOS security flow.
-
-Version 1.3.0 is the first release that includes the updater. If you have an older version, install a current Mac release manually once; future stable releases can be installed with **Markdown Printer > Check for Updates…**.
-
-### Links, sections, and task lists
-
-Bare `https://example.com`, `http://example.com`, `www.example.com`, `hello@example.com`, `mailto:hello@example.com`, and `xmpp:hello@example.com/resource` become links using [GFM’s extended autolink rules](https://github.github.com/gfm/#autolinks-extension-). Visible text is preserved, with trailing punctuation and unmatched closing parentheses excluded from the link. Code, raw HTML, image descriptions, and existing link labels do not gain nested links.
-
-Use `- [ ] Pending`, `- [x] Done`, or `- [X] Done` for read-only checkboxes. Whitespace must follow the marker; tabs, nesting, continuation paragraphs, and mixed ordinary/task lists are supported.
-
-Use `[Packing](#packing-list)` to jump to `## Packing List`, or `[Packing](other.md#packing-list)` to open a section in another local Markdown file. Relative paths resolve from the source Markdown file’s folder. Following [GitHub’s heading rules](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax#section-links), anchors use lowercase heading content, remove formatting and punctuation, replace spaces with hyphens, retain Unicode letters and underscores, and resolve collisions in document order with numeric suffixes such as `-1`. All six heading levels, including headings inside quotations and lists, receive anchors. Percent-escaped filenames and fragments are supported. Custom HTML anchors are outside this support.
-
-Same-document sections work in Mac preview, continuous Finder Quick Look, and the iPhone/iPad reader. Quick Look requests cross-file section navigation through the Mac app's registered local URL route without requesting access to sibling files. The Quick Look host controls whether that app launch is allowed; if it declines, the preview shows a notice to open the source file in Markdown Printer using the toolbar. Missing same-document sections do not open an external application; a cross-file heading failure in the app reports the missing section while leaving the opened document available.
-
-PDF exports contain native heading destinations and GoTo links; Word exports contain Word-safe heading bookmarks and internal hyperlinks. Cross-file links in both formats remain standard `file:` URLs with fragments. Outside Markdown Printer, heading navigation depends on the receiving viewer and associated app.
-
-## iPhone and iPad app
-
-[Get Markdown Printer on the App Store](https://apps.apple.com/app/id6811229585) for iPhone and iPad running iOS/iPadOS 26 or newer.
-
-Open Markdown from Apple’s native Files browser and read a continuous, selectable document with adaptive colors, Dynamic Type, images, and horizontally scrolling code and tables. Find text, follow linked documents, and use the share icon to send, save, or print a searchable PDF generated on your device. If a file provider restricts access to linked files, choose the containing folder once to allow access. Secure remote images load into the disposable app cache, with readable placeholders when an image is unavailable.
-
-On iPad, Markdown Printer supports separate, resizable document windows. Incoming Markdown files and Files drops open a new window when the receiving window already contains a document, or activate a window already showing that file. Linked documents stay in their current window unless you choose **Open in New Window** from the link’s context menu. Each window restores its document references, navigation, search, and reading position using local scene state. Native keyboard commands and anchored PDF sharing/printing support keyboard and trackpad workflows. See the [iPhone and iPad support guide](docs/ios-support.md) for shortcuts and recovery steps.
-
-Building from source remains an option. The [development guide](development/README.md#build-and-install-the-iphone-and-ipad-app) covers Xcode, signing, and installation. Personal builds, use at work, and free forks and sharing are allowed; monetized redistribution of the mobile app or its code requires written permission under the [mobile source license](LICENSE-IOS.md).
-
-## Privacy and update checks
-
-Document rendering remains local and Markdown Printer never uploads document contents. The Mac app makes a secure image request only when you choose to download a remote image; the iPhone and iPad app makes secure requests automatically for remote images referenced by the document you open. Results are stored in the app's disposable cache, not beside the document. The Quick Look extension is sandboxed, has no network entitlement, and never fetches remote images. By default, the full Mac app also makes an ordinary HTTPS request to GitHub at most once per day to see whether a signed stable release is newer. It does not send system-profile information, analytics, or document content. Automatic checks can be disabled in **Markdown Printer > Settings**, and an update is downloaded only after you choose **Install Update**.
-
-## About this project
-
-I vibe coded Markdown Printer in an afternoon because I wanted the growing pile of AI-generated Markdown on my Mac to look good on paper. If it is helpful to you, awesome. If not, feel free to move on.
+I started Markdown Printer because I wanted the growing pile of AI-generated Markdown on my Mac to look good on paper. It has grown into a native reader and document-sharing tool for Mac, iPhone, and iPad.
 
 — Peter Edstrom
 
-Want to inspect or build it yourself? The developer commands and project structure live in the [development guide](development/README.md).
+If it earns a place in your workflow, you can [buy me a coffee](https://buymeacoffee.com/peteedstrom) to support more small, practical, independent tools.
 
-## Support
-
-> ☕ **Found this project useful?** You can [buy me a coffee](https://buymeacoffee.com/peteedstrom) to support more small, practical, independent tools.
-
-## License
-
-The Mac app and shared core are open source under the [MIT License](LICENSE). The iPhone and iPad app and mobile-specific support code are source-available under the [Markdown Printer iOS Source-Available License 1.0](LICENSE-IOS.md).
-
-You may inspect, build, modify, and freely share the covered mobile code and apps, including for your own use at work. Selling or otherwise monetizing their redistribution—including paid bundles, subscriptions, and advertising-supported repackaging—requires Peter Edstrom's written permission. This does not restrict commercial use of documents you create with the app. Previously published MIT versions retain their existing permissions; see the license files for the exact scope and terms.
+The Mac app and shared core are open source under [MIT](LICENSE). Mobile-specific code is [source-available](LICENSE-IOS.md): personal builds, use at work, and free sharing are welcome; monetized redistribution requires written permission. Documents you create are yours to use commercially.
