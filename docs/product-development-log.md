@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-13 — Commit descriptions beside selected changes
+
+- Add the approved gray context block above complete Earlier/Current wording in the Mac Changes sidebar. Show only commits that changed the selected passage, place each date beside its title, and expand longer descriptions with native disclosure buttons. Omit Git IDs, separators between commits, and the proposed top-of-pane commit-count line.
+- Trace semantic passage ancestry through local Git versions, including structural grouping, renamed paths, removed passages, and merge ancestry. Keep unrelated passages and rename-only commits out of the selected change's descriptions; identify uncommitted edits separately. Read message bodies locally, preserve offline Git safeguards, and leave unavailable history as a readable sidebar state.
+- Load context asynchronously per document window, cache unchanged comparisons, cancel superseded or closing work, and preserve PDF rendering, exports, selection, navigation, and sidebar restoration. Update README and offline Help. Keep this Mac-only and retain the app version.
+- Validation: focused attribution, local Git, native sidebar, asynchronous selected-text preservation, and light/dark gray-fill regressions pass. Visually confirm the gray block, both description disclosures, and immediate arrow navigation between the two- and one-commit changes in an isolated native app. Require the full Mac coverage, performance, and universal bundle gate before committing.
+
 ## 2026-10-13 — Make the GitHub README a product introduction
 
 - Audit the root, development, and fixture READMEs and supporting guides. Reduce the root README from roughly 3,200 words to 650, leading with the practical value of reading, sharing, printing, editable Mac exports, and revision review. Retain clear free Mac and paid mobile downloads, platform requirements, privacy boundaries, and the distinct source licenses.

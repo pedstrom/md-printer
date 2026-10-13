@@ -140,7 +140,7 @@ public enum RevisionFormatter {
         }
     }
 
-    private static func units(in text: NSAttributedString) -> [Unit] {
+    static func units(in text: NSAttributedString) -> [Unit] {
         var result: [Unit] = []
         text.enumerateAttribute(.revisionBlock, in: NSRange(location: 0, length: text.length)) { marker, range, _ in
             guard marker != nil else { return }

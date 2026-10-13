@@ -21,6 +21,8 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
     let listScroll = NSScrollView()
     let detailScroll = NSScrollView()
     let detailText = ReviewDetailTextView()
+    let commitContextView = RevisionCommitContextView(frame: .zero)
+    private let detailContent = ReviewPane()
     let split = ReviewSplitView()
     private let detailPane = ReviewPane()
     private let baselineLabel = NSTextField(wrappingLabelWithString: "")
@@ -33,6 +35,8 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
     private var entries: [String: Entry] = [:]
     private var updating = false
     private var displayedID: String?
+    private var displayedCommitContext: GitChangeContext?
+    private var displayedCommitStatus: RevisionReviewController.CommitContextStatus?
     private var selectionFocusPending = false
 
     override var isFlipped: Bool { true }
@@ -58,7 +62,8 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
         outline.setAccessibilityLabel("Document changes")
         listScroll.documentView = outline; listScroll.hasVerticalScroller = true
         listScroll.drawsBackground = false
-        detailScroll.documentView = detailText; detailScroll.hasVerticalScroller = true
+        detailContent.addSubview(commitContextView); detailContent.addSubview(detailText)
+        detailScroll.documentView = detailContent; detailScroll.hasVerticalScroller = true
         detailScroll.drawsBackground = false
         detailText.isEditable = false; detailText.isSelectable = true; detailText.drawsBackground = false
         detailText.isVerticallyResizable = true; detailText.isHorizontallyResizable = false
@@ -67,6 +72,9 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
         detailText.textContainer?.containerSize = NSSize(width: 300, height: CGFloat.greatestFiniteMagnitude)
         detailText.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         detailText.setAccessibilityLabel("Earlier and current passages")
+        commitContextView.sizeDidChange = { [weak self] in self?.layoutDetail() }
+        commitContextView.navigateArrow = { [weak self] in self?.navigateArrow($0) ?? false }
+        controller.commitContextDidChange = { [weak self] in self?.showCommitContext(force: true) }
         for view in [selectionLabel, contextLabel, previousButton, nextButton, detailScroll] as [NSView] { detailPane.addSubview(view) }
         for (button, symbol, label, action) in [(previousButton, "chevron.left", "Previous change", #selector(previous)),
                                                (nextButton, "chevron.right", "Next change", #selector(next))] {
@@ -163,10 +171,16 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
         previousButton.frame = NSRect(x: max(0, width - 74), y: 5, width: 30, height: 28)
         nextButton.frame = NSRect(x: max(0, width - 40), y: 5, width: 30, height: 28)
         detailScroll.frame = NSRect(x: 0, y: 58, width: width, height: max(0, detailPane.bounds.height - 58))
-        detailText.setFrameSize(NSSize(width: detailScroll.contentSize.width, height: max(detailScroll.contentSize.height, detailText.frame.height)))
+        let contentWidth = detailScroll.contentSize.width
+        let commitHeight = commitContextView.contentHeight(width: max(20, contentWidth - 20))
+        commitContextView.frame = NSRect(x: 10, y: 8, width: max(20, contentWidth - 20), height: commitHeight)
+        let textTop = commitContextView.isHidden ? 0 : commitHeight + 18
+        detailText.frame = NSRect(x: 0, y: textTop, width: contentWidth, height: max(0, detailScroll.contentSize.height - textTop))
         if let container = detailText.textContainer, let layout = detailText.layoutManager {
             layout.ensureLayout(for: container)
-            detailText.setFrameSize(NSSize(width: detailScroll.contentSize.width, height: max(detailScroll.contentSize.height, layout.usedRect(for: container).height + 20)))
+            let textHeight = layout.usedRect(for: container).height + 20
+            detailText.setFrameSize(NSSize(width: contentWidth, height: textHeight))
+            detailContent.setFrameSize(NSSize(width: contentWidth, height: max(detailScroll.contentSize.height, textTop + textHeight)))
         }
     }
 
@@ -212,12 +226,22 @@ final class RevisionChangesView: NSView, NSOutlineViewDataSource, NSOutlineViewD
             item.sectionTitle + (controller.destinations[item.id].map { " · " + $0.pageLabel } ?? "")
         } ?? ""
         previousButton.isEnabled = controller.canPrevious; nextButton.isEnabled = controller.canNext
-        if force || displayedID != controller.selectedItem?.id || detailText.string.isEmpty {
+        let changed = force || displayedID != controller.selectedItem?.id || detailText.string.isEmpty
+        if changed {
             displayedID = controller.selectedItem?.id
             detailText.textStorage?.setAttributedString(controller.selectedItem.map(RevisionReviewDetail.text(for:))
                 ?? NSAttributedString(string: "No meaningful document changes.", attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.secondaryLabelColor]))
-            layoutDetail()
         }
+        showCommitContext(force: changed)
+    }
+
+    private func showCommitContext(force: Bool = false) {
+        guard force || displayedCommitContext != controller.commitContext || displayedCommitStatus != controller.commitContextStatus else { return }
+        displayedCommitContext = controller.commitContext; displayedCommitStatus = controller.commitContextStatus
+        let id = controller.selectedItem?.id ?? ""
+        commitContextView.configure(status: controller.commitContextStatus,
+            commits: controller.commitContext.commits[id] ?? [], uncommitted: controller.commitContext.uncommittedItems.contains(id))
+        layoutDetail()
     }
 
     private func showSelection() {

@@ -5,6 +5,72 @@ import XCTest
 @testable import MarkdownPrinterUI
 
 final class GitDocumentHistoryTests: XCTestCase {
+    func testCommitContextFollowsPassagesAcrossRenameAndReadsFullDescriptionsLocally() async throws {
+        let repository = try GitTestRepository()
+        defer { repository.remove() }
+        let old = "# Plan\n\n## Review\n\nThe owner approves the final version.\n\n## Schedule\n\nFinish the review by Friday."
+        try repository.write(old, to: "old.md")
+        let initial = try repository.commit("Initial document")
+        let first = old.replacingOccurrences(of: "approves", with: "reviews")
+        try repository.write(first, to: "old.md")
+        let review = try repository.commit("Clarify review ownership\n\nName the owner as the reviewer.\n\nKeep the review deadline separate.")
+        try repository.git(["mv", "old.md", "current.md"])
+        _ = try repository.commit("Rename the document")
+        let second = first.replacingOccurrences(of: "Friday", with: "Thursday")
+        try repository.write(second, to: "current.md")
+        let schedule = try repository.commit("Update the review deadline")
+        let final = second.replacingOccurrences(of: "reviews", with: "must approve")
+        try repository.write(final, to: "current.md")
+        let approval = try repository.commit("Require approval before sharing\n\nMake approval explicit before sending the document.")
+        try repository.write("Unrelated", to: "other.md")
+        _ = try repository.commit("Other file")
+        let before = try repository.fingerprint()
+        let service = GitDocumentHistoryService(executableURL: repository.executable)
+        let current = try MarkdownDocument.load(from: repository.url.appendingPathComponent("current.md"))
+        let baseline = OriginalDocumentSnapshot(document: MarkdownDocument(title: "Plan", markdown: old), gitRevision: initial)
+        let context = try await GitChangeContextLoader(service: service).context(current: current, baseline: baseline)
+        let items = MarkdownRenderer().render(document: current, original: baseline.document).reviewItems
+        let reviewItem = try XCTUnwrap(items.first { $0.sectionTitle == "Review" })
+        let scheduleItem = try XCTUnwrap(items.first { $0.sectionTitle == "Schedule" })
+        XCTAssertEqual(context.commits[reviewItem.id]?.map(\.id), [review, approval])
+        XCTAssertEqual(context.commits[scheduleItem.id]?.map(\.id), [schedule])
+        XCTAssertEqual(context.commits[reviewItem.id]?.first?.body, "Name the owner as the reviewer.\n\nKeep the review deadline separate.")
+        XCTAssertTrue(context.uncommittedItems.isEmpty)
+        XCTAssertEqual(try repository.fingerprint(), before)
+
+        let local = MarkdownDocument(sourceURL: current.sourceURL, title: current.title, markdown: final.replacingOccurrences(of: "Thursday", with: "Wednesday"))
+        let localContext = try await GitChangeContextLoader(service: service).context(current: local, baseline: baseline)
+        let localItem = try XCTUnwrap(MarkdownRenderer().render(document: local, original: baseline.document).reviewItems.first { $0.sectionTitle == "Schedule" })
+        XCTAssertEqual(localContext.commits[localItem.id]?.map(\.id), [schedule])
+        XCTAssertTrue(localContext.uncommittedItems.contains(localItem.id))
+    }
+
+    func testComparisonHistoryUsesAncestryInsteadOfMixingMergeBranches() async throws {
+        let repository = try GitTestRepository()
+        defer { repository.remove() }
+        try repository.write("The initial document.\n", to: "file.md")
+        let initial = try repository.commit("Initial")
+        try repository.git(["checkout", "-qb", "side"])
+        try repository.write("The side document.\n", to: "file.md")
+        let side = try repository.commit("Side")
+        try repository.git(["checkout", "-q", "main"])
+        try repository.write("The main document.\n", to: "file.md")
+        let main = try repository.commit("Main")
+        _ = try repository.git(["merge", "--no-edit", "side"], allowFailure: true)
+        try repository.write("The merged document.\n", to: "file.md")
+        let merge = try repository.commit("Merge")
+        let service = GitDocumentHistoryService(executableURL: repository.executable)
+        let history = try await service.history(for: repository.url.appendingPathComponent("file.md"))
+        let mainLine = try await service.comparisonRevisions(after: initial, in: history)
+        let sideLine = try await service.comparisonRevisions(after: side, in: history)
+        let atHead = try await service.comparisonRevisions(after: merge, in: history)
+        XCTAssertEqual(mainLine.map(\.commitID), [main, merge])
+        XCTAssertEqual(sideLine.map(\.commitID), [merge])
+        XCTAssertTrue(atHead.isEmpty)
+        let absent = OriginalDocumentSnapshot(document: MarkdownDocument(title: "Old", markdown: "Old"), gitRevision: firstID)
+        do { _ = try await GitChangeContextLoader(service: service).context(current: MarkdownDocument(sourceURL: history.sourceURL, title: "Now", markdown: "Now"), baseline: absent); XCTFail("Expected unavailable baseline") }
+        catch { XCTAssertEqual(error as? GitDocumentHistoryError, .unavailableVersion) }
+    }
     private let root = URL(fileURLWithPath: "/private/tmp/repository")
     private let git = URL(fileURLWithPath: "/Applications/Xcode.app/Contents/Developer/usr/bin/git")
     private let firstID = String(repeating: "a", count: 40)

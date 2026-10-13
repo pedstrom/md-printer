@@ -32,6 +32,8 @@ final class MarkdownPrinterHelpTests: XCTestCase {
             "Navigate and Zoom the Preview",
             "Search",
             "Sidebar",
+            "commits that changed the selected passage",
+            "Commit dates appear beside their titles",
             "Windows, Tabs, and Reopening",
             "Reopen Windows from Last Session",
             "Page Setup, Footers, and Printing",

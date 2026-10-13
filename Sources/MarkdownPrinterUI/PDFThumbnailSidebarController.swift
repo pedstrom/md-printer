@@ -235,6 +235,7 @@ public final class PDFPreviewContainerView: NSView, NSSplitViewDelegate, PDFThum
 
     func prepareForDismantling() {
         changesView.cancelSelectionFocus()
+        reviewController.cancelCommitContext()
         if let sidebarController {
             sidebarController.detachForDismantling(from: self)
         }

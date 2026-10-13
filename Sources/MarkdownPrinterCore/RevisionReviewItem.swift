@@ -18,6 +18,7 @@ public struct RevisionReviewItem: Equatable, Sendable, Identifiable {
     public let isCode: Bool
     public var structure: String = "paragraph"
     var reviewMatches: Set<Int> = []
+    var earlierRange: NSRange? = nil
 
     public var changeLabel: String {
         let noun = ["table": "table", "row": "table row", "cell": "table cell", "list": "list", "section": "section", "passage": "passage"][structure]
@@ -87,11 +88,13 @@ enum RevisionReviewBuilder {
                                    metadata: metadata, range: kind == .added ? NSUnionRange(previous.currentRange, range) : range,
                                    anchor: previous.anchor, code: false, structure: previous.structure,
                                    matches: previous.reviewMatches.union([matchIndex]), occurrences: &occurrences))
+                result[result.count - 1].earlierRange = previous.earlierRange.flatMap { first in old.map { NSUnionRange(first, $0.range) } }
             } else {
                 result.append(item(kind: kind, section: section, earlier: before?.text, current: after?.text,
                                    removed: before?.ranges ?? [], added: after?.ranges ?? [], metadata: metadata,
                                    range: range, anchor: match.anchor, code: code, structure: (new ?? old)!.kind.components(separatedBy: ":")[0],
                                    matches: [matchIndex], occurrences: &occurrences))
+                result[result.count - 1].earlierRange = old?.range
             }
         }
         // The outline and Previous/Next consume this same section order.

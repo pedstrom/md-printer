@@ -27,7 +27,7 @@ AI conversations, project notes, research, and plans often end up as Markdown fi
 ## From Markdown to something you can use
 
 - **Share a finished document.** On Mac, drop in a file and save, print, or drag its PDF into another app. Need an editable handoff? Export Microsoft Word instead.
-- **See what changed.** Compare a document with an older file or a Git version on Mac. Review complete earlier and current passages, then share a PDF or Word copy with the changes marked.
+- **See what changed.** Compare a document with an older file or a Git version on Mac. Review complete earlier and current passages, with the contributing Git commit descriptions above each selected change, then share a PDF or Word copy with the changes marked.
 - **Keep writing in your favorite editor.** Open Mac previews refresh as the source changes, keeping your place. Drop a whole batch of files to open each in its own window.
 - **Read wherever you are.** Preview Markdown in Finder with Space. On iPhone and iPad, open it from Files and read with adjustable text, selectable passages, and scrolling tables and code. Keep several documents open in separate iPad windows.
 - **Enjoy the page.** Avenir Next typography, clear headings, local images, lists, footnotes, and properly monospaced code give your notes room to breathe. The Mac preview is the PDF you save or print.

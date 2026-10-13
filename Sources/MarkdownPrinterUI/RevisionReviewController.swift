@@ -42,6 +42,11 @@ package struct PersistedDocumentSidebar: Equatable {
 
 @MainActor
 package final class RevisionReviewController {
+    enum CommitContextStatus: Equatable { case hidden, loading, ready, unavailable }
+    private struct ContextKey: Equatable {
+        let current: MarkdownDocument
+        let baseline: OriginalDocumentSnapshot
+    }
     private(set) var items: [RevisionReviewItem] = []
     private(set) var destinations: [String: PDFReviewDestination] = [:]
     private(set) var baseline: OriginalDocumentSnapshot?
@@ -50,6 +55,14 @@ package final class RevisionReviewController {
     private(set) var restorationPending = false
     var navigate: (String, UInt64, PDFReviewDestination) -> Void = { _, _, _ in }
     var selectionDidChange: () -> Void = {}
+    var commitContextDidChange: () -> Void = {}
+    var contextProvider: any GitChangeContextProviding = GitChangeContextLoader()
+    private(set) var commitContext = GitChangeContext()
+    private(set) var commitContextStatus: CommitContextStatus = .hidden
+    private var contextKey: ContextKey?
+    private var contextTask: Task<Void, Never>?
+
+    deinit { contextTask?.cancel() }
 
     var selectedIndex: Int? { items.firstIndex { $0.id == state.selectedID } }
     var selectedItem: RevisionReviewItem? { selectedIndex.map { items[$0] } }
@@ -58,7 +71,7 @@ package final class RevisionReviewController {
     var selectionLabel: String { selectedIndex.map { "Change \($0 + 1) of \(items.count)" } ?? "No meaningful document changes" }
     var baselineLabel: String {
         guard let baseline else { return "" }
-        let identity = baseline.gitRevision.map { String($0.prefix(8)) } ?? baseline.sourceURL?.lastPathComponent ?? baseline.title
+        let identity = baseline.sourceURL?.lastPathComponent ?? baseline.title
         guard let date = baseline.sourceModificationDate else { return identity }
         return identity + " · " + DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
     }
@@ -86,6 +99,43 @@ package final class RevisionReviewController {
         if previousItem?.id != state.selectedID, !restorationPending { state.detailOffset = 0 }
         state.collapsedGroups.formIntersection(Set(items.map(\.sectionID)))
         restorationPending = false
+        updateCommitContext(snapshot)
+    }
+
+    private func updateCommitContext(_ snapshot: RenderedDocumentSnapshot) {
+        guard let baseline = snapshot.baseline, baseline.gitRevision != nil,
+              snapshot.document.sourceURL != nil, !items.isEmpty else {
+            cancelCommitContext()
+            return
+        }
+        let key = ContextKey(current: snapshot.document, baseline: baseline)
+        guard key != contextKey else { return }
+        contextTask?.cancel()
+        contextKey = key
+        commitContext = GitChangeContext()
+        commitContextStatus = .loading
+        let provider = contextProvider
+        contextTask = Task { [weak self] in
+            do {
+                let context = try await provider.context(current: key.current, baseline: key.baseline)
+                try Task.checkCancellation()
+                guard let self, self.contextKey == key else { return }
+                self.commitContext = context
+                self.commitContextStatus = .ready
+                self.contextTask = nil
+                self.commitContextDidChange()
+            } catch {
+                guard let self, self.contextKey == key, !(error is CancellationError) else { return }
+                self.commitContextStatus = .unavailable
+                self.contextTask = nil
+                self.commitContextDidChange()
+            }
+        }
+    }
+
+    func cancelCommitContext() {
+        contextTask?.cancel(); contextTask = nil; contextKey = nil
+        commitContext = GitChangeContext(); commitContextStatus = .hidden
     }
 
     func select(_ id: String, navigating: Bool = true) {

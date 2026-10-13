@@ -23,6 +23,7 @@ package struct GitDocumentHistory: Equatable, Sendable {
     package let repositoryURL: URL
     package let sourceURL: URL
     package let revisions: [GitDocumentRevision]
+    package var headCommitID: String? = nil
 
     package init(repositoryURL: URL, sourceURL: URL, revisions: [GitDocumentRevision]) {
         self.repositoryURL = repositoryURL
@@ -35,6 +36,18 @@ package protocol GitDocumentHistoryProviding: Sendable {
     func history(for sourceURL: URL) async throws -> GitDocumentHistory
     func document(for revision: GitDocumentRevision, in history: GitDocumentHistory) async throws -> MarkdownDocument
     func suggestedRevision(in history: GitDocumentHistory, currentMarkdown: String) async throws -> GitDocumentRevision?
+    func comparisonRevisions(after baseline: String, in history: GitDocumentHistory) async throws -> [GitDocumentRevision]
+    func description(for revision: GitDocumentRevision, in history: GitDocumentHistory) async throws -> GitCommitDescription
+}
+
+extension GitDocumentHistoryProviding {
+    package func comparisonRevisions(after baseline: String, in history: GitDocumentHistory) async throws -> [GitDocumentRevision] {
+        guard let index = history.revisions.firstIndex(where: { $0.commitID == baseline }) else { throw GitDocumentHistoryError.unavailableVersion }
+        return history.revisions[..<index].reversed()
+    }
+    package func description(for revision: GitDocumentRevision, in history: GitDocumentHistory) async throws -> GitCommitDescription {
+        GitCommitDescription(id: revision.commitID, subject: revision.subject, body: "", date: revision.committerDate)
+    }
 }
 
 package struct GitProcessResult: Equatable, Sendable {
@@ -203,7 +216,45 @@ package struct GitDocumentHistoryService: GitDocumentHistoryProviding {
             "--format=%x00%H%x00%ct%x00%s", "--name-status", "-z", headID, "--", relativePath
         ]))
         let revisions = try Self.parseHistory(log.standardOutput, currentPath: relativePath)
-        return GitDocumentHistory(repositoryURL: root, sourceURL: sourceURL, revisions: revisions)
+        var history = GitDocumentHistory(repositoryURL: root, sourceURL: sourceURL, revisions: revisions)
+        history.headCommitID = headID
+        return history
+    }
+
+    package func comparisonRevisions(after baseline: String, in history: GitDocumentHistory) async throws -> [GitDocumentRevision] {
+        guard history.revisions.contains(where: { $0.commitID == baseline }), Self.isObjectID(baseline),
+              let head = history.headCommitID ?? history.revisions.first?.commitID, Self.isObjectID(head) else { throw GitDocumentHistoryError.unavailableVersion }
+        if baseline == head { return [] }
+        let executable = try await gitExecutable()
+        let result = try checked(await command(executable, folder: history.repositoryURL,
+            ["rev-list", "--ancestry-path", "--parents", "--topo-order", baseline + ".." + head]))
+        guard let text = String(data: result.standardOutput, encoding: .utf8) else { throw GitDocumentHistoryError.invalidHistory }
+        var parents: [String: [String]] = [:]
+        for line in text.split(separator: "\n") {
+            let ids = line.split(separator: " ").map(String.init)
+            guard ids.count > 1, ids.allSatisfy(Self.isObjectID), parents[ids[0]] == nil else { throw GitDocumentHistoryError.invalidHistory }
+            parents[ids[0]] = Array(ids.dropFirst())
+        }
+        let byID = Dictionary(uniqueKeysWithValues: history.revisions.map { ($0.commitID, $0) })
+        var id = head, visited = Set<String>(), revisions: [GitDocumentRevision] = []
+        while id != baseline {
+            try Task.checkCancellation()
+            guard visited.insert(id).inserted, let candidates = parents[id],
+                  let parent = candidates.first(where: { $0 == baseline || parents[$0] != nil }) else { throw GitDocumentHistoryError.unavailableVersion }
+            if let revision = byID[id] { revisions.append(revision) }
+            id = parent
+        }
+        return revisions.reversed()
+    }
+
+    package func description(for revision: GitDocumentRevision, in history: GitDocumentHistory) async throws -> GitCommitDescription {
+        guard history.revisions.contains(revision), Self.isObjectID(revision.commitID) else { throw GitDocumentHistoryError.unavailableVersion }
+        let executable = try await gitExecutable()
+        let result = try checked(await command(executable, folder: history.repositoryURL,
+            ["show", "--no-patch", "--no-notes", "--no-show-signature", "--encoding=UTF-8", "--format=%b", revision.commitID]))
+        guard let body = String(data: result.standardOutput, encoding: .utf8) else { throw GitDocumentHistoryError.invalidHistory }
+        return GitCommitDescription(id: revision.commitID, subject: revision.subject,
+            body: body.trimmingCharacters(in: .whitespacesAndNewlines), date: revision.committerDate)
     }
 
     package func document(for revision: GitDocumentRevision, in history: GitDocumentHistory) async throws -> MarkdownDocument {
