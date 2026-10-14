@@ -1,5 +1,11 @@
 # Product Development Log
 
+## 2026-10-14 — Version 1.5.5
+
+- Bundle PDF heading outlines, contributing Git commit descriptions in the Changes sidebar, and improved large-document Word export as minor enhancements in Mac version 1.5.5, build 23.
+- Update the release notes, version assertions, and publication-verification example. Retain the existing local document workflow and validate the native app, signed universal archive, notarization, and complete Sparkle asset set before the authorized stable release.
+- Validation: 28 focused release regressions and the full 611-test Mac gate pass with 96.38% testable-production line coverage, performance checks, and universal bundle validation. In an isolated native app, confirm Open, Find, selectable PDF text and Copy availability, PDF/Word Save, Print preview, contributing commit descriptions and disclosure, live source refresh, and immediate change navigation. Retain the manual acceptance limitation: physical held-drag PDF/Word drops and Option switching during a drag remain unperformed because the UI driver cannot carry a held press into a separate drag; automated export regressions pass.
+
 ## 2026-10-14 — PDF heading outlines
 
 - Add native PDF outlines to the Mac exporter, with headings in source order and all six levels nested under the nearest preceding higher-level heading. Preserve skipped levels, repeated titles, Setext headings, Unicode, inline formatting, image descriptions, and headings inside lists and quotations. Omit empty heading titles and footnote markers from outline labels.
