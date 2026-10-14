@@ -36,6 +36,8 @@ Same-document sections work in Mac preview, continuous Finder Quick Look, and th
 
 PDF exports contain native heading destinations and GoTo links; Word exports contain Word-safe heading bookmarks and internal hyperlinks. Cross-file links in both formats remain standard `file:` URLs with fragments. Outside Markdown Printer, heading navigation depends on the receiving viewer and associated app.
 
+PDFs generated on Mac also contain a clickable heading outline. All six heading levels appear in source order, nested under the nearest preceding higher-level heading, including headings inside lists and quotations. In macOS Preview, choose **View > Table of Contents** to show it.
+
 ## Compatibility and HTML
 
 Markdown Printer implements selected CommonMark 0.31.2 syntax rather than claiming complete CommonMark conformance. Its compatibility suite currently matches 641 of the specification's 652 normative examples (98.3%), including every example for headings, emphasis, code spans and blocks, references, autolinks, entities, raw HTML, images, and line breaks. The remaining gaps are uncommon block-quote and deeply nested-list edge cases plus one unusual link-label case.

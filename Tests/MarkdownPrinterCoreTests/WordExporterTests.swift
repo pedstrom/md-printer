@@ -70,6 +70,45 @@ final class WordExporterTests: XCTestCase {
         XCTAssertTrue(NSFontManager.shared.traits(of: font).contains(.boldFontMask))
     }
 
+    func testBatchedXMLReplacementsPreserveUnicodeSectionOrderTablesQuotesAndLinks() throws {
+        let markdown = (1...8).map { index in
+            """
+            ## Section \(index) Café 東京
+
+            Before \(index) 🧭 [Back](#section-\(index)-café-東京).
+
+            > Quoted \(index) 🧭 [Website](https://example.com/\(index)).
+
+            | Item | Section |
+            | --- | --- |
+            | Table \(index) é | [Return](#section-\(index)-café-東京) |
+
+            After \(index) 🧭.
+            """
+        }.joined(separator: "\n\n")
+        let data = try WordExporter().wordData(from: MarkdownRenderer().render(markdown: markdown))
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let output = directory.appendingPathComponent("sections.docx")
+        try data.write(to: output)
+        let xml = try unzip(arguments: ["-p", output.path, "word/document.xml"])
+        XCTAssertFalse(xml.contains("MDPRINTER"))
+        XCTAssertEqual(xml.components(separatedBy: "<w:bookmarkStart").count - 1, 16)
+        XCTAssertEqual(xml.components(separatedBy: "<w:pBdr>").count - 1, 8)
+        let decoded = try NSAttributedString(data: data, options: [.documentType: NSAttributedString.DocumentType.officeOpenXML], documentAttributes: nil)
+        var previousEnd = 0
+        for index in 1...8 {
+            for phrase in ["Section \(index) Café 東京", "Before \(index) 🧭 Back.",
+                           "Quoted \(index) 🧭 Website.", "Table \(index) é", "After \(index) 🧭."] {
+                let range = (decoded.string as NSString).range(of: phrase)
+                XCTAssertNotEqual(range.location, NSNotFound, phrase)
+                XCTAssertGreaterThanOrEqual(range.location, previousEnd, phrase)
+                previousEnd = NSMaxRange(range)
+            }
+            XCTAssertTrue(xml.contains("w:anchor=\"MarkdownPrinterSection\(index - 1)\""))
+        }
+    }
+
     func testExportFormatsExposeExpectedNamesExtensionsAndContentTypes() {
         XCTAssertEqual(ExportFormat.allCases, [.pdf, .word])
         XCTAssertEqual(ExportFormat.pdf.id, "pdf")
@@ -391,10 +430,11 @@ final class WordExporterTests: XCTestCase {
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0)
         return String(
-            data: output.fileHandleForReading.readDataToEndOfFile(),
+            data: data,
             encoding: .utf8
         ) ?? ""
     }

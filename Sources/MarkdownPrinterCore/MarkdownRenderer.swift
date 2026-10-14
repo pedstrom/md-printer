@@ -127,7 +127,12 @@ public final class MarkdownRenderer {
             rendered.addAttribute(.paragraphStyle, value: paragraph, range: rendered.fullRange)
             result.append(rendered)
             result.append(NSAttributedString(string: "\n"))
-            result.addAttribute(.markdownSectionAnchor, value: UUID().uuidString, range: NSRange(location: result.length - rendered.length - 1, length: rendered.length + 1))
+            // Preserve heading identity when list and quotation styles replace headerLevel.
+            result.addAttributes([
+                .markdownSectionAnchor: UUID().uuidString,
+                .markdownHeadingLevel: level,
+                .markdownHeadingTitle: plainText(from: content, omittingFootnotes: true).trimmingCharacters(in: .whitespacesAndNewlines)
+            ], range: NSRange(location: result.length - rendered.length - 1, length: rendered.length + 1))
 
         case let .paragraph(content):
             let rendered = renderInline(content, font: fonts.regular(size: configuration.bodyFontSize), baseURL: baseURL, footnotes: footnotes)
@@ -447,7 +452,7 @@ public final class MarkdownRenderer {
         }
     }
 
-    private func plainText(from nodes: [InlineNode]) -> String {
+    private func plainText(from nodes: [InlineNode], omittingFootnotes: Bool = false) -> String {
         nodes.map { node in
             switch node {
             case let .text(text), let .code(text), let .rawHTML(text):
@@ -456,11 +461,11 @@ public final class MarkdownRenderer {
                  let .strong(children),
                  let .underline(children),
                  let .strikethrough(children):
-                return plainText(from: children)
+                return plainText(from: children, omittingFootnotes: omittingFootnotes)
             case let .link(children, _, _):
-                return plainText(from: children)
+                return plainText(from: children, omittingFootnotes: omittingFootnotes)
             case let .footnoteReference(label):
-                return label
+                return omittingFootnotes ? "" : label
             case let .image(alt, _, _):
                 return alt
             case .softBreak, .hardBreak:
@@ -794,6 +799,8 @@ private extension Array where Element == InlineNode {
 }
 
 extension NSAttributedString.Key {
+    static let markdownHeadingLevel = NSAttributedString.Key("MarkdownPrinterHeadingLevel")
+    static let markdownHeadingTitle = NSAttributedString.Key("MarkdownPrinterHeadingTitle")
     public static let markdownFootnoteReference = NSAttributedString.Key(
         "MarkdownPrinterFootnoteReference"
     )

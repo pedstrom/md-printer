@@ -92,6 +92,7 @@ public final class PDFExporter {
                 decorations: decorations, revisionNotes: revisionNotes.filter { $0.page == pageIndex }, in: output.context
             )
         }
+        addOutline(in: attributedText, sections: sections, to: output.context)
         return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections,
                                reviewDestinations: reviewDestinations(reviewItems, text: attributedText, pages: pages, notes: revisionNotes))
     }
@@ -125,6 +126,7 @@ public final class PDFExporter {
             )
             await Task.yield()
         }
+        addOutline(in: attributedText, sections: sections, to: output.context)
         return PDFRenderResult(data: try finishPDFOutput(output), sectionDestinations: sections,
                                reviewDestinations: reviewDestinations(reviewItems, text: attributedText, pages: pages, notes: revisionNotes))
     }
@@ -948,6 +950,30 @@ public final class PDFExporter {
             destinations[location.label] = PDFSectionDestination(pageIndex: location.pageIndex, point: CGPoint(x: location.bounds.minX, y: location.bounds.maxY + 4))
         }
         return destinations
+    }
+
+    private func addOutline(in text: NSAttributedString, sections: [String: PDFSectionDestination], to context: CGContext) {
+        let root = NSMutableDictionary()
+        var parents: [(level: Int, entry: NSMutableDictionary)] = [(0, root)]
+        text.enumerateAttribute(.markdownSectionAnchor, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            guard let anchor = value as? String, let destination = sections[anchor],
+                  let level = text.attribute(.markdownHeadingLevel, at: range.location, effectiveRange: nil) as? Int,
+                  (1...6).contains(level),
+                  let title = text.attribute(.markdownHeadingTitle, at: range.location, effectiveRange: nil) as? String,
+                  !title.isEmpty else { return }
+            while parents.last!.level >= level { parents.removeLast() }
+            let entry: NSMutableDictionary = [
+                kCGPDFOutlineTitle: title,
+                kCGPDFOutlineDestination: destination.pageIndex + 1,
+                kCGPDFOutlineDestinationRect: CGRect(origin: destination.point, size: .zero).dictionaryRepresentation
+            ]
+            let parent = parents.last!.entry
+            let children = parent[kCGPDFOutlineChildren] as? NSMutableArray ?? NSMutableArray()
+            children.add(entry)
+            parent[kCGPDFOutlineChildren] = children
+            parents.append((level, entry))
+        }
+        if root.count > 0 { CGPDFContextSetOutline(context, root as CFDictionary) }
     }
 
     private func sectionReferences(in text: NSAttributedString, pages: [TextPage]) -> [SectionPDFLink] {

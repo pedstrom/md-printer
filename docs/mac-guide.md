@@ -10,6 +10,8 @@ Use **File > Open**, Finder's **Open With**, or drop Markdown files onto the app
 
 Use **Command-F** to find text in the PDF, **Command-G** for the next match, and **Shift-Command-G** for the previous match. Text is selectable and copyable, and section links jump to headings. The **Pages** sidebar provides page thumbnails; **View > Show/Hide Sidebar** controls its visibility.
 
+Saved PDFs include a nested, clickable outline of the document's headings. In macOS Preview, choose **View > Table of Contents** to browse it and jump directly to a section.
+
 ## Save, share, print, and drag
 
 PDF is the default export. **Markdown Printer > Settings** can make Microsoft Word the default for Save, Share, and dragging. The Save dialog can change formats for one export without changing that preference. Word exports retain editable text, formatting, links, tables, and local images.

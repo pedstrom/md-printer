@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-10-14 — PDF heading outlines
+
+- Add native PDF outlines to the Mac exporter, with headings in source order and all six levels nested under the nearest preceding higher-level heading. Preserve skipped levels, repeated titles, Setext headings, Unicode, inline formatting, image descriptions, and headings inside lists and quotations. Omit empty heading titles and footnote markers from outline labels.
+- Use the existing section destinations after pagination so outline entries and section links navigate to the same heading position without changing zoom. Include outlines in synchronous and asynchronous PDF generation and saved files through the existing preview, save, and print path.
+- Document macOS Preview's View > Table of Contents command in the Mac guide, Markdown support, and offline Help. Keep this Mac-only and retain the app version.
+- The unchanged committed baseline also failed the Word-export scaling gate. Profiling identified repeated XML buffer shifts while injecting bookmarks, links, and tables. Assemble replacement fragments once in source order, preserving Unicode offsets and the existing overlap validation; cover mixed sections, tables, quotes, and hyperlinks with a round-trip regression.
+- Validation: 69 focused rendering/navigation/Help tests and 32 focused PDF/Word/revision tests pass. The full 611-test Mac gate passes with 96.38% testable-production line coverage, performance checks, and universal bundle validation. Inspect both showcase PDF pages and confirm all six outline levels expand in macOS Preview and a selected section jumps to its heading on the second page. The 1 MB fixture's Word-export time drops from about 5.3 seconds in the committed baseline to 2.9 seconds.
+
 ## 2026-10-13 — Commit descriptions beside selected changes
 
 - Add the approved gray context block above complete Earlier/Current wording in the Mac Changes sidebar. Show only commits that changed the selected passage, place each date beside its title, and expand longer descriptions with native disclosure buttons. Omit Git IDs, separators between commits, and the proposed top-of-pane commit-count line.

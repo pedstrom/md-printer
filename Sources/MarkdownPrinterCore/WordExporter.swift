@@ -945,17 +945,22 @@ public final class WordExporter {
             }
             return lhs.range.length > rhs.range.length
         }
-        var nextEnd = Int.max
-        let result = NSMutableString(string: xml)
-        for replacement in sorted {
-            guard NSMaxRange(replacement.range) <= nextEnd,
-                  NSMaxRange(replacement.range) <= result.length else {
+        let source = xml as NSString
+        var cursor = 0
+        var fragments: [String] = []
+        fragments.reserveCapacity(sorted.count * 2 + 1)
+        // Assemble once; repeatedly moving the remaining XML makes large exports quadratic.
+        for replacement in sorted.reversed() {
+            guard replacement.range.location >= cursor,
+                  NSMaxRange(replacement.range) <= source.length else {
                 throw WordExporterError.packagingFailed
             }
-            result.replaceCharacters(in: replacement.range, with: replacement.value)
-            nextEnd = replacement.range.location
+            fragments.append(source.substring(with: NSRange(location: cursor, length: replacement.range.location - cursor)))
+            fragments.append(replacement.value)
+            cursor = NSMaxRange(replacement.range)
         }
-        return result as String
+        fragments.append(source.substring(from: cursor))
+        return fragments.joined()
     }
 
     private func quoteReplacement(
