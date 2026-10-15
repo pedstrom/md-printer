@@ -66,6 +66,23 @@ final class GitRevisionPickerTests: XCTestCase {
         }
     }
 
+    func testActiveComparisonWinsOverSuggestionAndUnavailableComparisonFallsBack() async throws {
+        for comparisonID in ["latest-commit", "unavailable-commit", nil] {
+            let picker = picker(service: service(), current: "Latest", comparisonRevisionID: comparisonID)
+            picker.load()
+            try await wait { !picker.isLoading }
+            XCTAssertEqual(picker.selectedRevisionID, comparisonID == "latest-commit" ? "latest-commit" : "old-commit")
+            XCTAssertTrue(picker.canCompare)
+            picker.cancel()
+        }
+        let empty = picker(service: service(revisions: []), comparisonRevisionID: "unavailable-commit")
+        empty.load()
+        try await wait { !empty.isLoading }
+        XCTAssertNil(empty.selectedRevisionID)
+        XCTAssertFalse(empty.canCompare)
+        empty.cancel()
+    }
+
     func testGitComparisonCompletesWhenDeletionCalloutsCannotFit() async throws {
         let defaults = makeDefaults()
         defer { defaults.value.removePersistentDomain(forName: defaults.name) }
@@ -311,6 +328,75 @@ final class GitRevisionPickerTests: XCTestCase {
         actions.cancelGitComparison()
     }
 
+    func testReopenedGitPickerFocusesCurrentComparisonForEarlierAndLaterArrowNavigation() async throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let originals = DocumentOriginalCoordinator(store: OriginalSnapshotStore(directory: directory))
+        let defaults = makeDefaults()
+        defer { defaults.value.removePersistentDomain(forName: defaults.name) }
+        let session = DocumentSession()
+        try session.apply(MarkdownDocument(sourceURL: sourceURL, title: "Current", markdown: "Latest"))
+        let revisions = ["latest-commit", "middle-commit", "old-commit"].enumerated().map { index, id in
+            GitDocumentRevision(commitID: id, historicalPath: "current.md", subject: "Revision \(index)",
+                                committerDate: Date(timeIntervalSince1970: Double(3_000 - index * 1_000)))
+        }
+        let preferences = ExportPreferences(defaults: defaults.value)
+        let actions = DocumentActionController(session: session, exportPreferences: preferences,
+            activityCoordinator: ApplicationActivityCoordinator(), presentSavePanel: { _, _ in nil },
+            gitHistoryService: service(revisions: revisions), originalCoordinator: originals)
+        actions.compareWithGitVersion()
+        let initial = try XCTUnwrap(actions.gitPicker)
+        try await wait { !initial.isLoading }
+        XCTAssertEqual(initial.selectedRevisionID, "old-commit")
+        initial.compare(revisionID: "middle-commit")
+        try await wait { !actions.isGitComparisonActive }
+        XCTAssertEqual(session.originalSnapshot?.gitRevision, "middle-commit")
+
+        actions.compareWithGitVersion()
+        let reopened = try XCTUnwrap(actions.gitPicker)
+        try await wait { !reopened.isLoading }
+        XCTAssertEqual(reopened.selectedRevisionID, "middle-commit")
+        let parent = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 440),
+                             styleMask: [.titled], backing: .buffered, defer: false)
+        parent.isReleasedWhenClosed = false
+        sheet.isReleasedWhenClosed = false
+        sheet.contentView = NSHostingView(rootView: GitRevisionPickerView(controller: reopened, cancel: actions.cancelGitComparison))
+        parent.beginSheet(sheet, completionHandler: { _ in })
+        defer { parent.endSheet(sheet); sheet.close(); parent.close(); actions.cancelGitComparison() }
+        try await wait { self.revisionTable(in: sheet.contentView).map { sheet.firstResponder === $0 } ?? false }
+        XCTAssertEqual(revisionTable(in: sheet.contentView)?.selectedRow, 1)
+        for (character, keyCode, expected) in [("\u{F701}", UInt16(125), "old-commit"),
+                                              ("\u{F700}", 126, "middle-commit"),
+                                              ("\u{F700}", 126, "latest-commit")] {
+            let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero,
+                modifierFlags: [], timestamp: 0, windowNumber: sheet.windowNumber, context: nil,
+                characters: character, charactersIgnoringModifiers: character, isARepeat: false, keyCode: keyCode))
+            sheet.sendEvent(event)
+            XCTAssertEqual(reopened.selectedRevisionID, expected)
+        }
+        // Cancel keeps the actual comparison, regardless of the highlighted row.
+        actions.cancelGitComparison()
+        actions.compareWithGitVersion()
+        let afterCancel = try XCTUnwrap(actions.gitPicker)
+        try await wait { !afterCancel.isLoading }
+        XCTAssertEqual(afterCancel.selectedRevisionID, "middle-commit")
+        afterCancel.compare(revisionID: "latest-commit")
+        try await wait { !actions.isGitComparisonActive }
+        actions.compareWithGitVersion()
+        let afterChange = try XCTUnwrap(actions.gitPicker)
+        try await wait { !afterChange.isLoading }
+        XCTAssertEqual(afterChange.selectedRevisionID, "latest-commit")
+        actions.cancelGitComparison()
+        actions.clearOriginal()
+        try await wait { !session.hasOriginal }
+        actions.compareWithGitVersion()
+        let afterClear = try XCTUnwrap(actions.gitPicker)
+        try await wait { !afterClear.isLoading }
+        XCTAssertEqual(afterClear.selectedRevisionID, "old-commit")
+    }
+
     func testLateDismissalOfFinishedPickerLeavesReopenedPickerActive() async throws {
         let defaults = makeDefaults()
         defer { defaults.value.removePersistentDomain(forName: defaults.name) }
@@ -456,6 +542,134 @@ final class GitRevisionPickerTests: XCTestCase {
         try await wait { appliedRevisionID == "old-commit" }
     }
 
+    func testRevisionListMouseClicksSelectAndDoubleClicksCompare() async throws {
+        for doubleClickedRow in [0, 1] {
+            var appliedRevisionIDs: [String] = []
+            let picker = picker(service: service(), current: "Latest", apply: { _, revision in
+                appliedRevisionIDs.append(revision.id)
+            })
+            let parent = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                                  styleMask: [.titled], backing: .buffered, defer: false)
+            let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 440),
+                                 styleMask: [.titled], backing: .buffered, defer: false)
+            parent.isReleasedWhenClosed = false
+            sheet.isReleasedWhenClosed = false
+            sheet.contentView = NSHostingView(rootView: GitRevisionPickerView(controller: picker, cancel: picker.cancel))
+            parent.beginSheet(sheet, completionHandler: { _ in })
+            defer { parent.endSheet(sheet); sheet.close(); parent.close(); picker.cancel() }
+            picker.load()
+            try await wait { !picker.isLoading && self.revisionTable(in: sheet.contentView) != nil }
+            let table = try XCTUnwrap(revisionTable(in: sheet.contentView))
+            sheet.contentView?.layoutSubtreeIfNeeded()
+            XCTAssertEqual(table.numberOfRows, 2)
+            XCTAssertEqual(picker.selectedRevisionID, "old-commit")
+
+            // Use native window dispatch, including row whitespace, instead of
+            // calling the controller's selection or comparison methods.
+            try clickRevision(row: 0, x: 24, count: 1, table: table, sheet: sheet)
+            try await wait { picker.selectedRevisionID == "latest-commit" }
+            XCTAssertTrue(appliedRevisionIDs.isEmpty)
+            try clickRevision(row: 1, x: table.bounds.width - 24, count: 1, table: table, sheet: sheet)
+            try await wait { picker.selectedRevisionID == "old-commit" }
+            XCTAssertTrue(appliedRevisionIDs.isEmpty)
+
+            try clickRevision(row: doubleClickedRow, x: 24, count: 1, table: table, sheet: sheet)
+            try clickRevision(row: doubleClickedRow, x: 24, count: 2, table: table, sheet: sheet)
+            XCTAssertTrue(picker.isComparing)
+            // Further clicks cannot replace the comparison already in flight.
+            try clickRevision(row: 1 - doubleClickedRow, x: 24, count: 1, table: table, sheet: sheet)
+            try clickRevision(row: 1 - doubleClickedRow, x: 24, count: 2, table: table, sheet: sheet)
+            try await wait { !appliedRevisionIDs.isEmpty }
+            XCTAssertEqual(appliedRevisionIDs, [doubleClickedRow == 0 ? "latest-commit" : "old-commit"])
+        }
+    }
+
+    func testNativeRevisionListSynchronizesSelectionAndDisablesDuringComparison() async throws {
+        let service = service()
+        let picker = picker(service: service, current: "Latest")
+        picker.load()
+        try await wait { !picker.isLoading }
+        let list = GitRevisionList(controller: picker)
+        XCTAssertEqual(list.table.selectedRow, 1)
+        XCTAssertEqual(list.table.accessibilityIdentifier(), "git-revision-list")
+        picker.selectedRevisionID = "latest-commit"
+        list.updateSelection()
+        XCTAssertEqual(list.table.selectedRow, 0)
+        XCTAssertEqual(picker.selectedRevisionID, "latest-commit")
+        list.table.deselectAll(nil)
+        list.tableViewSelectionDidChange(Notification(name: NSTableView.selectionDidChangeNotification))
+        XCTAssertEqual(picker.selectedRevisionID, "latest-commit")
+        // Double-clicking empty space must not confirm the selected revision.
+        XCTAssertEqual(list.table.clickedRow, -1)
+        list.table.sendAction(list.table.doubleAction, to: list.table.target)
+        XCTAssertFalse(picker.isComparing)
+
+        await service.configure(delay: .document)
+        picker.compare()
+        list.updateSelection()
+        XCTAssertFalse(list.table.isEnabled)
+        XCTAssertFalse(list.tableView(list.table, shouldSelectRow: 1))
+        list.table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+        XCTAssertEqual(picker.selectedRevisionID, "latest-commit")
+        picker.cancel()
+        try await wait { !picker.isComparing }
+    }
+
+    func testRevisionCellKeepsMetadataReadableInSelectedAndUnselectedRows() {
+        let cell = GitRevisionCell(date: "Oct 15, 2026", commitID: "12345678", subject: "A document revision")
+        XCTAssertEqual(cell.dateLabel.stringValue, "Oct 15, 2026")
+        XCTAssertEqual(cell.commitLabel.stringValue, "12345678")
+        XCTAssertEqual(cell.subjectLabel.stringValue, "A document revision")
+        XCTAssertEqual(cell.subjectLabel.maximumNumberOfLines, 2)
+        XCTAssertEqual(cell.subjectLabel.lineBreakMode, .byTruncatingTail)
+        XCTAssertTrue(cell.commitLabel.font?.isFixedPitch == true)
+        cell.backgroundStyle = .emphasized
+        for label in [cell.dateLabel, cell.commitLabel, cell.subjectLabel] {
+            XCTAssertEqual(label.textColor, .alternateSelectedControlTextColor)
+        }
+        cell.backgroundStyle = .normal
+        XCTAssertEqual(cell.dateLabel.textColor, .labelColor)
+        XCTAssertEqual(cell.subjectLabel.textColor, .labelColor)
+        XCTAssertEqual(cell.commitLabel.textColor, .secondaryLabelColor)
+    }
+
+    func testActiveComparisonBelowTheInitialViewportIsSelectedAndVisible() async throws {
+        let revisions = (0..<40).map { index in
+            GitDocumentRevision(commitID: "revision-\(index)", historicalPath: "current.md", subject: "Version \(index)",
+                                committerDate: Date(timeIntervalSince1970: Double(4_000 - index)))
+        }
+        let picker = picker(service: service(revisions: revisions), comparisonRevisionID: "revision-30")
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 580, height: 440),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: GitRevisionPickerView(controller: picker, cancel: picker.cancel))
+        defer { window.close(); picker.cancel() }
+        picker.load()
+        try await wait { self.revisionTable(in: window.contentView).map { window.firstResponder === $0 } ?? false }
+        let table = try XCTUnwrap(revisionTable(in: window.contentView))
+        window.contentView?.layoutSubtreeIfNeeded()
+        XCTAssertEqual(table.selectedRow, 30)
+        XCTAssertTrue(table.visibleRect.contains(NSPoint(x: table.bounds.midX, y: table.rect(ofRow: 30).midY)))
+    }
+
+    private func revisionTable(in view: NSView?) -> NSTableView? {
+        if let table = view as? NSTableView { return table }
+        return view?.subviews.lazy.compactMap { self.revisionTable(in: $0) }.first
+    }
+
+    private func clickRevision(row: Int, x: CGFloat, count: Int, table: NSTableView, sheet: NSWindow) throws {
+        let location = table.convert(NSPoint(x: x, y: table.rect(ofRow: row).midY), to: nil)
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        let down = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: location,
+            modifierFlags: [], timestamp: timestamp, windowNumber: sheet.windowNumber, context: nil,
+            eventNumber: 0, clickCount: count, pressure: 1))
+        let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: location,
+            modifierFlags: [], timestamp: timestamp + 0.01, windowNumber: sheet.windowNumber, context: nil,
+            eventNumber: 1, clickCount: count, pressure: 0))
+        sheet.sendEvent(down)
+        sheet.sendEvent(up)
+    }
+
     private func service(revisions: [GitDocumentRevision]? = nil) -> PickerTestService {
         let values = revisions ?? [
             GitDocumentRevision(commitID: "latest-commit", historicalPath: "current.md", subject: "Newest document", committerDate: Date(timeIntervalSince1970: 2_000)),
@@ -464,10 +678,12 @@ final class GitRevisionPickerTests: XCTestCase {
         return PickerTestService(history: GitDocumentHistory(repositoryURL: sourceURL.deletingLastPathComponent(), sourceURL: sourceURL, revisions: values))
     }
 
-    private func picker(service: PickerTestService, current: String = "Current",
+    private func picker(service: PickerTestService, current: String = "Current", comparisonRevisionID: String? = nil,
                         apply: @escaping @MainActor (MarkdownDocument, GitDocumentRevision) async throws -> Void = { _, _ in },
                         finished: @escaping @MainActor () -> Void = {}) -> GitRevisionPickerController {
-        GitRevisionPickerController(sourceURL: sourceURL, currentMarkdown: current, service: service, applyDocument: apply, finished: finished)
+        GitRevisionPickerController(sourceURL: sourceURL, currentMarkdown: current,
+                                    comparisonRevisionID: comparisonRevisionID, service: service,
+                                    applyDocument: apply, finished: finished)
     }
 
     private func wait(_ predicate: () -> Bool) async throws {

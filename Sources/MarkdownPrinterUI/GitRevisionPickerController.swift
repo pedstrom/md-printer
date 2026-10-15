@@ -15,6 +15,7 @@ package final class GitRevisionPickerController: ObservableObject, Identifiable 
 
     private let sourceURL: URL
     private let currentMarkdown: String
+    private let comparisonRevisionID: String?
     private let service: any GitDocumentHistoryProviding
     private let applyDocument: @MainActor (MarkdownDocument, GitDocumentRevision) async throws -> Void
     private var finished: (@MainActor () -> Void)?
@@ -26,6 +27,7 @@ package final class GitRevisionPickerController: ObservableObject, Identifiable 
         id: UUID = UUID(),
         sourceURL: URL,
         currentMarkdown: String,
+        comparisonRevisionID: String? = nil,
         service: any GitDocumentHistoryProviding,
         applyDocument: @escaping @MainActor (MarkdownDocument, GitDocumentRevision) async throws -> Void,
         finished: @escaping @MainActor () -> Void
@@ -33,6 +35,7 @@ package final class GitRevisionPickerController: ObservableObject, Identifiable 
         self.id = id
         self.sourceURL = sourceURL
         self.currentMarkdown = currentMarkdown
+        self.comparisonRevisionID = comparisonRevisionID
         self.service = service
         self.applyDocument = applyDocument
         self.finished = finished
@@ -54,10 +57,15 @@ package final class GitRevisionPickerController: ObservableObject, Identifiable 
             defer { workFinished() }
             do {
                 let history = try await service.history(for: sourceURL)
-                let suggested = try await service.suggestedRevision(in: history, currentMarkdown: currentMarkdown)
+                let selection: GitDocumentRevision?
+                if let current = history.revisions.first(where: { $0.id == comparisonRevisionID }) {
+                    selection = current
+                } else {
+                    selection = try await service.suggestedRevision(in: history, currentMarkdown: currentMarkdown)
+                }
                 try Task.checkCancellation()
                 self.history = history
-                selectedRevisionID = suggested?.id
+                selectedRevisionID = selection?.id
             } catch is CancellationError {
                 isDismissed = true
             } catch {

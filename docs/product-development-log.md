@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-15 — Reliable mouse interaction in Git history
+
+- Use a native AppKit table for the Git version picker so row selection and double-click comparison share the same mouse-event path. Preserve the suggested version, immediate arrow navigation, Return to compare, full-row click targets, and readable dates, commit IDs, and subjects.
+- Reopen the picker with the active Git comparison selected and visible, so Up and Down move from that version. Use the normal suggestion for first comparisons, cleared comparisons, older-file comparisons, or revisions no longer present in the document's history.
+- Add regression tests that dispatch mouse presses and releases through the actual sheet, select both text and row whitespace, double-click selected and unselected revisions, and reject further clicks during comparison. Cover native selection synchronization, empty-space activation, disabled state, selected-row readability, offscreen active versions, and reopening after comparison changes, cancellation, or clearing; retain the existing keyboard regression.
+- Validation: all 23 focused Git picker tests and the full 617-test Mac gate pass with 96.39% testable-production line coverage, performance checks, and universal app/extension validation. The mouse-event regression fails against the original picker. In an isolated native app, confirm text/whitespace clicks, double-clicks on selected and unselected versions, reopening at the active comparison, immediate Up/Down navigation, and Return to compare. Keep this Mac-only and retain the app version.
+
 ## 2026-10-14 — Version 1.5.5
 
 - Bundle PDF heading outlines, contributing Git commit descriptions in the Changes sidebar, and improved large-document Word export as minor enhancements in Mac version 1.5.5, build 23.

@@ -140,6 +140,7 @@ package final class DocumentActionController: NSObject, ObservableObject {
             id: comparisonID,
             sourceURL: url,
             currentMarkdown: document.markdown,
+            comparisonRevisionID: session?.originalSnapshot?.gitRevision,
             service: gitHistoryService,
             applyDocument: { [weak self] original, revision in
                 guard let self, let session = self.session,

@@ -3,7 +3,6 @@ import SwiftUI
 /// Thin native sheet composition; all work and lifecycle state live in its controller.
 package struct GitRevisionPickerView: View {
     @ObservedObject var controller: GitRevisionPickerController
-    @FocusState private var isRevisionListFocused: Bool
     let cancel: () -> Void
 
     package var body: some View {
@@ -22,34 +21,7 @@ package struct GitRevisionPickerView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(selection: $controller.selectedRevisionID) {
-                    ForEach(controller.revisions) { revision in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(revision.committerDate, format: .dateTime.year().month(.abbreviated).day().hour().minute())
-                                Spacer()
-                                Text(revision.abbreviatedID)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
-                            }
-                            Text(revision.subject)
-                                .lineLimit(2)
-                        }
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        // Let List select on the first click without waiting
-                        // for the double-click recognizer to fail.
-                        .simultaneousGesture(TapGesture(count: 2).onEnded { _ in
-                            controller.compare(revisionID: revision.id)
-                        })
-                        .tag(revision.id)
-                    }
-                }
-                .disabled(controller.isComparing)
-                .focused($isRevisionListFocused)
-                .onAppear { isRevisionListFocused = true }
-                .accessibilityIdentifier("git-revision-list")
+                GitRevisionListView(controller: controller)
             }
             if let error = controller.errorMessage {
                 Text(error)
