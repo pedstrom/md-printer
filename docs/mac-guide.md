@@ -94,7 +94,7 @@ The downloadable Mac release is signed with a Developer ID certificate and notar
 
 By default, the app checks GitHub daily for signed stable updates. Automatic checks can be disabled in Settings. Updates download and install only after your approval; checks do not send system profiles, analytics, or document contents.
 
-Document rendering stays on your Mac. Remote images are requested only when you choose to download them; Finder Quick Look never downloads them. See the [privacy policy](privacy-policy.md).
+Document rendering stays on your Mac. **Settings > General > Automatically download remote images** is on by default and downloads secure images referenced by open documents. Turning it on also loads missing images in documents already open; turning it off stops automatic downloads and keeps cached images available. You can still click a placeholder or choose **Download All Images** to download manually. Finder Quick Look never downloads images. See the [privacy policy](privacy-policy.md).
 
 ## Keyboard reference
 

@@ -7,6 +7,7 @@ struct MarkdownPrinterApp: App {
     @NSApplicationDelegateAdaptor(ApplicationLifecycleDelegate.self) private var applicationDelegate
     @StateObject private var exportPreferences: ExportPreferences
     @StateObject private var pagePreferences: PagePreferences
+    @StateObject private var imagePreferences: ImagePreferences
     @StateObject private var activityCoordinator: ApplicationActivityCoordinator
     @StateObject private var documentRestoration: OpenDocumentRestorationController
     @StateObject private var updateController: UpdateController
@@ -36,6 +37,7 @@ struct MarkdownPrinterApp: App {
         )
         _exportPreferences = StateObject(wrappedValue: exportPreferences)
         _pagePreferences = StateObject(wrappedValue: pagePreferences)
+        _imagePreferences = StateObject(wrappedValue: ImagePreferences())
         _activityCoordinator = StateObject(wrappedValue: activityCoordinator)
         _documentRestoration = StateObject(wrappedValue: documentRestoration)
         _updateController = StateObject(wrappedValue: updateController)
@@ -82,6 +84,7 @@ struct MarkdownPrinterApp: App {
                 sourceURL: configuration.fileURL,
                 exportPreferences: exportPreferences,
                 pagePreferences: pagePreferences,
+                imagePreferences: imagePreferences,
                 activityCoordinator: activityCoordinator,
                 documentRestoration: documentRestoration,
                 applicationDelegate: applicationDelegate,
@@ -108,6 +111,7 @@ struct MarkdownPrinterApp: App {
             TabView {
                 ExportSettingsView(
                     preferences: exportPreferences,
+                    imagePreferences: imagePreferences,
                     updateController: updateController,
                     defaultApplicationController: defaultApplicationController,
                     quickLookNavigator: quickLookNavigator
@@ -242,6 +246,7 @@ private struct MarkdownDocumentWindow: View {
         sourceURL: URL?,
         exportPreferences: ExportPreferences,
         pagePreferences: PagePreferences,
+        imagePreferences: ImagePreferences,
         activityCoordinator: ApplicationActivityCoordinator,
         documentRestoration: OpenDocumentRestorationController,
         applicationDelegate: ApplicationLifecycleDelegate,
@@ -260,7 +265,8 @@ private struct MarkdownDocumentWindow: View {
         let session = Self.makeSession(
             fileDocument: fileDocument,
             sourceURL: sourceURL,
-            pagePreferences: pagePreferences
+            pagePreferences: pagePreferences,
+            imagePreferences: imagePreferences
         )
         _session = StateObject(wrappedValue: session)
         _windowRestoration = StateObject(
@@ -328,9 +334,10 @@ private struct MarkdownDocumentWindow: View {
     private static func makeSession(
         fileDocument: MarkdownFileDocument,
         sourceURL: URL?,
-        pagePreferences: PagePreferences
+        pagePreferences: PagePreferences,
+        imagePreferences: ImagePreferences
     ) -> DocumentSession {
-        DocumentSession(pagePreferences: pagePreferences)
+        DocumentSession(pagePreferences: pagePreferences, imagePreferences: imagePreferences)
     }
 
     private func synchronizeFileDocument() async {

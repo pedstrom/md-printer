@@ -63,7 +63,7 @@ package enum MarkdownPrinterHelpContent {
             .overview,
             "Overview",
             "Markdown Printer turns Markdown files into polished PDF or editable Microsoft Word documents. The preview is read-only and uses the same generated PDF as saving and printing.",
-            "Document content stays on this Mac. Markdown Printer does not upload documents, require an account, or use analytics. Remote images are fetched only after you choose to download them."
+            "Document content stays on this Mac. Markdown Printer does not upload documents, require an account, or use analytics. Secure remote images download automatically by default; turn this off in Settings > General for manual downloads."
         ),
         section(
             .openingFiles,
@@ -141,7 +141,7 @@ package enum MarkdownPrinterHelpContent {
         section(
             .imagesAndPrivacy,
             "Images and Privacy",
-            "Relative image paths resolve from the Markdown file’s folder. Missing, unreadable, and absolute images appear as readable placeholders. Click a remote-image placeholder to download it, or right-click the placeholder and choose Download All Images.",
+            "Relative image paths resolve from the Markdown file’s folder. Missing, unreadable, and absolute images appear as readable placeholders. Automatically download remote images is on by default in Settings > General and applies to open documents. Turn it off for manual downloads. Click a remote-image placeholder to download or retry it, or right-click the placeholder and choose Download All Images.",
             "Downloaded remote images stay in Markdown Printer’s disposable cache and are never written beside the Markdown file. Finder Quick Look stays offline. All parsing, preview generation, export, and printing happen locally."
         ),
         section(

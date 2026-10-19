@@ -22,6 +22,13 @@ public final class DocumentSession: ObservableObject {
     private let baseRendererConfiguration: RendererConfiguration
     private let pagePreferences: PagePreferences?
     private var preferenceObservation: AnyCancellable?
+    private let imagePreferences: ImagePreferences?
+    private var imagePreferenceObservation: AnyCancellable?
+    private var automaticImageTask: Task<Void, Never>?
+    private var automaticImageGeneration: UInt64 = 0
+    private var automaticImageDocument: MarkdownDocument?
+    private var attemptedAutomaticImageSources = Set<String>()
+    private var automaticDownloadingSources = Set<String>()
     private let sourceMonitorFactory: (URL, @escaping () -> Void) -> SourceChangeMonitoring
     private let remoteImageDownloader: any RemoteImageDownloading
     private var sourceMonitor: SourceChangeMonitoring?
@@ -44,11 +51,13 @@ public final class DocumentSession: ObservableObject {
         exporter: PDFExporter? = nil,
         wordExporter: WordExporter? = nil,
         pagePreferences: PagePreferences? = nil,
+        imagePreferences: ImagePreferences? = nil,
         remoteImageCache: RemoteImageCache = .applicationDefault,
         remoteImageDownloader: (any RemoteImageDownloading)? = nil
     ) {
         baseRendererConfiguration = renderer.configuration
         self.pagePreferences = pagePreferences
+        self.imagePreferences = imagePreferences
         self.remoteImageCache = remoteImageCache
         self.remoteImageDownloader = remoteImageDownloader
             ?? RemoteImageDownloader(cache: remoteImageCache)
@@ -71,6 +80,7 @@ public final class DocumentSession: ObservableObject {
         }
         sourceRecoveryGraceInterval = 2
         observePagePreferences()
+        observeImagePreferences()
     }
 
     init(
@@ -78,6 +88,7 @@ public final class DocumentSession: ObservableObject {
         exporter: PDFExporter? = nil,
         wordExporter: WordExporter? = nil,
         pagePreferences: PagePreferences? = nil,
+        imagePreferences: ImagePreferences? = nil,
         remoteImageCache: RemoteImageCache = .applicationDefault,
         remoteImageDownloader: (any RemoteImageDownloading)? = nil,
         sourceMonitorFactory: @escaping (URL, @escaping () -> Void) -> SourceChangeMonitoring,
@@ -85,6 +96,7 @@ public final class DocumentSession: ObservableObject {
     ) {
         baseRendererConfiguration = renderer.configuration
         self.pagePreferences = pagePreferences
+        self.imagePreferences = imagePreferences
         self.remoteImageCache = remoteImageCache
         self.remoteImageDownloader = remoteImageDownloader
             ?? RemoteImageDownloader(cache: remoteImageCache)
@@ -105,6 +117,7 @@ public final class DocumentSession: ObservableObject {
         self.sourceMonitorFactory = sourceMonitorFactory
         self.sourceRecoveryGraceInterval = sourceRecoveryGraceInterval
         observePagePreferences()
+        observeImagePreferences()
     }
 
     public var document: MarkdownDocument? {
@@ -328,6 +341,7 @@ public final class DocumentSession: ObservableObject {
         committedOriginalSnapshot = originalSnapshot
         if clearsError { errorMessage = nil }
         documentSourceDidCommit()
+        scheduleAutomaticImageDownloads()
     }
 
     private func rebuildAsync(
@@ -411,6 +425,7 @@ public final class DocumentSession: ObservableObject {
         committedOriginalSnapshot = original
         errorMessage = nil
         documentSourceDidCommit()
+        scheduleAutomaticImageDownloads()
     }
 
     @discardableResult
@@ -569,6 +584,80 @@ public final class DocumentSession: ObservableObject {
             return
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func observeImagePreferences() {
+        imagePreferenceObservation = imagePreferences?.$automaticallyDownloadRemoteImages
+            .dropFirst()
+            .sink { [weak self] enabled in
+                // Published values arrive before the stored property changes.
+                if enabled {
+                    self?.scheduleAutomaticImageDownloads(enabled: true)
+                } else {
+                    self?.cancelAutomaticImageDownloads()
+                    self?.automaticImageDocument = nil
+                }
+            }
+    }
+
+    private func cancelAutomaticImageDownloads() {
+        automaticImageGeneration &+= 1
+        automaticImageTask?.cancel()
+        automaticImageTask = nil
+        downloadingRemoteImageSources.subtract(automaticDownloadingSources)
+        automaticDownloadingSources.removeAll()
+        attemptedAutomaticImageSources.removeAll()
+    }
+
+    private func scheduleAutomaticImageDownloads(enabled: Bool? = nil) {
+        guard enabled ?? imagePreferences?.automaticallyDownloadRemoteImages == true,
+              let document else { return }
+        if automaticImageDocument != document {
+            cancelAutomaticImageDownloads()
+            automaticImageDocument = document
+        }
+        guard automaticImageTask == nil else { return }
+        let sources = uncachedRemoteImageSources.filter {
+            RemoteImageReference.remoteURL(from: $0)?.scheme?.lowercased() == "https"
+                && !downloadingRemoteImageSources.contains($0)
+                && !attemptedAutomaticImageSources.contains($0)
+        }
+        guard !sources.isEmpty else { return }
+        attemptedAutomaticImageSources.formUnion(sources)
+        automaticDownloadingSources = Set(sources)
+        downloadingRemoteImageSources.formUnion(sources)
+        let generation = automaticImageGeneration
+        let downloader = remoteImageDownloader
+        automaticImageTask = Task { [weak self] in
+            let downloaded = await withTaskGroup(of: Bool.self, returning: Bool.self) { group in
+                for source in sources {
+                    group.addTask {
+                        do {
+                            try Task.checkCancellation()
+                            _ = try await downloader.download(source: source)
+                            return true
+                        } catch { return false }
+                    }
+                }
+                var downloaded = false
+                for await success in group { downloaded = downloaded || success }
+                return downloaded
+            }
+            guard !Task.isCancelled, let self,
+                  generation == self.automaticImageGeneration else { return }
+            self.automaticImageTask = nil
+            self.downloadingRemoteImageSources.subtract(sources)
+            self.automaticDownloadingSources.removeAll()
+            guard downloaded else { return }
+            do {
+                try await self.rebuildAsync(
+                    document: self.requestedDocument ?? document,
+                    pageSetup: self.requestedPageSetup ?? self.activePageSetup
+                )
+            } catch {
+                // Keep the last preview and retryable placeholders on failure.
+            }
         }
     }
 

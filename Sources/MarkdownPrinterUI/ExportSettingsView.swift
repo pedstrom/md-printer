@@ -4,17 +4,20 @@ import SwiftUI
 
 public struct ExportSettingsView: View {
     @ObservedObject private var preferences: ExportPreferences
+    @ObservedObject private var imagePreferences: ImagePreferences
     @ObservedObject private var updateController: UpdateController
     @ObservedObject private var defaultApplicationController: DefaultApplicationController
     private let quickLookNavigator: FinderQuickLookSettingsNavigator
 
     public init(
         preferences: ExportPreferences,
+        imagePreferences: ImagePreferences,
         updateController: UpdateController,
         defaultApplicationController: DefaultApplicationController,
         quickLookNavigator: FinderQuickLookSettingsNavigator
     ) {
         self.preferences = preferences
+        self.imagePreferences = imagePreferences
         self.updateController = updateController
         self.defaultApplicationController = defaultApplicationController
         self.quickLookNavigator = quickLookNavigator
@@ -31,6 +34,17 @@ public struct ExportSettingsView: View {
             }
             .pickerStyle(.menu)
             Text("Used by Save, Share, and dragging from the preview. Hold Option when dragging or clicking Share to use the other format just once.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+                .padding(.vertical, 4)
+
+            Text("Images")
+                .font(.headline)
+            Toggle("Automatically download remote images", isOn: $imagePreferences.automaticallyDownloadRemoteImages)
+            Text("Downloads HTTPS images referenced by open documents into the app’s disposable cache. Turn this off to download images only when you choose.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -78,7 +92,7 @@ public struct ExportSettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(24)
-        .frame(width: 520, height: 540, alignment: .topLeading)
+        .frame(width: 520, height: 660, alignment: .topLeading)
         .task {
             defaultApplicationController.refreshDefaultStatus()
         }

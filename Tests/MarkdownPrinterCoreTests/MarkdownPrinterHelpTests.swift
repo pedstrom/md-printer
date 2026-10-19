@@ -40,6 +40,7 @@ final class MarkdownPrinterHelpTests: XCTestCase {
             "Show in Finder",
             "Quick Look",
             "remote images",
+            "Automatically download remote images is on by default in Settings > General",
             "Download All Images",
             "disposable cache",
             "Quick Look stays offline",

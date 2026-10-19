@@ -17,7 +17,7 @@ These instructions apply to the whole repository.
 - The generated PDF is the source of truth for preview, save, and print; do not maintain three subtly different rendering paths.
 - Finder Quick Look is the intentional exception to PDF pagination: keep it as one continuous, screen-optimized view that reuses the core parser and attributed renderer before pagination. It must not alter the full app's PDF preview, save, or print behavior.
 - Route File > Open, Finder Open With, Dock/open events, and drag-and-drop through the same `DocumentSession` loading path.
-- Resolve embedded images from local file URLs relative to the Markdown file. Show a readable placeholder for missing, corrupt, or remote images.
+- Resolve embedded images from local file URLs relative to the Markdown file. Download secure remote images automatically when the General preference is enabled (the default), and show a readable placeholder for missing, corrupt, or unavailable images. Keep manual download controls available when automatic downloads are off.
 - Markdown underline syntax is `<u>text</u>`. Preserve standard `__strong__` behavior.
 
 ## Testing Bar

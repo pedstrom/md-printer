@@ -1,5 +1,12 @@
 # Product Development Log
 
+## 2026-10-19 — Automatic remote-image preference
+
+- Add **Automatically download remote images** to Mac Settings > General, enabled by default and persisted across launches. Share the preference across document windows; enabling it starts missing downloads in open documents, and disabling it cancels automatic work while retaining cached images and manual download controls.
+- Reuse the existing HTTPS downloader and disposable cache. Discover images after initial loading and source refresh, deduplicate requests within each document, keep unavailable images as quiet, retryable placeholders, and rebuild the PDF used for preview, save, print, and Word export after successful downloads. Keep Finder Quick Look offline and retain the app version.
+- Add deterministic coverage for persistence, sync and async loading, HTML images, cache reuse, duplicate references, manual downloads, shared preference changes, failures without retry loops, cancellation, and document replacement. Update offline Help and the image/privacy documentation.
+- Validation: focused image/session/cache/Help tests and the full 624-test Mac gate pass with 96.44% testable-production line coverage, performance checks, and universal app/extension validation. In an isolated native app, confirm the default checked toggle, automatic loading of a real HTTPS image, placeholders while disabled, and immediate loading after re-enabling in an open document. Save and visually inspect the image-bearing PDF and both showcase pages.
+
 ## 2026-10-15 — Reliable mouse interaction in Git history
 
 - Use a native AppKit table for the Git version picker so row selection and double-click comparison share the same mouse-event path. Preserve the suggested version, immediate arrow navigation, Return to compare, full-row click targets, and readable dates, commit IDs, and subjects.

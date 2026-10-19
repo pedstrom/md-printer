@@ -44,7 +44,7 @@ Download the ZIP above, unzip it, and move **Markdown Printer** to Applications.
 
 Install from the App Store, choose a Markdown file in Files, and use the share icon to save, send, or print a PDF. The paid app supports the project's continued development.
 
-Your source files stay unchanged. Local images resolve beside the Markdown file. Remote images download when you choose on Mac and automatically on iPhone and iPad; Finder Quick Look stays offline. See the [privacy policy](docs/privacy-policy.md) for details.
+Your source files stay unchanged. Local images resolve beside the Markdown file. Secure remote images download automatically; on Mac, you can turn this off in Settings > General. Finder Quick Look stays offline. See the [privacy policy](docs/privacy-policy.md) for details.
 
 ## Explore further
 

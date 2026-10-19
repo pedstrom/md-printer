@@ -20,7 +20,7 @@ Prose and headings use Avenir Next, with a system-font fallback if unavailable. 
 
 Local images resolve relative to the Markdown file's folder and preserve their proportions. Missing or corrupt images have readable placeholders.
 
-On Mac, a remote image starts as a placeholder. Click it to download that image, or use its context menu to download every remote image in the document. On iPhone and iPad, secure remote images load automatically when the document opens; tap an unavailable image to retry. Downloads go to the app's disposable cache and are never written beside the Markdown file.
+Secure remote images load automatically when a document opens. On Mac, **Settings > General > Automatically download remote images** is on by default; turn it off for manual downloads. Click an unavailable image to download or retry it, or use its context menu to download every remote image in the document. On iPhone and iPad, tap an unavailable image to retry. Downloads go to the app's disposable cache and are never written beside the Markdown file.
 
 Finder Quick Look stays offline and may lack permission to read neighboring local images. Its placeholders show a centered filename without the full path. In the mobile app, granting access to the containing folder can enable linked local images and documents.
 
