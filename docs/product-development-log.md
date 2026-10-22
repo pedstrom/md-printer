@@ -1,5 +1,15 @@
 # Product Development Log
 
+## 2026-10-22 — Caption grouping and version 1.5.6 preparation
+
+- Move an image row with its following caption when the image alone fits but keeping the complete figure would require more than the 15% discretionary reduction. Require the figure and its own first-row header to fit the original fresh-page height, preserving the bounded retry rule after header corrections.
+- Recognize wrapped, fully italic caption rows beyond the short-row heuristic, measure both cells, and reserve room for a readable image and its baseline. Let ordinary text rows and exceptionally long captions paginate naturally.
+- Discard downstream page-height cuts after a successful earlier row, heading, or table-header move. Recalculate image movement attempts for the affected content so obsolete breaks cannot strand a later header; retain the existing heading policy and fixed image shrinking floor.
+- Reproduce the reported 1055 × 4067 / 1158 × 1500 image pair and the 1098 × 1859 schedule image opposite explanatory text with exact-size synthetic assets. Check top and bottom image markers, proportions, printable bounds, complete headers and captions, absence of footer-only pages, and synchronous/asynchronous export behavior. Reproduce the caption-only overflow against the previous implementation before correcting it.
+- Prepare Mac version 1.5.6, build 24, with feature-focused notes for automatic secure image loading and the General preference for manual download control. Keep Git selection and pagination refinements brief in release notes.
+- Keep regression labels, prose, and generated images synthetic throughout the public source history; retain only the reported image dimensions and layout shapes.
+- Validation: 47 focused pagination/PDF regressions and the complete 645-test Mac gate pass with 96.44% testable production line coverage, performance budgets, and universal app/Quick Look validation. Inspect the combined reported-size fixture and both showcase pages. In an isolated native app, confirm Open, Find, direct text selection, PDF/Word Save, the five-page Print preview and cancellation, live refresh, and refreshed PDF/Word content. Retain the manual acceptance limitation: physical held-drag PDF/Word drops and Option switching remain unperformed because the UI driver cannot carry a held press into a separate drag.
+
 ## 2026-10-22 — Contain table images and prefer modest page-end shrinking
 
 - Confirm that nominal percentage column widths overestimate TextKit's actual cell content area. Fit Mac PDF images against measured cell rectangles, including padding and native column rounding, so left, centered, and right-aligned images stay within their borders.

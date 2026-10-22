@@ -168,10 +168,12 @@ public final class PDFExporter {
         while tableImages.fitWidths(using: layoutManager, pageHeight: contentSize.height) {
             appendPagesUntilCovered(pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
         }
-        repeat {
+        while true {
             fitTableImages(tableImages, pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
-        } while keepHeadersWithFollowingContent(pages: &pages, layoutManager: layoutManager,
-                                                textStorage: textStorage, contentSize: contentSize)
+            guard keepHeadersWithFollowingContent(pages: &pages, layoutManager: layoutManager,
+                                                  textStorage: textStorage, contentSize: contentSize) else { break }
+            tableImages.resetPageBreakAttempts()
+        }
         cacheGlyphRanges(pages: pages, layoutManager: layoutManager)
 
         return pages
@@ -196,10 +198,12 @@ public final class PDFExporter {
         while tableImages.fitWidths(using: layoutManager, pageHeight: contentSize.height) {
             await appendPagesUntilCoveredAsync(pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
         }
-        repeat {
+        while true {
             await fitTableImagesAsync(tableImages, pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
-        } while await keepHeadersWithFollowingContentAsync(pages: &pages, layoutManager: layoutManager,
-                                                           textStorage: textStorage, contentSize: contentSize)
+            guard await keepHeadersWithFollowingContentAsync(pages: &pages, layoutManager: layoutManager,
+                                                             textStorage: textStorage, contentSize: contentSize) else { break }
+            tableImages.resetPageBreakAttempts()
+        }
         cacheGlyphRanges(pages: pages, layoutManager: layoutManager)
         return pages
     }
@@ -563,11 +567,11 @@ public final class PDFExporter {
     private func fitTableImages(_ images: TableImageLayout, pages: inout [TextPage],
                                 layoutManager: NSLayoutManager, contentSize: CGSize) {
         while true {
-            switch images.nextAdjustment(using: layoutManager) {
+            switch images.nextAdjustment(using: layoutManager, pageHeight: contentSize.height) {
             case .none: return
             case .resized: break
             case let .pageBreak(container, top):
-                moveImageRow(container: container, top: top, pages: pages, layoutManager: layoutManager)
+                moveImageRow(container: container, top: top, pages: pages, layoutManager: layoutManager, pageHeight: contentSize.height)
             }
             for page in pages { page.cachedGlyphRange = nil }
             appendPagesUntilCovered(pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
@@ -577,11 +581,11 @@ public final class PDFExporter {
     private func fitTableImagesAsync(_ images: TableImageLayout, pages: inout [TextPage],
                                      layoutManager: NSLayoutManager, contentSize: CGSize) async {
         while true {
-            switch images.nextAdjustment(using: layoutManager) {
+            switch images.nextAdjustment(using: layoutManager, pageHeight: contentSize.height) {
             case .none: return
             case .resized: break
             case let .pageBreak(container, top):
-                moveImageRow(container: container, top: top, pages: pages, layoutManager: layoutManager)
+                moveImageRow(container: container, top: top, pages: pages, layoutManager: layoutManager, pageHeight: contentSize.height)
             }
             for page in pages { page.cachedGlyphRange = nil }
             await appendPagesUntilCoveredAsync(pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
@@ -589,14 +593,30 @@ public final class PDFExporter {
         }
     }
 
-    private func moveImageRow(container: NSTextContainer, top: CGFloat, pages: [TextPage], layoutManager: NSLayoutManager) {
-        guard let page = pages.first(where: { $0.textContainer === container }) else { return }
+    private func moveImageRow(container: NSTextContainer, top: CGFloat, pages: [TextPage], layoutManager: NSLayoutManager, pageHeight: CGFloat) {
+        guard let index = pages.firstIndex(where: { $0.textContainer === container }) else { return }
+        let page = pages[index]
         let oldHeight = container.containerSize.height
         let oldEnd = NSMaxRange(page.glyphRange)
         container.containerSize.height = max(1, top)
         for page in pages { page.cachedGlyphRange = nil }
         layoutManager.ensureLayout(for: container)
-        if NSMaxRange(page.glyphRange) >= oldEnd { container.containerSize.height = oldHeight }
+        if NSMaxRange(page.glyphRange) >= oldEnd {
+            container.containerSize.height = oldHeight
+        } else {
+            restoreFollowingPageHeights(after: index, pages: pages, height: pageHeight)
+        }
+    }
+
+    private func restoreFollowingPageHeights(after index: Int, pages: [TextPage], height: CGFloat) {
+        // A successful earlier break changes the content on every later page.
+        // Their old cuts no longer describe a valid row or heading boundary.
+        for page in pages.dropFirst(index + 1) {
+            if page.textContainer.containerSize.height != height {
+                page.textContainer.containerSize.height = height
+            }
+            page.cachedGlyphRange = nil
+        }
     }
 
     private func keepHeadersWithFollowingContent(
@@ -643,6 +663,7 @@ public final class PDFExporter {
                     pageIndex += 1
                     continue
                 }
+                restoreFollowingPageHeights(after: pageIndex, pages: pages, height: contentSize.height)
                 changed = true
             }
 
@@ -701,6 +722,7 @@ public final class PDFExporter {
                     pageIndex += 1
                     continue
                 }
+                restoreFollowingPageHeights(after: pageIndex, pages: pages, height: contentSize.height)
                 changed = true
                 await Task.yield()
             }

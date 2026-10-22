@@ -71,7 +71,7 @@ final class TableImageLayout {
     func fitWidths(using manager: NSLayoutManager, pageHeight: CGFloat) -> Bool {
         var adjustments: [(Image, CGFloat)] = []
         for rowIndex in rows.indices {
-            let caption = captionHeight(after: rowIndex, using: manager)
+            let caption = captionHeight(after: rowIndex, using: manager, pageHeight: pageHeight)
             for imageIndex in rows[rowIndex].images.indices {
                 let image = rows[rowIndex].images[imageIndex]
                 let glyph = manager.glyphIndexForCharacter(at: image.range.location)
@@ -141,7 +141,7 @@ final class TableImageLayout {
         return manager.boundsRect(for: header.block, at: glyph, effectiveRange: nil).height
     }
 
-    func nextAdjustment(using manager: NSLayoutManager) -> Adjustment {
+    func nextAdjustment(using manager: NSLayoutManager, pageHeight: CGFloat) -> Adjustment {
         for rowIndex in rows.indices where !rows[rowIndex].images.isEmpty {
             let row = rows[rowIndex]
             let start = manager.glyphIndexForCharacter(at: row.range.location)
@@ -161,7 +161,8 @@ final class TableImageLayout {
             guard tallest > 0 else { continue }
             let padding = row.cell.width(for: .padding, edge: .maxY) + row.cell.width(for: .border, edge: .maxY)
             let rowHeight = max(bounds.height, inkBottom - bounds.minY + padding)
-            let desired = rowHeight + captionHeight(after: rowIndex, using: manager)
+            let caption = captionHeight(after: rowIndex, using: manager, pageHeight: pageHeight)
+            let desired = rowHeight + caption
             var available = container.containerSize.height - bounds.minY
 
             // TextKit may already have moved the row. Try a modest reduction
@@ -187,25 +188,55 @@ final class TableImageLayout {
                 text.endEditing()
                 return .resized
             }
-            // Larger reductions sacrifice too much detail. Move the row intact
-            // when it has preceding content, rather than painting into a footer.
+            // Larger reductions sacrifice too much detail. Move the complete
+            // figure when its caption alone spills, provided the figure and its
+            // own header can fit a fresh page. Containers on earlier pages may
+            // already be shortened by a previous pagination correction.
+            let imageOverflows = inkBottom + padding > container.containerSize.height + 0.5
+            let figureFitsFreshPage = caption > 0
+                && desired + headerHeight(for: row.images[0], using: manager) <= pageHeight + 0.5
             if bounds.minY > 20, !attemptedBreaks.contains(row.key),
-               inkBottom + padding > container.containerSize.height + 0.5 {
+               imageOverflows || figureFitsFreshPage {
                 attemptedBreaks.insert(row.key)
+                for later in rows.dropFirst(rowIndex + 1) { attemptedBreaks.remove(later.key) }
                 return .pageBreak(container, bounds.minY)
             }
         }
         return .none
     }
 
-    private func captionHeight(after index: Int, using manager: NSLayoutManager) -> CGFloat {
+    func resetPageBreakAttempts() {
+        attemptedBreaks.removeAll()
+    }
+
+    private func captionHeight(after index: Int, using manager: NSLayoutManager, pageHeight: CGFloat) -> CGFloat {
         guard index + 1 < rows.count else { return 0 }
         let row = rows[index], next = rows[index + 1]
         guard next.key.table == row.key.table, next.key.row == row.key.row + 1,
               next.images.isEmpty else { return 0 }
-        let glyph = manager.glyphIndexForCharacter(at: next.range.location)
-        let height = manager.boundsRect(for: next.cell, at: glyph, effectiveRange: nil).height
-        return height <= 60 ? height : 0
+        let captionCells = cells.filter { $0.block.table === next.cell.table && $0.block.startingRow == next.key.row }
+        let height = captionCells.map { cell in
+            let glyph = manager.glyphIndexForCharacter(at: cell.range.location)
+            return manager.boundsRect(for: cell.block, at: glyph, effectiveRange: nil).height
+        }.max() ?? 0
+        if height <= 60 { return height }
+        // Explicit italic captions can wrap beyond the short-row heuristic.
+        // Leave room for a readable image and its baseline on a fresh page;
+        // very long text rows must remain free to paginate normally.
+        let header = row.images.first.map { headerHeight(for: $0, using: manager) } ?? 0
+        guard height + header + 24 + 64 <= pageHeight else { return 0 }
+        var isCaption = true
+        text.enumerateAttribute(.font, in: next.range) { value, range, stop in
+            let content = (self.text.string as NSString).substring(with: range)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !content.isEmpty else { return }
+            guard let font = value as? NSFont, font.fontDescriptor.symbolicTraits.contains(.italic) else {
+                isCaption = false
+                stop.pointee = true
+                return
+            }
+        }
+        return isCaption ? height : 0
     }
 
     private func resize(_ image: Image, scale: CGFloat) {
