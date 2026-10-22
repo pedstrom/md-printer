@@ -20,6 +20,8 @@ Prose and headings use Avenir Next, with a system-font fallback if unavailable. 
 
 Local images resolve relative to the Markdown file's folder and preserve their proportions. Missing or corrupt images have readable placeholders.
 
+In Mac PDFs, table images fit inside each cell's measured content area and padding. Near a page break, an image row may shrink by up to 15% to stay with a short following caption row. Larger overruns move to the next page; exceptionally tall images first fit within a full page. Images keep their proportions throughout.
+
 Secure remote images load automatically when a document opens. On Mac, **Settings > General > Automatically download remote images** is on by default; turn it off for manual downloads. Click an unavailable image to download or retry it, or use its context menu to download every remote image in the document. On iPhone and iPad, tap an unavailable image to retry. Downloads go to the app's disposable cache and are never written beside the Markdown file.
 
 Finder Quick Look stays offline and may lack permission to read neighboring local images. Its placeholders show a centered filename without the full path. In the mobile app, granting access to the containing folder can enable linked local images and documents.

@@ -359,7 +359,7 @@ final class PDFExporterTests: XCTestCase {
                 if (0..<3).contains(column) { bluePixelsByColumn[column] += 1 }
             }
         }
-        XCTAssertTrue(bluePixelsByColumn.allSatisfy { $0 > 500 }, "Every image column must be visible")
+        XCTAssertTrue(bluePixelsByColumn.allSatisfy { $0 > 500 }, "Every image column must be visible: \(bluePixelsByColumn)")
         XCTAssertGreaterThanOrEqual(minimumImageX, configuration.pageMargins.left)
         XCTAssertLessThanOrEqual(maximumImageX, configuration.pageSize.width - configuration.pageMargins.right)
     }

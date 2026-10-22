@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-10-22 — Contain table images and prefer modest page-end shrinking
+
+- Confirm that nominal percentage column widths overestimate TextKit's actual cell content area. Fit Mac PDF images against measured cell rectangles, including padding and native column rounding, so left, centered, and right-aligned images stay within their borders.
+- Measure complete image rows and short following caption rows against the remaining page height. Permit at most 15% additional proportional shrinking to avoid a mostly empty page; move larger overruns intact to the next page, and cap exceptionally tall images to a fresh page. Repeat image fitting after heading and table-header moves so later reflow cannot reintroduce overflow.
+- Clone PDF table attachments before fitting to preserve source rendering, editable Word sizing, and continuous Quick Look. Batch measurements before editing attachments, invalidate pagination ranges after edits or row moves, and share the correction rules across synchronous and asynchronous PDF exports. Retain the app version and mobile behavior.
+- Add regressions for actual per-cell image bounds across alignments, final-row shrinking with captions, larger row moves, tall portraits, painted page/footer bounds, source-attachment preservation, and export parity; retain multi-column and multiple-image pixel checks. Update image documentation.
+- Validation: focused PDF, image, table-header, Word, and annotation regressions pass, including several consecutive heading/image-table moves. The full Mac coverage, performance, and universal app/extension gate passes. Visually inspect the one-page modest-fit fixture, the larger-overrun two-page fixture, the three-column/multiple-image fixture, and both showcase pages; confirm intact borders, padding, captions, proportions, page margins, and footer clearance.
+
 ## 2026-10-22 — Keep table headers with their first data row
 
 - Extend Mac PDF pagination to move a table's complete header row with its first data row, including wrapped text, empty header cells, and local images. Use native table identity and cell ranges so a multi-column header is not mistaken for several following rows; coordinate table moves with the existing section-heading protection.

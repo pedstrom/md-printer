@@ -155,6 +155,7 @@ public final class PDFExporter {
             height: max(1, configuration.pageSize.height - configuration.pageMargins.top - configuration.pageMargins.bottom)
         )
         let textStorage = NSTextStorage(attributedString: attributedText)
+        let tableImages = TableImageLayout(text: textStorage)
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
         var pages: [TextPage] = []
@@ -164,12 +165,13 @@ public final class PDFExporter {
             layoutManager: layoutManager,
             contentSize: contentSize
         )
-        keepHeadersWithFollowingContent(
-            pages: &pages,
-            layoutManager: layoutManager,
-            textStorage: textStorage,
-            contentSize: contentSize
-        )
+        if tableImages.fitWidths(using: layoutManager, pageHeight: contentSize.height) {
+            appendPagesUntilCovered(pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
+        }
+        repeat {
+            fitTableImages(tableImages, pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
+        } while keepHeadersWithFollowingContent(pages: &pages, layoutManager: layoutManager,
+                                                textStorage: textStorage, contentSize: contentSize)
         cacheGlyphRanges(pages: pages, layoutManager: layoutManager)
 
         return pages
@@ -181,6 +183,7 @@ public final class PDFExporter {
             height: max(1, configuration.pageSize.height - configuration.pageMargins.top - configuration.pageMargins.bottom)
         )
         let textStorage = NSTextStorage(attributedString: attributedText)
+        let tableImages = TableImageLayout(text: textStorage)
         let layoutManager = NSLayoutManager()
         textStorage.addLayoutManager(layoutManager)
         var pages: [TextPage] = []
@@ -190,12 +193,13 @@ public final class PDFExporter {
             layoutManager: layoutManager,
             contentSize: contentSize
         )
-        await keepHeadersWithFollowingContentAsync(
-            pages: &pages,
-            layoutManager: layoutManager,
-            textStorage: textStorage,
-            contentSize: contentSize
-        )
+        if tableImages.fitWidths(using: layoutManager, pageHeight: contentSize.height) {
+            await appendPagesUntilCoveredAsync(pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
+        }
+        repeat {
+            await fitTableImagesAsync(tableImages, pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
+        } while await keepHeadersWithFollowingContentAsync(pages: &pages, layoutManager: layoutManager,
+                                                           textStorage: textStorage, contentSize: contentSize)
         cacheGlyphRanges(pages: pages, layoutManager: layoutManager)
         return pages
     }
@@ -556,15 +560,55 @@ public final class PDFExporter {
         )
     }
 
+    private func fitTableImages(_ images: TableImageLayout, pages: inout [TextPage],
+                                layoutManager: NSLayoutManager, contentSize: CGSize) {
+        while true {
+            switch images.nextAdjustment(using: layoutManager) {
+            case .none: return
+            case .resized: break
+            case let .pageBreak(container, top):
+                moveImageRow(container: container, top: top, pages: pages, layoutManager: layoutManager)
+            }
+            for page in pages { page.cachedGlyphRange = nil }
+            appendPagesUntilCovered(pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
+        }
+    }
+
+    private func fitTableImagesAsync(_ images: TableImageLayout, pages: inout [TextPage],
+                                     layoutManager: NSLayoutManager, contentSize: CGSize) async {
+        while true {
+            switch images.nextAdjustment(using: layoutManager) {
+            case .none: return
+            case .resized: break
+            case let .pageBreak(container, top):
+                moveImageRow(container: container, top: top, pages: pages, layoutManager: layoutManager)
+            }
+            for page in pages { page.cachedGlyphRange = nil }
+            await appendPagesUntilCoveredAsync(pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
+            await Task.yield()
+        }
+    }
+
+    private func moveImageRow(container: NSTextContainer, top: CGFloat, pages: [TextPage], layoutManager: NSLayoutManager) {
+        guard let page = pages.first(where: { $0.textContainer === container }) else { return }
+        let oldHeight = container.containerSize.height
+        let oldEnd = NSMaxRange(page.glyphRange)
+        container.containerSize.height = max(1, top)
+        for page in pages { page.cachedGlyphRange = nil }
+        layoutManager.ensureLayout(for: container)
+        if NSMaxRange(page.glyphRange) >= oldEnd { container.containerSize.height = oldHeight }
+    }
+
     private func keepHeadersWithFollowingContent(
         pages: inout [TextPage],
         layoutManager: NSLayoutManager,
         textStorage: NSTextStorage,
         contentSize: CGSize
-    ) {
+    ) -> Bool {
         let openings = tableOpenings(in: textStorage)
         let checkHeadings = textStorage.length <= 250_000
-        guard checkHeadings || !openings.isEmpty else { return }
+        guard checkHeadings || !openings.isEmpty else { return false }
+        var changed = false
         var pageIndex = 0
         while true {
             while pageIndex < pages.count {
@@ -599,6 +643,7 @@ public final class PDFExporter {
                     pageIndex += 1
                     continue
                 }
+                changed = true
             }
 
             let previousPageCount = pages.count
@@ -608,7 +653,7 @@ public final class PDFExporter {
                 contentSize: contentSize
             )
             if pages.count == previousPageCount {
-                break
+                return changed
             }
         }
     }
@@ -618,10 +663,11 @@ public final class PDFExporter {
         layoutManager: NSLayoutManager,
         textStorage: NSTextStorage,
         contentSize: CGSize
-    ) async {
+    ) async -> Bool {
         let openings = tableOpenings(in: textStorage)
         let checkHeadings = textStorage.length <= 250_000
-        guard checkHeadings || !openings.isEmpty else { return }
+        guard checkHeadings || !openings.isEmpty else { return false }
+        var changed = false
         var pageIndex = 0
         while true {
             while pageIndex < pages.count {
@@ -655,6 +701,7 @@ public final class PDFExporter {
                     pageIndex += 1
                     continue
                 }
+                changed = true
                 await Task.yield()
             }
 
@@ -664,7 +711,7 @@ public final class PDFExporter {
                 layoutManager: layoutManager,
                 contentSize: contentSize
             )
-            if pages.count == previousPageCount { break }
+            if pages.count == previousPageCount { return changed }
         }
     }
 
