@@ -164,14 +164,12 @@ public final class PDFExporter {
             layoutManager: layoutManager,
             contentSize: contentSize
         )
-        if attributedText.length <= 250_000 {
-            keepHeadingsWithFollowingContent(
-                pages: &pages,
-                layoutManager: layoutManager,
-                textStorage: textStorage,
-                contentSize: contentSize
-            )
-        }
+        keepHeadersWithFollowingContent(
+            pages: &pages,
+            layoutManager: layoutManager,
+            textStorage: textStorage,
+            contentSize: contentSize
+        )
         cacheGlyphRanges(pages: pages, layoutManager: layoutManager)
 
         return pages
@@ -192,14 +190,12 @@ public final class PDFExporter {
             layoutManager: layoutManager,
             contentSize: contentSize
         )
-        if attributedText.length <= 250_000 {
-            await keepHeadingsWithFollowingContentAsync(
-                pages: &pages,
-                layoutManager: layoutManager,
-                textStorage: textStorage,
-                contentSize: contentSize
-            )
-        }
+        await keepHeadersWithFollowingContentAsync(
+            pages: &pages,
+            layoutManager: layoutManager,
+            textStorage: textStorage,
+            contentSize: contentSize
+        )
         cacheGlyphRanges(pages: pages, layoutManager: layoutManager)
         return pages
     }
@@ -560,22 +556,26 @@ public final class PDFExporter {
         )
     }
 
-    private func keepHeadingsWithFollowingContent(
+    private func keepHeadersWithFollowingContent(
         pages: inout [TextPage],
         layoutManager: NSLayoutManager,
         textStorage: NSTextStorage,
         contentSize: CGSize
     ) {
+        let openings = tableOpenings(in: textStorage)
+        let checkHeadings = textStorage.length <= 250_000
+        guard checkHeadings || !openings.isEmpty else { return }
         var pageIndex = 0
         while true {
             while pageIndex < pages.count {
-                let rows = visualRowsForHeadingCheck(
-                    startingAt: pageIndex,
+                guard let headerTop = orphanedHeaderTop(
+                    on: pageIndex,
                     pages: pages,
                     layoutManager: layoutManager,
-                    textStorage: textStorage
-                )
-                guard let headingTop = orphanedHeadingTop(on: pageIndex, rows: rows) else {
+                    textStorage: textStorage,
+                    tableOpenings: openings,
+                    checkHeadings: checkHeadings
+                ) else {
                     pageIndex += 1
                     continue
                 }
@@ -584,7 +584,7 @@ public final class PDFExporter {
                 let oldHeight = page.textContainer.containerSize.height
                 // The preceding line can end exactly at this boundary. Cutting into it
                 // would move body text too, cascading the break back through the page.
-                let newHeight = max(1, headingTop)
+                let newHeight = max(1, headerTop)
                 guard newHeight < oldHeight - 0.5 else {
                     pageIndex += 1
                     continue
@@ -592,6 +592,7 @@ public final class PDFExporter {
 
                 let oldGlyphEnd = NSMaxRange(page.glyphRange)
                 page.textContainer.containerSize.height = newHeight
+                for affectedPage in pages[pageIndex...] { affectedPage.cachedGlyphRange = nil }
                 layoutManager.ensureLayout(for: page.textContainer)
                 guard NSMaxRange(page.glyphRange) < oldGlyphEnd else {
                     page.textContainer.containerSize.height = oldHeight
@@ -612,22 +613,26 @@ public final class PDFExporter {
         }
     }
 
-    private func keepHeadingsWithFollowingContentAsync(
+    private func keepHeadersWithFollowingContentAsync(
         pages: inout [TextPage],
         layoutManager: NSLayoutManager,
         textStorage: NSTextStorage,
         contentSize: CGSize
     ) async {
+        let openings = tableOpenings(in: textStorage)
+        let checkHeadings = textStorage.length <= 250_000
+        guard checkHeadings || !openings.isEmpty else { return }
         var pageIndex = 0
         while true {
             while pageIndex < pages.count {
-                let rows = visualRowsForHeadingCheck(
-                    startingAt: pageIndex,
+                guard let headerTop = orphanedHeaderTop(
+                    on: pageIndex,
                     pages: pages,
                     layoutManager: layoutManager,
-                    textStorage: textStorage
-                )
-                guard let headingTop = orphanedHeadingTop(on: pageIndex, rows: rows) else {
+                    textStorage: textStorage,
+                    tableOpenings: openings,
+                    checkHeadings: checkHeadings
+                ) else {
                     pageIndex += 1
                     if pageIndex.isMultiple(of: 8) { await Task.yield() }
                     continue
@@ -635,7 +640,7 @@ public final class PDFExporter {
 
                 let page = pages[pageIndex]
                 let oldHeight = page.textContainer.containerSize.height
-                let newHeight = max(1, headingTop)
+                let newHeight = max(1, headerTop)
                 guard newHeight < oldHeight - 0.5 else {
                     pageIndex += 1
                     continue
@@ -643,6 +648,7 @@ public final class PDFExporter {
 
                 let oldGlyphEnd = NSMaxRange(page.glyphRange)
                 page.textContainer.containerSize.height = newHeight
+                for affectedPage in pages[pageIndex...] { affectedPage.cachedGlyphRange = nil }
                 layoutManager.ensureLayout(for: page.textContainer)
                 guard NSMaxRange(page.glyphRange) < oldGlyphEnd else {
                     page.textContainer.containerSize.height = oldHeight
@@ -660,6 +666,71 @@ public final class PDFExporter {
             )
             if pages.count == previousPageCount { break }
         }
+    }
+
+    private func tableOpenings(in text: NSAttributedString) -> [TableOpening] {
+        var openings: [TableOpening] = []
+        var indices: [ObjectIdentifier: Int] = [:]
+        text.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            guard let style = value as? NSParagraphStyle,
+                  let cell = style.textBlocks.last as? NSTextTableBlock,
+                  cell.startingRow <= 1 else { return }
+            let identity = ObjectIdentifier(cell.table)
+            if let index = indices[identity] {
+                openings[index].range = NSUnionRange(openings[index].range, range)
+                openings[index].hasFirstRow = openings[index].hasFirstRow || cell.startingRow == 1
+            } else if cell.startingRow == 0 {
+                indices[identity] = openings.count
+                openings.append(TableOpening(range: range, headerCell: cell, hasFirstRow: false))
+            }
+        }
+        return openings.filter(\.hasFirstRow)
+    }
+
+    private func orphanedHeaderTop(
+        on pageIndex: Int,
+        pages: [TextPage],
+        layoutManager: NSLayoutManager,
+        textStorage: NSTextStorage,
+        tableOpenings: [TableOpening],
+        checkHeadings: Bool
+    ) -> CGFloat? {
+        let page = pages[pageIndex]
+        // Ask TextKit for the range at the known next glyph. Repeatedly asking
+        // for each container's whole range rescans large documents.
+        if page.cachedGlyphRange == nil {
+            let start = pageIndex == 0 ? 0 : NSMaxRange(pages[pageIndex - 1].glyphRange)
+            layoutManager.ensureLayout(for: page.textContainer)
+            var range = NSRange(location: 0, length: 0)
+            if start < layoutManager.numberOfGlyphs,
+               layoutManager.textContainer(forGlyphAt: start, effectiveRange: &range) === page.textContainer {
+                page.cachedGlyphRange = range
+            }
+        }
+        let pageRange = page.glyphRange
+        let characters = layoutManager.characterRange(forGlyphRange: pageRange, actualGlyphRange: nil)
+        var candidates: [CGFloat] = []
+        for opening in tableOpenings {
+            // Openings are in source order. Map glyphs only for a table that
+            // starts on this page and whose first row continues beyond it.
+            if opening.range.location >= NSMaxRange(characters) { break }
+            guard NSLocationInRange(opening.range.location, characters),
+                  NSMaxRange(opening.range) > NSMaxRange(characters) else { continue }
+            let range = layoutManager.glyphRange(forCharacterRange: opening.range, actualCharacterRange: nil)
+            // A table already at the top must be allowed to split when its opening
+            // rows are taller than a page. Never insert an empty page to retry it.
+            let preceding = NSRange(location: pageRange.location, length: range.location - pageRange.location)
+            guard firstVisibleCharacterIndex(in: preceding, layoutManager: layoutManager,
+                                             textStorage: textStorage) != nil else { continue }
+            let bounds = layoutManager.boundsRect(for: opening.headerCell, at: range.location, effectiveRange: nil)
+            candidates.append(bounds.minY)
+        }
+        if checkHeadings {
+            let rows = visualRowsForHeadingCheck(startingAt: pageIndex, pages: pages,
+                                                 layoutManager: layoutManager, textStorage: textStorage)
+            if let top = orphanedHeadingTop(on: pageIndex, rows: rows) { candidates.append(top) }
+        }
+        return candidates.min()
     }
 
     private func cacheGlyphRanges(
@@ -1202,6 +1273,12 @@ private struct VisualRow {
     let pageIndex: Int
     let minY: CGFloat
     var isHeading: Bool
+}
+
+private struct TableOpening {
+    var range: NSRange
+    let headerCell: NSTextTableBlock
+    var hasFirstRow: Bool
 }
 
 private struct SectionPDFLink {

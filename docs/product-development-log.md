@@ -1,5 +1,13 @@
 # Product Development Log
 
+## 2026-10-22 — Keep table headers with their first data row
+
+- Extend Mac PDF pagination to move a table's complete header row with its first data row, including wrapped text, empty header cells, and local images. Use native table identity and cell ranges so a multi-column header is not mistaken for several following rows; coordinate table moves with the existing section-heading protection.
+- Apply the table check in synchronous and asynchronous exports, including documents beyond the heading scan's size limit. Preserve normal multi-page table flow, header-only tables, and openings too tall to fit together on a fresh page without inserting blank pages. Keep the app version and mobile behavior unchanged.
+- Add boundary regressions against uncorrected native TextKit layout, covering searchable first/last rows, wrapped and empty headers, paired images and captions, oversized openings, large documents, and export-path parity. Make the existing heading/table regression find its natural boundary before either pagination correction runs.
+- Cache each visited page's glyph range during the correction pass and invalidate affected ranges after moving content, avoiding repeated TextKit range scans. Restrict table lookups to openings that start on the current page; retain large-document protection within the existing performance budget.
+- Validation: 32 focused PDF regressions and the full 630-test Mac gate pass with 96.47% testable-production line coverage, performance checks, and universal app/extension validation. The 1 MB fixture completes PDF generation in about 4.7 seconds against the 6-second limit. Visually inspect a two-page image-table fixture and both showcase pages, confirming attached headers, intact images/captions, normal table continuation, typography, and margins.
+
 ## 2026-10-19 — Automatic remote-image preference
 
 - Add **Automatically download remote images** to Mac Settings > General, enabled by default and persisted across launches. Share the preference across document windows; enabling it starts missing downloads in open documents, and disabling it cancels automatic work while retaining cached images and manual download controls.

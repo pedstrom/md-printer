@@ -625,9 +625,25 @@ final class PDFExporterTests: XCTestCase {
                 .map { "Filler line \($0)." }
                 .joined(separator: "\n")
             let markdown = "\(filler)\n\n\(payload)"
-            let document = try naturalDocument(markdown: markdown, baseURL: baseURL)
-            let pageText = try page(containing: heading, in: document).string ?? ""
-            if matches(pageText) { return markdown }
+            let storage = NSTextStorage(attributedString: MarkdownRenderer().render(markdown: markdown, baseURL: baseURL))
+            let manager = NSLayoutManager()
+            storage.addLayoutManager(manager)
+            let configuration = RendererConfiguration()
+            var covered = 0
+            while covered < manager.numberOfGlyphs {
+                let container = NSTextContainer(containerSize: NSSize(
+                    width: configuration.contentWidth,
+                    height: configuration.pageSize.height - configuration.pageMargins.top - configuration.pageMargins.bottom
+                ))
+                manager.addTextContainer(container)
+                manager.ensureLayout(for: container)
+                let glyphs = manager.glyphRange(for: container)
+                guard NSMaxRange(glyphs) > covered else { break }
+                covered = NSMaxRange(glyphs)
+                let characters = manager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+                let pageText = (storage.string as NSString).substring(with: characters)
+                if pageText.contains(heading), matches(pageText) { return markdown }
+            }
         }
         return nil
     }
