@@ -32,6 +32,7 @@ final class TableImageLayout {
 
     private let text: NSTextStorage
     private var rows: [Row] = []
+    private var cells: [(range: NSRange, block: NSTextTableBlock)] = []
     private var attemptedBreaks: Set<RowKey> = []
 
     init(text: NSTextStorage) {
@@ -53,6 +54,7 @@ final class TableImageLayout {
         text.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: text.length)) { value, range, _ in
             guard let style = value as? NSParagraphStyle,
                   let cell = style.textBlocks.last as? NSTextTableBlock else { return }
+            cells.append((range, cell))
             let key = RowKey(table: ObjectIdentifier(cell.table), row: cell.startingRow)
             if let index = indices[key] {
                 rows[index].range = NSUnionRange(rows[index].range, range)
@@ -73,12 +75,16 @@ final class TableImageLayout {
             for imageIndex in rows[rowIndex].images.indices {
                 let image = rows[rowIndex].images[imageIndex]
                 let glyph = manager.glyphIndexForCharacter(at: image.range.location)
-                let cell = manager.layoutRect(for: image.cell, at: glyph, effectiveRange: nil)
                 let original = image.attachment.bounds
                 // Round inward, retaining padding and room for the baseline and
                 // any following caption even for very tall portrait images.
-                let width = max(1, floor(cell.width) - 0.5)
-                let height = max(1, pageHeight - 24 - caption)
+                let width = max(1, floor(measuredWidth(for: image, glyph: glyph, using: manager)) - 0.5)
+                let prefix = precedingTextHeight(for: image, using: manager)
+                let header = headerHeight(for: image, using: manager)
+                let remaining = pageHeight - 24 - caption - header - prefix
+                // Text that itself spans a page must paginate naturally. Keep
+                // its image readable on a subsequent fresh page.
+                let height = max(1, remaining >= 64 ? remaining : pageHeight - 24 - caption - header)
                 let scale = min(1, width / original.width, height / original.height)
                 if scale < 1 { adjustments.append((image, scale)) }
                 rows[rowIndex].images[imageIndex].minimumHeight = original.height * scale * 0.85
@@ -90,6 +96,49 @@ final class TableImageLayout {
         for (image, scale) in adjustments { resize(image, scale: scale) }
         text.endEditing()
         return !adjustments.isEmpty
+    }
+
+    private func measuredWidth(for image: Image, glyph: Int, using manager: NSLayoutManager) -> CGFloat {
+        let measured = manager.layoutRect(for: image.cell, at: glyph, effectiveRange: nil).width
+        if measured > 0 { return measured }
+        // An oversized row may not have native geometry yet. Its laid-out
+        // header/column supplies the same content width without collapsing it.
+        for cell in cells where cell.block.table === image.cell.table
+            && cell.block.startingColumn == image.cell.startingColumn {
+            let index = manager.glyphIndexForCharacter(at: cell.range.location)
+            let width = manager.layoutRect(for: cell.block, at: index, effectiveRange: nil).width
+            if width > 0 { return width }
+        }
+        guard let container = manager.textContainers.first else { return image.attachment.bounds.width }
+        let insets = [NSRectEdge.minX, .maxX].reduce(CGFloat.zero) { total, edge in
+            total + image.cell.width(for: .padding, edge: edge) + image.cell.width(for: .border, edge: edge)
+        }
+        return max(1, (container.containerSize.width - 2 * container.lineFragmentPadding)
+                   * image.cell.contentWidth / 100 - insets - 2)
+    }
+
+    private func precedingTextHeight(for image: Image, using manager: NSLayoutManager) -> CGFloat {
+        guard let cell = cells.first(where: { $0.block === image.cell }),
+              image.range.location > cell.range.location else { return 0 }
+        let prefix = NSRange(location: cell.range.location, length: image.range.location - cell.range.location)
+        let glyphs = manager.glyphRange(forCharacterRange: prefix, actualCharacterRange: nil)
+        var height: CGFloat = 0
+        manager.enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, range, _ in
+            let characters = manager.characterRange(forGlyphRange: range, actualGlyphRange: nil)
+            var hasImage = false
+            self.text.enumerateAttribute(.attachment, in: characters) { value, _, _ in
+                if value != nil { hasImage = true }
+            }
+            if !hasImage { height += rect.height }
+        }
+        return height
+    }
+
+    private func headerHeight(for image: Image, using manager: NSLayoutManager) -> CGFloat {
+        guard image.cell.startingRow == 1,
+              let header = cells.first(where: { $0.block.table === image.cell.table && $0.block.startingRow == 0 }) else { return 0 }
+        let glyph = manager.glyphIndexForCharacter(at: header.range.location)
+        return manager.boundsRect(for: header.block, at: glyph, effectiveRange: nil).height
     }
 
     func nextAdjustment(using manager: NSLayoutManager) -> Adjustment {

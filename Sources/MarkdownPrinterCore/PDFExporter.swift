@@ -165,7 +165,7 @@ public final class PDFExporter {
             layoutManager: layoutManager,
             contentSize: contentSize
         )
-        if tableImages.fitWidths(using: layoutManager, pageHeight: contentSize.height) {
+        while tableImages.fitWidths(using: layoutManager, pageHeight: contentSize.height) {
             appendPagesUntilCovered(pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
         }
         repeat {
@@ -193,7 +193,7 @@ public final class PDFExporter {
             layoutManager: layoutManager,
             contentSize: contentSize
         )
-        if tableImages.fitWidths(using: layoutManager, pageHeight: contentSize.height) {
+        while tableImages.fitWidths(using: layoutManager, pageHeight: contentSize.height) {
             await appendPagesUntilCoveredAsync(pages: &pages, layoutManager: layoutManager, contentSize: contentSize)
         }
         repeat {

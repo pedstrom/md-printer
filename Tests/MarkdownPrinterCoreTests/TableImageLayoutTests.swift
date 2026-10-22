@@ -151,17 +151,20 @@ final class TableImageLayoutTests: XCTestCase {
             let page = try XCTUnwrap(document.page(at: index))
             let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(page.thumbnail(of: configuration.pageSize, for: .mediaBox).tiffRepresentation)))
             var count = 0
+            var columns = [0, 0]
             var minX = Int.max, minY = Int.max, maxX = 0, maxY = 0
             for y in 0..<bitmap.pixelsHigh {
                 for x in 0..<bitmap.pixelsWide {
                     guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
                           color.blueComponent > 0.5, color.blueComponent > color.redComponent + 0.3 else { continue }
                     count += 1
+                    columns[x < 306 ? 0 : 1] += 1
                     minX = min(minX, x); minY = min(minY, y)
                     maxX = max(maxX, x); maxY = max(maxY, y)
                 }
             }
             XCTAssertGreaterThan(count, 1000)
+            XCTAssertTrue(columns.allSatisfy { $0 > 500 }, "Both image columns must remain visible: \(columns)")
             XCTAssertGreaterThanOrEqual(minX, 54)
             XCTAssertLessThan(maxX, 558)
             XCTAssertGreaterThanOrEqual(minY, 54)
